@@ -208,3 +208,107 @@ with check (private.can_manage(teacher_id));
 create policy classes_update on public.classes for update to authenticated
 using (private.can_manage(teacher_id))
 with check (private.can_manage(teacher_id));
+
+-- A4. Local-hour validation and booking guards
+
+create function private.valid_slot(p_instant timestamptz) returns boolean
+language sql stable set search_path = '' as $$
+  select case when p_instant is null or not isfinite(p_instant) then false else
+    (p_instant at time zone 'Europe/Sofia') =
+      date_trunc('hour', p_instant at time zone 'Europe/Sofia')
+    and ((p_instant - interval '1 hour') at time zone 'Europe/Sofia') <>
+      (p_instant at time zone 'Europe/Sofia')
+    and ((p_instant + interval '1 hour') at time zone 'Europe/Sofia') <>
+      (p_instant at time zone 'Europe/Sofia')
+  end;
+$$;
+create function private.resolve_slot(p_date date, p_hour integer) returns timestamptz
+language plpgsql stable set search_path = '' as $$
+declare wall timestamp; instant timestamptz;
+begin
+  if p_date is null or not isfinite(p_date) or p_hour is null or p_hour not between 0 and 23 then
+    raise sqlstate 'PT422' using message = 'invalid_slot';
+  end if;
+  wall := p_date + make_time(p_hour, 0, 0);
+  instant := wall at time zone 'Europe/Sofia';
+  if (instant at time zone 'Europe/Sofia') <> wall or not private.valid_slot(instant) then
+    raise sqlstate 'PT422' using message = 'invalid_slot',
+      detail = jsonb_build_object('date', p_date, 'hour', p_hour)::text;
+  end if;
+  return instant;
+end;
+$$;
+alter table public.bookings add constraint bookings_valid_hour
+  check (private.valid_slot(starts_at));
+
+create function private.booking_guard() returns trigger
+language plpgsql set search_path = '' as $$
+declare actor uuid := private.actor_id(); owner_row public.classes%rowtype;
+begin
+  if actor is null and current_user not in ('postgres', 'supabase_admin') then
+    raise insufficient_privilege using message = 'access_required';
+  end if;
+  select * into owner_row from public.classes where id = new.class_id for share;
+  if not found then raise foreign_key_violation using message = 'class_not_found'; end if;
+  if tg_op = 'INSERT' then
+    if not owner_row.active or not exists (
+      select 1 from public.profiles p where p.id = owner_row.teacher_id and p.active
+    ) then raise check_violation using message = 'active_class_required'; end if;
+    new.cancelled_at := null;
+    new.cancelled_by := null;
+    new.created_at := statement_timestamp();
+    new.created_by := actor;
+    new.version := 1;
+  else
+    if old.cancelled_at is not null then
+      raise check_violation using message = 'cancelled_booking_read_only';
+    end if;
+    if new.id <> old.id then raise check_violation using message = 'booking_id_immutable'; end if;
+    if new.class_id <> old.class_id and (not owner_row.active or not exists (
+      select 1 from public.profiles p where p.id = owner_row.teacher_id and p.active
+    )) then raise check_violation using message = 'active_class_required'; end if;
+    if new.cancelled_at is not null then
+      if row(new.class_id, new.room, new.starts_at) is distinct from
+         row(old.class_id, old.room, old.starts_at) then
+        raise check_violation using message = 'cancel_without_editing';
+      end if;
+      new.cancelled_at := statement_timestamp();
+      new.cancelled_by := actor;
+    else
+      new.cancelled_by := null;
+    end if;
+    new.created_at := old.created_at;
+    new.created_by := old.created_by;
+    new.version := old.version + 1;
+  end if;
+  new.updated_at := statement_timestamp();
+  new.updated_by := actor;
+  return new;
+end;
+$$;
+revoke all on function private.valid_slot(timestamptz), private.resolve_slot(date, integer),
+  private.booking_guard() from public, anon, authenticated;
+grant execute on function private.valid_slot(timestamptz), private.resolve_slot(date, integer)
+  to authenticated;
+create trigger bookings_guard before insert or update on public.bookings
+for each row execute function private.booking_guard();
+
+grant select on public.bookings to authenticated;
+grant insert(class_id, room, starts_at) on public.bookings to authenticated;
+grant update(class_id, room, starts_at, cancelled_at) on public.bookings to authenticated;
+create policy bookings_read on public.bookings for select to authenticated
+using ((select private.actor_id()) is not null);
+create policy bookings_insert on public.bookings for insert to authenticated
+with check (exists (
+  select 1 from public.classes c
+  where c.id = class_id and private.can_manage(c.teacher_id)
+));
+create policy bookings_update on public.bookings for update to authenticated
+using (exists (
+  select 1 from public.classes c
+  where c.id = class_id and private.can_manage(c.teacher_id)
+))
+with check (exists (
+  select 1 from public.classes c
+  where c.id = class_id and private.can_manage(c.teacher_id)
+));
