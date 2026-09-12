@@ -157,3 +157,54 @@ grant select(id, name, role, active, created_at, updated_at)
   on public.profiles to authenticated;
 create policy profiles_read on public.profiles for select to authenticated
 using ((select private.actor_id()) is not null);
+
+-- A3. Class assignment, immutability, and RLS
+
+create function private.class_guard() returns trigger
+language plpgsql set search_path = '' as $$
+declare actor uuid := private.actor_id();
+begin
+  if actor is null and current_user not in ('postgres', 'supabase_admin') then
+    raise insufficient_privilege using message = 'access_required';
+  end if;
+  if tg_op = 'INSERT' then
+    if actor is not null and not private.is_admin() then
+      if new.teacher_id is not null and new.teacher_id <> actor then
+        raise insufficient_privilege using message = 'class_owner_forbidden';
+      end if;
+      new.teacher_id := actor;
+    end if;
+    if not exists (
+      select 1 from public.profiles p
+      where p.id = new.teacher_id and p.role = 'teacher' and p.active
+    ) then
+      raise check_violation using message = 'active_teacher_required';
+    end if;
+    new.created_at := statement_timestamp();
+    new.created_by := actor;
+  else
+    if new.id <> old.id or new.teacher_id <> old.teacher_id then
+      raise check_violation using message = 'class_owner_immutable';
+    end if;
+    new.created_at := old.created_at;
+    new.created_by := old.created_by;
+  end if;
+  new.updated_at := statement_timestamp();
+  new.updated_by := actor;
+  return new;
+end;
+$$;
+revoke all on function private.class_guard() from public, anon, authenticated;
+create trigger classes_guard before insert or update on public.classes
+for each row execute function private.class_guard();
+
+grant select on public.classes to authenticated;
+grant insert(teacher_id, name, active) on public.classes to authenticated;
+grant update(name, active) on public.classes to authenticated;
+create policy classes_read on public.classes for select to authenticated
+using ((select private.actor_id()) is not null);
+create policy classes_insert on public.classes for insert to authenticated
+with check (private.can_manage(teacher_id));
+create policy classes_update on public.classes for update to authenticated
+using (private.can_manage(teacher_id))
+with check (private.can_manage(teacher_id));
