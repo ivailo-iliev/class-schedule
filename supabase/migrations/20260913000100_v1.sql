@@ -69,3 +69,91 @@ alter table private.annual_rates enable row level security;
 revoke all on public.profiles, public.classes, public.bookings
   from public, anon, authenticated;
 revoke all on private.annual_rates from public, anon, authenticated;
+
+-- A2: Profile credentials, trusted actor, and safe profile projection
+
+create function private.profile_guard() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' then
+    new.credential_version := 1;
+    new.created_at := statement_timestamp();
+  else
+    if new.id <> old.id then
+      raise check_violation using message = 'profile_id_immutable';
+    end if;
+    new.created_at := old.created_at;
+    if new.access_token_hash is distinct from old.access_token_hash
+       or new.active is distinct from old.active
+       or new.role is distinct from old.role then
+      new.credential_version := old.credential_version + 1;
+    else
+      new.credential_version := old.credential_version;
+    end if;
+  end if;
+  if not new.active then new.access_token_hash := null; end if;
+  new.updated_at := statement_timestamp();
+  return new;
+end;
+$$;
+create trigger profiles_guard before insert or update on public.profiles
+for each row execute function private.profile_guard();
+
+create function private.actor_id() returns uuid
+language sql stable security definer set search_path = '' as $$
+  select p.id from public.profiles p
+  where p.id = auth.uid()
+    and p.active and p.access_token_hash is not null
+    and auth.jwt()->>'app' = 'class-scheduler-v1'
+    and auth.jwt()->>'credential_version' = p.credential_version::text;
+$$;
+create function private.is_admin() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = private.actor_id() and p.role = 'admin'
+  );
+$$;
+create function private.can_manage(p_teacher_id uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select private.actor_id() is not null and
+    (p_teacher_id = private.actor_id() or private.is_admin());
+$$;
+
+create function public.resolve_access(p_token_hash text)
+returns table(id uuid, name text, role public.app_role, credential_version integer)
+language sql stable security definer set search_path = '' as $$
+  select p.id, p.name, p.role, p.credential_version
+  from public.profiles p
+  where p.active and p.access_token_hash = p_token_hash
+    and p_token_hash ~ '^[0-9a-f]{64}$';
+$$;
+revoke all on function public.resolve_access(text) from public, anon, authenticated;
+grant execute on function public.resolve_access(text) to service_role;
+
+create function private.issue_access_link(p_profile_id uuid) returns text
+language plpgsql security definer set search_path = '' as $$
+declare token text;
+begin
+  token := encode(extensions.gen_random_bytes(32), 'hex');
+  update public.profiles
+  set access_token_hash = encode(extensions.digest(token, 'sha256'), 'hex')
+  where id = p_profile_id and active;
+  if not found then
+    raise no_data_found using message = 'active_profile_required';
+  end if;
+  return token;
+end;
+$$;
+revoke all on function private.issue_access_link(uuid) from public, anon, authenticated, service_role;
+revoke all on function private.profile_guard() from public, anon, authenticated;
+revoke all on function private.actor_id(), private.is_admin(), private.can_manage(uuid)
+  from public, anon, authenticated;
+grant usage on schema private to authenticated;
+grant execute on function private.actor_id(), private.is_admin(), private.can_manage(uuid)
+  to authenticated;
+
+grant select(id, name, role, active, created_at, updated_at)
+  on public.profiles to authenticated;
+create policy profiles_read on public.profiles for select to authenticated
+using ((select private.actor_id()) is not null);
