@@ -13,5 +13,11 @@
     "test:e2e": "npx playwright test",
     "check:public-build": "node scripts/assert-public-build.mjs",
     "auth:smoke": "node scripts/auth-smoke.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
+    "jose": "^6.2.12",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   }
 }
