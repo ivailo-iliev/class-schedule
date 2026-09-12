@@ -1,0 +1,18 @@
+# Dependencies and builds
+node_modules/
+dist/
+build/
+coverage/
+.playwright/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local/editor files
+.DS_Store
+.vscode/
+.idea/
