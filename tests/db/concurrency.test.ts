@@ -27,7 +27,6 @@ const HASH_ADM = '88888888888888888888888888888888888888888888888888888888888888
 
 const CLAIMS_A = {
   sub: C_A, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 
 function makePool() {

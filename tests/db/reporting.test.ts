@@ -24,14 +24,10 @@ function documentedSql(heading: string): string {
 const CLAIMS_A = {
   sub: '11111111-1111-1111-1111-111111111111',
   role: 'authenticated',
-  app: 'class-scheduler-v1',
-  credential_version: 1,
 };
 const CLAIMS_B = {
   sub: '22222222-2222-2222-2222-222222222222',
   role: 'authenticated',
-  app: 'class-scheduler-v1',
-  credential_version: 1,
 };
 
 // Dedicated billing fixtures so they never collide with seed or other suites.
@@ -89,8 +85,7 @@ async function ensureBillingFixtures() {
   // Cancel the 09-30 row through the proper RPC as its owner (billing teacher),
   // so the SECURITY INVOKER check resolves a real actor instead of postgres.
   await asAuthenticated(
-    { sub: B_P, role: 'authenticated', app: 'class-scheduler-v1',
-      credential_version: 1 },
+    { sub: B_P, role: 'authenticated' },
     async (client) => {
       await client.query(`select public.cancel_booking($1::uuid, 1)`, [B_ROOM1_C]);
     });
@@ -192,8 +187,7 @@ describe('daily schedule read via get_day', () => {
       c.release();
     }
     await asAuthenticated(
-      { sub: CANCEL_T, role: 'authenticated', app: 'class-scheduler-v1',
-        credential_version: 1 },
+      { sub: CANCEL_T, role: 'authenticated' },
       async (c) => {
         await c.query(`select public.cancel_booking($1::uuid, 1)`, [CANCEL_B]);
       });

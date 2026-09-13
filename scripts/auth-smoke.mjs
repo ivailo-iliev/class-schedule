@@ -1,191 +1,141 @@
 #!/usr/bin/env node
-// auth-smoke.mjs — prove genuine local gateway JWT acceptance, rejection,
-// and revocation with a supported imported ES256 key.
-// Exits nonzero on any unexpected status/result. No production secrets in
-// the repo; read private key material from .env (never commit it).
+// Verify the native Supabase session exchange against LOCAL Supabase.
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { handleAccessRequest } from '../netlify/lib/access.mjs';
 
-import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
-import {
-  generateEs256Jwk,
-  mintToken,
-  verifyToken,
-  publicJwk,
-  loadPrivateJwk,
-} from './lib/signing.mjs';
+const root = new URL('..', import.meta.url);
+const envPath = new URL('.env', root);
+const envText = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+const fileEnv = Object.fromEntries(envText.split(/\r?\n/)
+  .filter(line => line && !line.startsWith('#'))
+  .map(line => {
+    const i = line.indexOf('=');
+    return [line.slice(0, i), line.slice(i + 1).trim().replace(/^['"]|['"]$/g, '')];
+  }));
+const value = (...names) => names.map(name => process.env[name] ?? fileEnv[name]).find(Boolean);
+const base = value('LOCAL_SUPABASE_URL', 'API_URL', 'SUPABASE_URL') ?? 'http://127.0.0.1:54321';
+const key = value('LOCAL_SUPABASE_PUBLISHABLE_KEY', 'PUBLISHABLE_KEY', 'VITE_SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_PUBLISHABLE_KEY');
+const serviceKey = value('LOCAL_SUPABASE_SERVICE_ROLE_KEY', 'SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_API_KEY', 'SUPABASE_SECRET_KEY');
+if (!key || !serviceKey) throw new Error('local Supabase publishable/service keys are required');
+const origin = value('APP_ORIGIN') ?? 'http://127.0.0.1:4173';
+const id = randomUUID();
+const token = randomBytes(32).toString('hex');
+const hash = createHash('sha256').update(token).digest('hex');
+const email = `native-smoke-${id}@access.invalid`;
+const otherEmail = `native-smoke-other-${id}@access.invalid`;
+const adminHeaders = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'content-type': 'application/json' };
+const publicHeaders = { apikey: key, Authorization: `Bearer ${key}`, 'content-type': 'application/json' };
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, '..');
-const KID = 'imported-key-1';
+async function api(path, init = {}) {
+  const response = await fetch(`${base}${path}`, init);
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`${path}: HTTP ${response.status} ${JSON.stringify(body)}`);
+  return body;
+}
 
-let env;
+async function rest(path, init = {}) {
+  return api(`/rest/v1${path}`, {
+    ...init,
+    headers: { ...adminHeaders, ...(init.headers ?? {}) },
+  });
+}
+
+async function issueSession(userEmail) {
+  const link = await api('/auth/v1/admin/generate_link', {
+    method: 'POST', headers: adminHeaders,
+    body: JSON.stringify({ type: 'magiclink', email: userEmail }),
+  });
+  const tokenHash = link?.hashed_token ?? link?.properties?.hashed_token;
+  if (typeof tokenHash !== 'string' || !tokenHash) throw new Error('native link was not generated');
+  return api('/auth/v1/verify', {
+    method: 'POST', headers: publicHeaders,
+    body: JSON.stringify({ type: 'magiclink', token_hash: tokenHash }),
+  });
+}
+
+let profileId;
+let classId;
+let userId;
+let otherUserId;
 try {
-  const envContent = readFileSync(join(ROOT, '.env'), 'utf-8');
-  env = Object.fromEntries(envContent.replace(/\r\n/g, '\n').split('\n').map(l => {
-    const [k, ...v] = l.split('=');
-    return [k, v.join('=')];
-  }).filter(([k]) => k && !k.startsWith('#')));
-} catch {
-  console.error('Missing .env — read SUPABASE_URL / SUPABASE_SECRET_KEY / SUPABASE_DB_URL from it');
-  process.exit(2);
-}
-
-const SUPABASE_URL = env.SUPABASE_URL?.trim() || '';
-const SUPABASE_SECRET_KEY = env.SUPABASE_SECRET_KEY?.trim() || '';
-const SUPABASE_DB_URL = env.SUPABASE_DB_URL?.trim() || '';
-const SUPABASE_PROJECT_ID = env.SUPABASE_PROJECT_ID?.trim() || '';
-
-if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
-  console.error('SUPABASE_URL / SUPABASE_SECRET_KEY missing from .env');
-  process.exit(2);
-}
-
-// ---------------------------------------------------------------------------
-// 1. Ephemeral signing key for the smoke itself (unit-like proof that the
-//    ES256 helpers verify claims, then we prove the live gateway does too).
-// ---------------------------------------------------------------------------
-const { privateJwk } = await generateEs256Jwk(KID);
-const PROFILE = { id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', name: 'Smoke Teacher', role: 'teacher', credential_version: 1 };
-const { jwt } = await mintToken(PROFILE, privateJwk);
-
-// Verify minted token under public JWK (unit property).
-const payload = await verifyToken(jwt, privateJwk);
-console.log(`Unit check — signed actor accepted: sub=${payload.sub} app=${payload.app}`);
-
-// ---------------------------------------------------------------------------
-// 2. Import the ephemeral public key into the hosted Supabase project's JWT
-//    Signing Keys so the live gateway accepts tokens minted with the
-//    matching private key. Owner-authorized hosted work only.
-// ---------------------------------------------------------------------------
-async function hosted(action, body) {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/${action}`, {
+  const profile = await rest('/profiles', {
     method: 'POST',
-    headers: {
-      apikey: SUPABASE_SECRET_KEY,
-      Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
-      'Content-Type': 'application/json',
-      'api-version': '2024-01-01',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ name: `Native smoke ${id.slice(0, 8)}`, role: 'teacher', active: true, access_token_hash: hash }),
+  });
+  profileId = profile[0]?.id;
+  if (!profileId) throw new Error('smoke profile was not created');
+
+  const exchange = await handleAccessRequest({
+    method: 'POST',
+    headers: { origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+  }, {
+    env: {
+      APP_ORIGIN: origin,
+      SUPABASE_URL: base,
+      SUPABASE_SECRET_API_KEY: serviceKey,
+      SUPABASE_PUBLISHABLE_KEY: key,
     },
-    body: JSON.stringify(body),
+    fetchImpl: fetch,
   });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`hosted ${action} ${res.status}: ${text}`);
-  return text ? JSON.parse(text) : {};
-}
+  if (exchange.status !== 200) throw new Error(`access exchange: HTTP ${exchange.status}`);
+  const session = JSON.parse(exchange.body);
+  if (!session.user?.id || !session.access_token || !session.refresh_token || session.profile?.id !== profileId) {
+    throw new Error('native session payload is incomplete');
+  }
+  userId = session.user.id;
+  console.log('access exchange: PASS (native session returned)');
 
-// Create standby imported key.
-let keyId = null;
-try {
-  const created = await hosted('signing-keys', {
-    algorithm: 'ES256',
-    status: 'standby',
-    public_key: JSON.stringify(publicJwk(privateJwk)),
-    kid: KID,
-  });
-  keyId = created.id || KID;
-  console.log(`Hosted standby key created/exists: kid=${keyId}`);
-} catch (e) {
-  // If the key already exists under the same kid, try to locate it.
-  console.log(`Standby create note: ${e.message}`);
-  keyId = KID;
-}
-
-// Activate the key via rotate — the hosted project now accepts ES256 tokens.
-try {
-  await hosted('signing-keys/rotate', { kid: keyId });
-  console.log(`Hosted key rotated/activated: kid=${keyId}`);
-} catch (e) {
-  console.log(`Rotate note: ${e.message}`);
-}
-
-// Give the gateway a moment to pick up the key rotation.
-await new Promise(r => setTimeout(r, 3000));
-
-// ---------------------------------------------------------------------------
-// 3. Acceptance — a token signed with the matching private key must be
-//    accepted by the live Supabase Data API (real gateway, not SET ROLE).
-// ---------------------------------------------------------------------------
-const ACCEPT_PROFILE = { id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', name: 'Smoke Teacher', role: 'teacher', credential_version: 1 };
-const { jwt: acceptedJwt } = await mintToken(ACCEPT_PROFILE, privateJwk);
-
-let accepted = false;
-try {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`, {
-    headers: {
-      apikey: env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_PUBLISHABLE_KEY || '',
-      Authorization: `Bearer ${acceptedJwt}`,
-      Prefer: 'return=representation',
+  const secondExchange = await handleAccessRequest({
+    method: 'POST',
+    headers: { origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+  }, {
+    env: {
+      APP_ORIGIN: origin,
+      SUPABASE_URL: base,
+      SUPABASE_SECRET_API_KEY: serviceKey,
+      SUPABASE_PUBLISHABLE_KEY: key,
     },
+    fetchImpl: fetch,
   });
-  accepted = res.ok;
-  console.log(`Acceptance — signed actor: HTTP ${res.status} ${accepted ? 'ACCEPTED' : 'DENIED'}`);
-} catch (e) {
-  console.error(`Acceptance request failed: ${e.message}`);
-  process.exit(1);
-}
-if (!accepted) {
-  console.error('Genuine signed token was rejected by the live gateway — signing-key gate failed.');
-  process.exit(1);
-}
+  if (secondExchange.status !== 401) throw new Error('token was reusable');
+  console.log('single-use token: PASS');
 
-// ---------------------------------------------------------------------------
-// 4. Rejection — forged / wrong-key token must be denied by the real gateway.
-// ---------------------------------------------------------------------------
-const { privateJwk: wrongKey } = await generateEs256Jwk('wrong-key-2');
-const { jwt: forgedJwt } = await mintToken(ACCEPT_PROFILE, wrongKey);
-
-let forgedDenied = false;
-try {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`, {
-    headers: {
-      apikey: env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_PUBLISHABLE_KEY || '',
-      Authorization: `Bearer ${forgedJwt}`,
-    },
+  const teacherHeaders = { apikey: key, Authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' };
+  const classRows = await api('/rest/v1/classes', {
+    method: 'POST', headers: { ...teacherHeaders, Prefer: 'return=representation' },
+    body: JSON.stringify({ teacher_id: profileId, name: `Smoke class ${id.slice(0, 8)}`, active: true }),
   });
-  forgedDenied = !res.ok;
-  console.log(`Rejection — forged/wrong-key actor: HTTP ${res.status} ${forgedDenied ? 'DENIED' : 'ACCEPTED'}`);
-} catch (e) {
-  console.error(`Rejection request failed: ${e.message}`);
-  process.exit(1);
-}
-if (!forgedDenied) {
-  console.error('Forged token was accepted by the live gateway — signing-key gate failed.');
-  process.exit(1);
-}
+  classId = classRows[0]?.id;
+  if (!classId) throw new Error('owner RLS write failed');
+  console.log('RLS owner write: PASS');
 
-// ---------------------------------------------------------------------------
-// 5. Revocation — after deleting the imported key, the accepted JWT must no
-//    longer be accepted by the live gateway on subsequent statements.
-// ---------------------------------------------------------------------------
-try {
-  await hosted(`signing-keys/${keyId}`, {});
-  console.log(`Hosted key deleted: kid=${keyId}`);
-} catch (e) {
-  console.log(`Delete note: ${e.message}`);
-}
-
-await new Promise(r => setTimeout(r, 3000));
-
-let revokedDenied = false;
-try {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`, {
-    headers: {
-      apikey: env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_PUBLISHABLE_KEY || '',
-      Authorization: `Bearer ${acceptedJwt}`,
-    },
+  const other = await api('/auth/v1/admin/users', {
+    method: 'POST', headers: adminHeaders,
+    body: JSON.stringify({ email: otherEmail, email_confirm: true }),
   });
-  revokedDenied = !res.ok;
-  console.log(`Revocation — previously accepted actor after key delete: HTTP ${res.status} ${revokedDenied ? 'DENIED' : 'ACCEPTED'}`);
-} catch (e) {
-  console.error(`Revocation request failed: ${e.message}`);
-  process.exit(1);
-}
-if (!revokedDenied) {
-  console.error('Revoked token was still accepted by the live gateway — signing-key gate failed.');
-  process.exit(1);
-}
+  otherUserId = other.id;
+  const otherSession = await issueSession(otherEmail);
+  const crossRows = await api(`/rest/v1/classes?id=eq.${classId}`, {
+    method: 'PATCH',
+    headers: { apikey: key, Authorization: `Bearer ${otherSession.access_token}`, 'content-type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify({ name: 'forbidden' }),
+  });
+  if (crossRows.length !== 0) throw new Error('cross-teacher write was allowed');
+  console.log('RLS cross-teacher denial: PASS');
 
-console.log('signed actor accepted; forged actor denied; revoked actor denied');
-process.exit(0);
+  await rest(`/profiles?id=eq.${profileId}`, {
+    method: 'PATCH', body: JSON.stringify({ active: false }),
+  });
+  const revoked = await api('/rest/v1/profiles?select=id', { headers: teacherHeaders });
+  if (revoked.length !== 0) throw new Error('deactivated profile retained API access');
+  console.log('deactivation revocation: PASS');
+} finally {
+  if (classId) await rest(`/classes?id=eq.${classId}`, { method: 'DELETE' }).catch(() => {});
+  if (profileId) await rest(`/profiles?id=eq.${profileId}`, { method: 'DELETE' }).catch(() => {});
+  if (userId) await api(`/auth/v1/admin/users/${userId}`, { method: 'DELETE', headers: adminHeaders }).catch(() => {});
+  if (otherUserId) await api(`/auth/v1/admin/users/${otherUserId}`, { method: 'DELETE', headers: adminHeaders }).catch(() => {});
+}

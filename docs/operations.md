@@ -139,22 +139,6 @@ Log into Supabase Dashboard → project → a paused banner appears → click Re
 This can take several minutes. The application landing page shows a public
 connectivity error during pause. No scheduled keep-alive is part of V1.
 
-## Local signing key (ES256)
-
-The local Supabase gateway uses a single imported ES256 (P-256) signing key
-pair for both its own anon/service tokens and the custom JWTs the exchange
-function mints. Generate it once per machine with:
-
-```bash
-node scripts/create-local-key.mjs
-```
-
-This writes the raw private JWK to `.keys/local_signing_key.json` (gitignored,
-signer only) and to `supabase/signing_keys.json` (gitignored, the file the
-gateway reads via `signing_keys_path` in `supabase/config.toml`). Never commit
-either file. Regenerate with a fresh key by deleting both files and re-running
-the script; the `KID` env var overrides the default `imported-key-1`.
-
 ## Backups (administrator responsibility)
 
 Backups are not automatic on the Free plan. Export via `pg_dump` or the

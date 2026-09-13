@@ -4,6 +4,8 @@
     "jsx": "react-jsx", "strict": true, "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true, "isolatedModules": true,
     "resolveJsonModule": true, "allowImportingTsExtensions": true,
+ "skipLibCheck": true,
+ "types": ["vite/client", "node"],
     "verbatimModuleSyntax": true, "noEmit": true,
     "paths": { "@/*": ["./src/*"] }
   },

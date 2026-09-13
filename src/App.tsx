@@ -1,22 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { bootstrapNativeSession } from './lib/session';
 
 export default function App() {
-  const [hasCredential] = useState(
-    () => typeof window !== 'undefined' && window.location.hash.length > 1,
+  const [state, setState] = useState<'loading' | 'connected' | 'unavailable'>(() =>
+    typeof window !== 'undefined' && window.location.hash.length > 1 ? 'loading' : 'unavailable',
   );
 
-  if (!hasCredential) {
-    return (
-      <main>
-        <h1>Class Scheduler</h1>
-        <p>Open your personal access link</p>
-      </main>
-    );
+  useEffect(() => {
+    let mounted = true;
+    bootstrapNativeSession().then((session) => {
+      if (mounted && session) setState('connected');
+    }).catch(() => {
+      if (mounted) setState('unavailable');
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  if (state === 'loading') {
+    return <main><h1>Class Scheduler</h1><p>Connecting…</p></main>;
   }
-
-  return (
-    <main>
-      <h1>Class Scheduler</h1>
-    </main>
-  );
+  if (state === 'unavailable') {
+    return <main><h1>Class Scheduler</h1><p>Open your personal access link</p></main>;
+  }
+  return <main><h1>Class Scheduler</h1><p>Connected</p></main>;
 }

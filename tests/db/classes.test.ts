@@ -9,15 +9,12 @@ const ADM = '66666666-6666-6666-6666-666666666666'; // admin in this suite
 
 const CLAIMS_C = {
   sub: T_C, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 const CLAIMS_D = {
   sub: T_D, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 const CLAIMS_ADM = {
   sub: ADM, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 
 // Seeded fixtures (read-only use by this suite).
@@ -253,7 +250,7 @@ describe('class ownership', () => {
       await c.query(`update public.profiles set active = false where id = $1`, [T_TEMP]);
       await asAuthenticated(
         { sub: T_TEMP, role: 'authenticated',
-          app: 'class-scheduler-v1', credential_version: 2 },
+        },
         async (client) => {
           await expect(
             client.query(`insert into public.classes (name) values ('While Inactive')`),

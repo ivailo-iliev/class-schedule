@@ -32,8 +32,7 @@ export async function asAuthenticated<T>(claims: Record<string, unknown>,
 
 export async function withAdmin<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   return asAuthenticated(
-    { sub: 'admin-id', role: 'authenticated', app: 'class-scheduler-v1',
-      credential_version: 1 }, fn);
+    { sub: 'admin-id', role: 'authenticated' }, fn);
 };
 
 export function clean(rows: unknown[]): unknown[] {

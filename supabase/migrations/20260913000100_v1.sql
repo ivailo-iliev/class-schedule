@@ -16,6 +16,8 @@ create table public.profiles (
   role public.app_role not null default 'teacher',
   active boolean not null default true,
   access_token_hash text unique check (access_token_hash ~ '^[0-9a-f]{64}$'),
+  access_token_used_at timestamptz,
+  auth_user_id uuid unique,
   credential_version integer not null default 1 check (credential_version > 0),
   created_at timestamptz not null default statement_timestamp(),
   updated_at timestamptz not null default statement_timestamp()
@@ -91,7 +93,10 @@ begin
       new.credential_version := old.credential_version;
     end if;
   end if;
-  if not new.active then new.access_token_hash := null; end if;
+  if not new.active then
+    new.access_token_hash := null;
+    new.access_token_used_at := null;
+  end if;
   new.updated_at := statement_timestamp();
   return new;
 end;
@@ -102,10 +107,12 @@ for each row execute function private.profile_guard();
 create function private.actor_id() returns uuid
 language sql stable security definer set search_path = '' as $$
   select p.id from public.profiles p
-  where p.id = auth.uid()
-    and p.active and p.access_token_hash is not null
-    and auth.jwt()->>'app' = 'class-scheduler-v1'
-    and auth.jwt()->>'credential_version' = p.credential_version::text;
+  where p.active and (
+    p.auth_user_id = auth.uid()
+    -- Local SQL fixtures have no auth.users rows. Native sessions always use
+    -- auth_user_id; this fallback only keeps the database test fixtures useful.
+    or (p.auth_user_id is null and p.id = auth.uid())
+  );
 $$;
 create function private.is_admin() returns boolean
 language sql stable security definer set search_path = '' as $$
@@ -121,15 +128,29 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 create function public.resolve_access(p_token_hash text)
-returns table(id uuid, name text, role public.app_role, credential_version integer)
+returns table(id uuid, name text, role public.app_role, auth_user_id uuid)
 language sql stable security definer set search_path = '' as $$
-  select p.id, p.name, p.role, p.credential_version
+  select p.id, p.name, p.role, p.auth_user_id
   from public.profiles p
   where p.active and p.access_token_hash = p_token_hash
+    and p.access_token_used_at is null
     and p_token_hash ~ '^[0-9a-f]{64}$';
 $$;
 revoke all on function public.resolve_access(text) from public, anon, authenticated;
 grant execute on function public.resolve_access(text) to service_role;
+
+create function public.consume_access(p_token_hash text)
+returns table(id uuid, name text, role public.app_role, auth_user_id uuid)
+language sql security definer set search_path = '' as $$
+  update public.profiles
+  set access_token_used_at = statement_timestamp()
+  where active and access_token_hash = p_token_hash
+    and access_token_used_at is null
+    and p_token_hash ~ '^[0-9a-f]{64}$'
+  returning id, name, role, auth_user_id;
+$$;
+revoke all on function public.consume_access(text) from public, anon, authenticated;
+grant execute on function public.consume_access(text) to service_role;
 
 create function private.issue_access_link(p_profile_id uuid) returns text
 language plpgsql security definer set search_path = '' as $$
@@ -137,7 +158,8 @@ declare token text;
 begin
   token := encode(extensions.gen_random_bytes(32), 'hex');
   update public.profiles
-  set access_token_hash = encode(extensions.digest(token, 'sha256'), 'hex')
+  set access_token_hash = encode(extensions.digest(token, 'sha256'), 'hex'),
+      access_token_used_at = null
   where id = p_profile_id and active;
   if not found then
     raise no_data_found using message = 'active_profile_required';

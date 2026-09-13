@@ -9,15 +9,12 @@ const ADM = '77777777-7777-7777-7777-777777777703'; // admin in this suite
 
 const CLAIMS_E = {
   sub: T_E, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 const CLAIMS_F = {
   sub: T_F, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 const CLAIMS_ADM = {
   sub: ADM, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 
 // Stable class ids owned by this suite's profiles.

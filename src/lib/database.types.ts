@@ -141,6 +141,8 @@ export type Database = {
       profiles: {
         Row: {
           access_token_hash: string | null
+          access_token_used_at: string | null
+          auth_user_id: string | null
           active: boolean
           created_at: string
           credential_version: number
@@ -151,6 +153,8 @@ export type Database = {
         }
         Insert: {
           access_token_hash?: string | null
+          access_token_used_at?: string | null
+          auth_user_id?: string | null
           active?: boolean
           created_at?: string
           credential_version?: number
@@ -161,6 +165,8 @@ export type Database = {
         }
         Update: {
           access_token_hash?: string | null
+          access_token_used_at?: string | null
+          auth_user_id?: string | null
           active?: boolean
           created_at?: string
           credential_version?: number
@@ -229,11 +235,20 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      consume_access: {
+        Args: { p_token_hash: string }
+        Returns: {
+          auth_user_id: string | null
+          id: string
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+        }[]
+      }
       get_day: { Args: { p_date: string }; Returns: Json }
       resolve_access: {
         Args: { p_token_hash: string }
         Returns: {
-          credential_version: number
+          auth_user_id: string | null
           id: string
           name: string
           role: Database["public"]["Enums"]["app_role"]

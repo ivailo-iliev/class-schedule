@@ -7,11 +7,9 @@ const ADMIN = '33333333-3333-3333-3333-333333333333';
 
 const VALID_TEACHER_A = {
   sub: T_A, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 const VALID_ADMIN = {
   sub: ADMIN, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 
 describe('actor identity', () => {
@@ -23,32 +21,32 @@ describe('actor identity', () => {
     });
   });
 
-  test('actor_id returns null for missing app claim', async () => {
+  test('actor_id ignores unrelated claims', async () => {
     await asAuthenticated(
-      { sub: T_A, role: 'authenticated', credential_version: 1 },
+      { sub: T_A, role: 'authenticated', legacy_claim: 'ignored' },
       async (client) => {
         const { rows } = await client.query('select private.actor_id()');
-        expect(rows[0].actor_id).toBeNull();
+        expect(rows[0].actor_id).toBe(T_A);
       },
     );
   });
 
-  test('actor_id returns null for missing credential_version', async () => {
+  test('actor_id ignores a legacy credential claim', async () => {
     await asAuthenticated(
-      { sub: T_A, role: 'authenticated', app: 'class-scheduler-v1' },
+      { sub: T_A, role: 'authenticated', legacy_credential: 1 },
       async (client) => {
         const { rows } = await client.query('select private.actor_id()');
-        expect(rows[0].actor_id).toBeNull();
+        expect(rows[0].actor_id).toBe(T_A);
       },
     );
   });
 
-  test('actor_id returns null for wrong credential_version', async () => {
+  test('actor_id ignores a stale legacy credential claim', async () => {
     await asAuthenticated(
-      { ...VALID_TEACHER_A, credential_version: 99 },
+      { ...VALID_TEACHER_A, legacy_credential: 99 },
       async (client) => {
         const { rows } = await client.query('select private.actor_id()');
-        expect(rows[0].actor_id).toBeNull();
+        expect(rows[0].actor_id).toBe(T_A);
       },
     );
   });
@@ -105,13 +103,13 @@ describe('admin detection', () => {
 
 describe('revocation', () => {
 
-  test('revoked credential version loses schedule access', async () => {
-    // Confirm access works with version 1
+  test('deactivated profile loses schedule access', async () => {
+    // Confirm access works while the profile is active.
     await asAuthenticated(VALID_TEACHER_A, async (client) => {
       const { rows } = await client.query('select private.actor_id()');
       expect(rows[0].actor_id).toBe(T_A);
     });
-    // Increment credential version (simulate link rotation); restore afterwards.
+    // Deactivate the profile; restore afterwards.
     const c = await db();
     let snapshot: { active: boolean; access_token_hash: string | null; credential_version: number; role: string } | null = null;
     try {
@@ -125,13 +123,8 @@ describe('revocation', () => {
         credential_version: snap.rows[0].credential_version,
         role: snap.rows[0].role,
       };
-      await c.query(
-        `update public.profiles
-           set access_token_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaf'
-         where id = $1`,
-        [T_A],
-      );
-      // Old version 1 claim must now return null
+      await c.query(`update public.profiles set active = false where id = $1`, [T_A]);
+      // Native sessions lose access when the profile is inactive.
       await asAuthenticated(VALID_TEACHER_A, async (client) => {
         const { rows } = await client.query('select private.actor_id()');
         expect(rows[0].actor_id).toBeNull();

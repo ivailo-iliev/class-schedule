@@ -9,7 +9,6 @@ const R_ADM = '88888888-8888-8888-8888-888888888803'; // admin
 
 const CLAIMS_A = {
   sub: R_A, role: 'authenticated',
-  app: 'class-scheduler-v1', credential_version: 1,
 };
 
 // Stable class id owned by this suite's teacher.
