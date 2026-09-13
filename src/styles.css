@@ -476,3 +476,71 @@ button:disabled {
     flex: 1 1 0;
   }
 }
+
+.booking-form {
+  width: min(100%, 32rem);
+  margin: 1rem auto;
+  padding: 1rem;
+  border: 1px solid #c7d0df;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.booking-form h2 {
+  margin: 0;
+}
+
+.booking-form header p {
+  margin: 0.35rem 0 1rem;
+  color: #5b6578;
+}
+
+.booking-form form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.booking-form input,
+.booking-form select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #9da9bc;
+  border-radius: 0.4rem;
+  background: #fff;
+}
+
+.booking-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.booking-form__actions button {
+  min-height: 44px;
+  flex: 1 1 8rem;
+  padding: 0 0.8rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.4rem;
+  background: #2563eb;
+  color: #fff;
+}
+
+.booking-form__actions button:last-child {
+  border-color: #9da9bc;
+  background: #fff;
+  color: #172033;
+}
+
+.booking-form__message {
+  margin: 0.75rem 0;
+  padding: 0.7rem;
+  border-radius: 0.4rem;
+}
+
+.booking-form__message--error {
+  border: 1px solid #c14c4c;
+  background: #fff0f0;
+  color: #8c2020;
+}
