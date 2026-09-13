@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { bootstrapNativeSession } from './lib/session';
+import { bootstrapNativeSession, onNativeAuthStateChange } from './lib/session';
 
 export default function App() {
   const [state, setState] = useState<'loading' | 'connected' | 'unavailable'>(() =>
@@ -8,12 +8,19 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
+    const subscription = onNativeAuthStateChange((session) => {
+      if (mounted && session) setState('connected');
+      if (mounted && !session) setState('unavailable');
+    });
     bootstrapNativeSession().then((session) => {
       if (mounted && session) setState('connected');
     }).catch(() => {
       if (mounted) setState('unavailable');
     });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   if (state === 'loading') {
