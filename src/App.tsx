@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { bootstrapNativeSession, onNativeAuthStateChange } from './lib/session';
+import Schedule from './components/Schedule';
 
 export default function App() {
   const [state, setState] = useState<'loading' | 'connected' | 'unavailable'>(() =>
@@ -29,5 +30,5 @@ export default function App() {
   if (state === 'unavailable') {
     return <main><h1>Class Scheduler</h1><p>Open your personal access link</p></main>;
   }
-  return <main><h1>Class Scheduler</h1><p>Connected</p></main>;
+  return <Schedule />;
 }

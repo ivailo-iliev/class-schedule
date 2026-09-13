@@ -1,0 +1,299 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color: #172033;
+  background: #f5f7fb;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  overflow-x: hidden;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  min-height: 44px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.schedule-shell {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 0.5rem 2rem;
+  overflow-x: clip;
+}
+
+.schedule-date-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+  padding: 0.75rem 0.25rem 0.5rem;
+  background: rgb(245 247 251 / 96%);
+  backdrop-filter: blur(4px);
+}
+
+.schedule-date-bar h1 {
+  margin: 0;
+  font-size: clamp(1.2rem, 5vw, 1.6rem);
+}
+
+.timezone-label,
+.selected-date {
+  margin: 0.15rem 0 0;
+  color: #5b6578;
+  font-size: 0.8rem;
+}
+
+.date-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.date-controls button,
+.date-controls input {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid #b8c1d1;
+  border-radius: 0.4rem;
+  background: #fff;
+  color: inherit;
+}
+
+.date-controls button {
+  padding: 0 0.65rem;
+}
+
+.date-controls input {
+  width: 9.2rem;
+  padding: 0 0.35rem;
+}
+
+.selected-date {
+  grid-column: 1 / -1;
+}
+
+.schedule-loading,
+.schedule-message {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #c7d0df;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.schedule-message strong {
+  display: block;
+}
+
+.schedule-message p {
+  margin: 0.5rem 0 1rem;
+}
+
+.schedule-message button {
+  padding: 0 0.8rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.4rem;
+  background: #2563eb;
+  color: #fff;
+}
+
+.schedule-message--inline {
+  margin: 0.5rem 0;
+  border-color: #c28a25;
+  background: #fff8e6;
+}
+
+.schedule-message--inline strong {
+  display: inline;
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: minmax(3.2rem, auto) minmax(0, 1fr) minmax(0, 1fr);
+  width: 100%;
+  border-top: 1px solid #c7d0df;
+  border-left: 1px solid #c7d0df;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #c7d0df;
+}
+
+.schedule-grid__corner,
+.schedule-grid__header,
+.schedule-grid__hour,
+.schedule-grid__cell {
+  min-width: 0;
+  border-right: 1px solid #c7d0df;
+  border-bottom: 1px solid #c7d0df;
+}
+
+.schedule-grid__corner,
+.schedule-grid__header {
+  position: sticky;
+  top: 5.25rem;
+  z-index: 3;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.6rem 0.3rem;
+  background: #e8edf5;
+  color: #26334a;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.schedule-grid__corner {
+  z-index: 4;
+  text-align: right;
+}
+
+.schedule-grid__row {
+  display: contents;
+}
+
+.schedule-grid__hour {
+  display: flex;
+  min-height: 4rem;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.25rem;
+  background: #f1f4f9;
+  color: #4b5870;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-grid__cell {
+  min-height: 4rem;
+  background: #fff;
+}
+
+.schedule-grid__cell > button,
+.schedule-grid__cell > .booking,
+.schedule-grid__cell > .schedule-grid__unknown {
+  display: flex;
+  width: 100%;
+  min-height: 4rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 0;
+  text-align: center;
+}
+
+.empty-slot {
+  background: #fff;
+  color: #2563eb;
+  font-size: 1.6rem;
+}
+
+.empty-slot:hover,
+.empty-slot:focus-visible {
+  background: #eaf1ff;
+}
+
+.schedule-grid__cell > button:disabled {
+  background: #e3e7ee;
+  color: #69758a;
+  font-size: 0.7rem;
+}
+
+.booking {
+  flex-direction: column;
+  gap: 0.15rem;
+  overflow-wrap: anywhere;
+  background: #dceafe;
+  color: #153b70;
+  font-size: 0.76rem;
+  line-height: 1.15;
+}
+
+.booking strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.booking span {
+  color: #38577f;
+}
+
+.booking--editable {
+  cursor: pointer;
+}
+
+.booking--editable:hover,
+.booking--editable:focus-visible {
+  background: #c7ddff;
+}
+
+.schedule-grid__unknown {
+  background: #f0f2f6;
+  color: #68748a;
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 420px) {
+  .schedule-shell {
+    padding-inline: 0.25rem;
+  }
+
+  .schedule-date-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .date-controls {
+    justify-content: stretch;
+  }
+
+  .date-controls label,
+  .date-controls input,
+  .date-controls button {
+    flex: 1 1 0;
+  }
+
+  .schedule-grid__corner,
+  .schedule-grid__header {
+    top: 8.2rem;
+  }
+
+  .schedule-grid__cell > button,
+  .schedule-grid__cell > .booking,
+  .schedule-grid__cell > .schedule-grid__unknown {
+    padding-inline: 0.15rem;
+    font-size: 0.68rem;
+  }
+}
