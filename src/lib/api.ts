@@ -8,6 +8,7 @@ type BookingRow = Pick<Tables<'bookings'>, 'id' | 'class_id' | 'room' | 'starts_
   classes: Pick<Tables<'classes'>, 'id' | 'name' | 'teacher_id'> | null;
 };
 type ProfileRow = Pick<Tables<'profiles'>, 'id' | 'name'>;
+type TeacherProfileRow = Pick<Tables<'profiles'>, 'id' | 'name' | 'role'>;
 type ClassRow = Pick<Tables<'classes'>, 'id' | 'teacher_id' | 'name' | 'active'>;
 type SupabaseResult<T> = { data: T | null; error: PostgrestError | null };
 
@@ -73,6 +74,15 @@ export async function getMyClasses(): Promise<ClassItem[]> {
     .select('id, teacher_id, name, active')
     .order('name') as unknown as PromiseLike<SupabaseResult<ClassRow[]>>);
   return rows.map(mapClass);
+}
+
+export async function getTeachers(): Promise<Profile[]> {
+  const rows = await fetchOr(() => client().from('profiles')
+    .select('id, name, role, active')
+    .eq('role', 'teacher')
+    .eq('active', true)
+    .order('name') as unknown as PromiseLike<SupabaseResult<TeacherProfileRow[]>>);
+  return rows.map((row) => ({ id: row.id, name: row.name, role: row.role }));
 }
 
 export async function createClass(name: string, teacherId?: string): Promise<ClassItem> {

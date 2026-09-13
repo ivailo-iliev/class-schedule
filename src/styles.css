@@ -297,3 +297,182 @@ button:disabled {
     font-size: 0.68rem;
   }
 }
+
+.classes-shell {
+  width: 100%;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1rem 0.75rem 2rem;
+}
+
+.classes-header h1,
+.classes-panel h2 {
+  margin: 0;
+}
+
+.classes-header p {
+  margin: 0.35rem 0 1rem;
+  color: #5b6578;
+}
+
+.classes-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #c7d0df;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.classes-panel form {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.classes-panel input,
+.classes-panel select,
+.class-rename-form input {
+  min-height: 44px;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #9da9bc;
+  border-radius: 0.4rem;
+  background: #fff;
+}
+
+.classes-panel form > button,
+.class-row__actions button,
+.class-rename-form button,
+.classes-confirm button {
+  min-height: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.4rem;
+  background: #2563eb;
+  color: #fff;
+}
+
+.classes-help {
+  margin: 0;
+  color: #5b6578;
+  font-size: 0.8rem;
+}
+
+.class-list {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  list-style: none;
+}
+
+.class-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem;
+  border: 1px solid #d0d8e5;
+  border-radius: 0.4rem;
+}
+
+.class-row--archived {
+  background: #f3f5f8;
+  color: #5b6578;
+}
+
+.class-row__content {
+  display: grid;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.class-row__content strong {
+  overflow-wrap: anywhere;
+}
+
+.class-status,
+.class-owner {
+  color: #5b6578;
+  font-size: 0.8rem;
+}
+
+.class-row__actions,
+.class-rename-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.class-row__actions button:last-child,
+.class-rename-form button:last-child,
+.classes-confirm button:last-child {
+  border-color: #9da9bc;
+  background: #fff;
+  color: #172033;
+}
+
+.class-rename-form {
+  flex: 1;
+}
+
+.class-rename-form input {
+  flex: 1 1 12rem;
+}
+
+.classes-message {
+  margin: 0.75rem 0;
+  padding: 0.7rem;
+  border-radius: 0.4rem;
+}
+
+.classes-message--error {
+  border: 1px solid #c14c4c;
+  background: #fff0f0;
+  color: #8c2020;
+}
+
+.classes-message--success {
+  border: 1px solid #72a77d;
+  background: #effaf1;
+  color: #245a2c;
+}
+
+.classes-confirm {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  z-index: 10;
+  width: min(90vw, 28rem);
+  padding: 1rem;
+  transform: translate(-50%, -50%);
+  border: 1px solid #9da9bc;
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 0.75rem 2rem rgb(23 32 51 / 24%);
+}
+
+.classes-confirm h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.classes-confirm p {
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .class-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .class-row__actions {
+    justify-content: stretch;
+  }
+
+  .class-row__actions button {
+    flex: 1 1 0;
+  }
+}
