@@ -58,8 +58,10 @@ create table public.bookings (
 create index bookings_start_idx on public.bookings(starts_at);
 create index bookings_class_start_idx on public.bookings(class_id, starts_at);
 
-create table private.annual_rates (
-  year integer primary key check (year between 2000 and 9999),
+-- There is one current room rate. The singleton key permits a missing row to
+-- be detected explicitly while preventing accidental second-rate records.
+create table private.room_rate (
+  singleton boolean primary key default true check (singleton),
   room_hour_rate numeric(12,2) not null check (room_hour_rate >= 0),
   currency text not null check (currency ~ '^[A-Z]{3}$')
 );
@@ -67,10 +69,10 @@ create table private.annual_rates (
 alter table public.profiles enable row level security;
 alter table public.classes enable row level security;
 alter table public.bookings enable row level security;
-alter table private.annual_rates enable row level security;
+alter table private.room_rate enable row level security;
 revoke all on public.profiles, public.classes, public.bookings
   from public, anon, authenticated;
-revoke all on private.annual_rates from public, anon, authenticated;
+revoke all on private.room_rate from public, anon, authenticated;
 
 -- A2: Profile credentials, trusted actor, and safe profile projection
 

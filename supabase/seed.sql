@@ -28,6 +28,7 @@ values
      (date '2026-09-15' + make_time(10, 0, 0)) at time zone 'Europe/Sofia')
 on conflict (id) do nothing;
 
-insert into private.annual_rates (year, room_hour_rate, currency)
-values (2026, 20.00, 'BGN')
-on conflict (year) do nothing;
+insert into private.room_rate (room_hour_rate, currency)
+values (20.00, 'BGN')
+on conflict (singleton) do update set room_hour_rate = excluded.room_hour_rate,
+  currency = excluded.currency;

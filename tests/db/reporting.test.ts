@@ -20,7 +20,7 @@ function documentedSql(heading: string): string {
 //   Teacher B 22222222-... owns class bbbbbbbb-... 'Evening Pilates' (room_2)
 //   Booking on 2026-09-15 09:00 room_1 (Morning Yoga)
 //   Booking on 2026-09-15 10:00 room_2 (Evening Pilates)
-//   annual_rates row for 2026 = 20.00 BGN
+//   room_rate row = 20.00 BGN (the current rate for every booking date)
 const CLAIMS_A = {
   sub: '11111111-1111-1111-1111-111111111111',
   role: 'authenticated',
@@ -73,7 +73,7 @@ async function ensureBillingFixtures() {
          ($4, $5, 'room_1', (date '2026-09-30' + make_time(23,0,0)) at time zone 'Europe/Sofia')
        on conflict (id) do nothing`,
       [B_ROOM1_1, B_ROOM1_2, B_ROOM2_1, B_ROOM1_C, B_C]);
-    // 2027-01: one uncancelled hour, but NO annual_rates row for 2027.
+    // 2027-01: one uncancelled hour using the same current rate.
     await c.query(
       `insert into public.bookings (id, class_id, room, starts_at)
        values ($1, $2, 'room_1', (date '2027-01-12' + make_time(8,0,0)) at time zone 'Europe/Sofia')
@@ -277,20 +277,43 @@ describe('Supabase-only billing report (Appendix F SQL)', () => {
     }
   });
 
-  test('annual rate is resolved for a configured year and missing for an unconfigured one', async () => {
+  test('current room rate applies across booking years', async () => {
     await ensureBillingFixtures();
     const c = await db();
     try {
-      const r2026 = await c.query(
-        `select room_hour_rate, currency from private.annual_rates where year = 2026`);
-      expect(r2026.rows.length).toBe(1);
-      expect(Number(r2026.rows[0].room_hour_rate)).toBe(20.00);
-      expect(r2026.rows[0].currency).toBe('BGN');
-      // 2027 has bookings but no annual_rates row: rate lookup is empty, so a
-      // billed-total computation must surface a missing rate.
-      const r2027 = await c.query(
-        `select room_hour_rate from private.annual_rates where year = 2027`);
-      expect(r2027.rows.length).toBe(0);
+      const rate = await c.query(
+        `select room_hour_rate, currency from private.room_rate where singleton`);
+      expect(rate.rows.length).toBe(1);
+      expect(Number(rate.rows[0].room_hour_rate)).toBe(20.00);
+      expect(rate.rows[0].currency).toBe('BGN');
+      const totals = await c.query(`
+        select count(b.id)::int as uncancelled_hours,
+          count(b.id)::numeric * r.room_hour_rate as billed_total,
+          r.currency
+        from public.bookings b
+        cross join private.room_rate r
+        where r.singleton and b.cancelled_at is null and b.class_id = $1
+        group by r.room_hour_rate, r.currency`, [B_C]);
+      expect(totals.rows.length).toBe(1);
+      expect(Number(totals.rows[0].uncancelled_hours)).toBe(4);
+      expect(Number(totals.rows[0].billed_total)).toBe(80.00);
+      expect(totals.rows[0].currency).toBe('BGN');
+    } finally {
+      c.release();
+    }
+  });
+
+  test('missing current rate is an explicit error, not an implied zero', async () => {
+    const c = await db();
+    try {
+      await c.query('begin');
+      await c.query('delete from private.room_rate');
+      const { rows } = await c.query(`
+        select case when count(*) = 1 then 'current_rate_ready'
+                    else 'missing_current_room_rate' end as status
+        from private.room_rate`);
+      expect(rows[0].status).toBe('missing_current_room_rate');
+      await c.query('rollback');
     } finally {
       c.release();
     }

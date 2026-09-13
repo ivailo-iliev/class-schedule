@@ -10,13 +10,14 @@ async function tableExists(schema: string, name: string, client: pg.PoolClient):
 }
 
 describe('schema', () => {
-  test('profiles classes bookings annual_rates exist', async () => {
+  test('profiles classes bookings room_rate exist without annual_rates', async () => {
     const client = await db();
     try {
       expect(await tableExists('public', 'profiles', client)).toBe(true);
       expect(await tableExists('public', 'classes', client)).toBe(true);
       expect(await tableExists('public', 'bookings', client)).toBe(true);
-      expect(await tableExists('private', 'annual_rates', client)).toBe(true);
+      expect(await tableExists('private', 'room_rate', client)).toBe(true);
+      expect(await tableExists('private', 'annual_rates', client)).toBe(false);
     } finally {
       client.release();
     }

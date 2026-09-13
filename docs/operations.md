@@ -86,18 +86,33 @@ update public.profiles set active = true where id = '<profile-uuid>';
 select private.issue_access_link('<profile-uuid>');
 ```
 
-## Annual room-hour rate
+## Current room-hour rate
+
+`private.room_rate` contains one current rate, not a year-indexed rate history.
+The singleton key permits zero or one row so a missing configuration can be
+reported explicitly; it prevents a second current rate. Change it only as an
+owner in the SQL Editor or Table Editor:
 
 ```sql
-insert into private.annual_rates (year, room_hour_rate, currency)
-values (2026, 20.00, 'BGN')
-on conflict (year) do update set room_hour_rate = excluded.room_hour_rate,
+insert into private.room_rate (room_hour_rate, currency)
+values (20.00, 'BGN')
+on conflict (singleton) do update set room_hour_rate = excluded.room_hour_rate,
   currency = excluded.currency;
 ```
 
-A missing `annual_rates` row for a year that has bookings means the
-billed-total computation must surface a missing rate; it is not implied to be
-zero.
+Run this preflight before every billing report. A missing row is an operational
+error, never a zero-rate result:
+
+```sql
+select case when count(*) = 1 then 'current_rate_ready'
+            else 'missing_current_room_rate' end as status
+from private.room_rate;
+```
+
+Do not run or interpret a billing report until the result is
+`current_rate_ready`. The report multiplies uncancelled hours by this current
+rate for every booking date and returns the currency with each money total.
+
 
 ## Monthly usage report
 
@@ -105,17 +120,51 @@ Total billed uncancelled hours per teacher/class/room, grouped by year-month.
 Parameterized by the year-month window:
 
 ```sql
+with current_rate as (
+  select room_hour_rate, currency
+  from private.room_rate
+  where singleton
+)
 select p.id as teacher_id, p.name as teacher, c.id as class_id, c.name as class, b.room,
   to_char(date_trunc('month', b.starts_at at time zone 'Europe/Sofia'), 'YYYY-MM-DD') as month,
-  count(b.id) as uncancelled_hours
+  count(b.id) as uncancelled_hours,
+  r.room_hour_rate,
+  r.currency,
+  (count(b.id)::numeric * r.room_hour_rate)::numeric(12,2) as billed_total
 from public.bookings b
 join public.classes c on c.id = b.class_id
 join public.profiles p on p.id = c.teacher_id
+cross join current_rate r
 where b.cancelled_at is null
   and b.starts_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
   and b.starts_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
-group by p.id, p.name, c.id, c.name, b.room, month
+group by p.id, p.name, c.id, c.name, b.room, month, r.room_hour_rate, r.currency
 order by p.name, p.id, month, b.room, c.name, c.id;
+```
+
+Each row includes a money total for its teacher/class/room/month grouping.
+For a single total per teacher over the same window, run:
+
+```sql
+with current_rate as (
+  select room_hour_rate, currency
+  from private.room_rate
+  where singleton
+)
+select p.id as teacher_id, p.name as teacher,
+  count(b.id) as uncancelled_hours,
+  r.room_hour_rate,
+  r.currency,
+  (count(b.id)::numeric * r.room_hour_rate)::numeric(12,2) as billed_total
+from public.bookings b
+join public.classes c on c.id = b.class_id
+join public.profiles p on p.id = c.teacher_id
+cross join current_rate r
+where b.cancelled_at is null
+  and b.starts_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
+  and b.starts_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
+group by p.id, p.name, r.room_hour_rate, r.currency
+order by p.name, p.id;
 ```
 
 For September 2026: `:start_date = '2026-09-01'`, `:end_date = '2026-10-01'`.

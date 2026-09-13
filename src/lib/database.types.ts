@@ -293,6 +293,40 @@ export type Database = {
       [_ in never]: never
     }
   }
+  private: {
+    Tables: {
+      room_rate: {
+        Row: {
+          currency: string
+          room_hour_rate: number
+          singleton: boolean
+        }
+        Insert: {
+          currency: string
+          room_hour_rate: number
+          singleton?: boolean
+        }
+        Update: {
+          currency?: string
+          room_hour_rate?: number
+          singleton?: boolean
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
