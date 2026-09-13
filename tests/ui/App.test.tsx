@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   cancelBooking: vi.fn(),
   editBooking: vi.fn(),
   getMyClasses: vi.fn(),
+  scheduleBookings: vi.fn(),
+  createClass: vi.fn(),
+  updateClass: vi.fn(),
+  getTeachers: vi.fn(),
   bootstrapNativeSession: vi.fn(),
   onNativeAuthStateChange: vi.fn(),
   getProfile: vi.fn(),
@@ -17,9 +21,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../src/lib/api', () => ({
   getDay: mocks.getDay,
   getMyClasses: mocks.getMyClasses,
-  scheduleBookings: vi.fn(),
+  scheduleBookings: mocks.scheduleBookings,
   editBooking: mocks.editBooking,
   cancelBooking: mocks.cancelBooking,
+  createClass: mocks.createClass,
+  updateClass: mocks.updateClass,
+  getTeachers: mocks.getTeachers,
 }));
 
 vi.mock('../../src/lib/session', () => ({
@@ -84,6 +91,7 @@ describe('App booking details integration', () => {
     mocks.cancelBooking.mockReset();
     mocks.editBooking.mockReset();
     mocks.getMyClasses.mockReset();
+    mocks.scheduleBookings.mockReset();
     mocks.bootstrapNativeSession.mockReset();
     mocks.onNativeAuthStateChange.mockReset();
     mocks.getProfile.mockReset();
@@ -93,6 +101,10 @@ describe('App booking details integration', () => {
     mocks.getMyClasses.mockResolvedValue([
       { id: 'class-owned', teacherId: 'teacher-a', name: 'Owned teacher class', active: true },
     ]);
+    mocks.scheduleBookings.mockResolvedValue([booking({
+      id: 'booking-created', classId: 'class-owned', teacherId: 'teacher-a', className: 'Owned teacher class',
+      teacherName: 'Teacher A', room: 'room_1', hour: 10, startsAt: '2026-03-29T10:00:00+02:00', canEdit: true,
+    })]);
     mocks.bootstrapNativeSession.mockResolvedValue({});
     mocks.onNativeAuthStateChange.mockReturnValue({ unsubscribe: vi.fn() });
     mocks.getProfile.mockReturnValue({ id: 'teacher-a', name: 'Teacher A', role: 'teacher' });
@@ -112,6 +124,43 @@ describe('App booking details integration', () => {
     expect(within(otherDetails).getByText('Read-only')).toBeInTheDocument();
     expect(within(otherDetails).queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
     expect(within(otherDetails).queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
+  });
+
+  test('opens the booking flow from a free slot and refreshes after saving', async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Book Room 1 at 10:00' }));
+    expect(await screen.findByRole('heading', { name: 'Book a room' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-owned');
+    const bookingDate = (screen.getByLabelText('Booking date') as HTMLInputElement).value;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Book slot' }));
+    await waitFor(() => expect(mocks.scheduleBookings).toHaveBeenCalledWith(
+      'class-owned', 'room_1', bookingDate, 10, 1, undefined,
+    ));
+    await waitFor(() => expect(mocks.getDay).toHaveBeenCalledTimes(2));
+  });
+
+  test('keeps keyboard focus in the booking panel and returns it to the selected slot', async () => {
+    render(<App />);
+
+    const slot = await screen.findByRole('button', { name: 'Book Room 1 at 10:00' });
+    slot.focus();
+    fireEvent.click(slot);
+    const dialog = await screen.findByRole('dialog', { name: 'Book a room' });
+    expect(dialog).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Book a room' })).not.toBeInTheDocument());
+    expect(slot).toHaveFocus();
+  });
+
+  test('opens class management from the teacher workspace navigation', async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'My classes' }));
+    expect(await screen.findByRole('heading', { name: 'My classes' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Add class' })).toBeInTheDocument();
   });
 
   test('adds the private credential-free manifest link after native exchange', async () => {

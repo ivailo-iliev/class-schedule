@@ -3,9 +3,9 @@
 }
 
 :root {
-  color: #172033;
-  background: #f5f7fb;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #152036;
+  background: #f1f5fb;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 16px;
 }
 
@@ -13,6 +13,9 @@ body {
   margin: 0;
   min-width: 320px;
   overflow-x: hidden;
+  background:
+    radial-gradient(circle at 5% -10%, rgb(72 132 255 / 16%), transparent 29rem),
+    #f1f5fb;
 }
 
 button,
@@ -29,58 +32,200 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgb(35 118 255 / 38%);
+  outline-offset: 2px;
+}
+
+.access-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.access-card {
+  width: min(100%, 31rem);
+  padding: clamp(1.5rem, 6vw, 3rem);
+  border: 1px solid #d6e0ee;
+  border-radius: 1.25rem;
+  background: rgb(255 255 255 / 90%);
+  box-shadow: 0 1.5rem 4rem rgb(27 58 104 / 12%);
+}
+
+.access-card h1 {
+  margin: 0.4rem 0 0.75rem;
+  font-size: clamp(1.7rem, 6vw, 2.5rem);
+  letter-spacing: -0.045em;
+}
+
+.access-card p:last-child {
+  margin: 0;
+  color: #52617a;
+  line-height: 1.6;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #1765de;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid rgb(255 255 255 / 12%);
+  background: rgb(13 31 61 / 96%);
+  box-shadow: 0 0.5rem 1.5rem rgb(16 38 75 / 12%);
+  backdrop-filter: blur(12px);
+}
+
+.app-bar__inner {
+  display: flex;
+  width: min(100% - 2rem, 76rem);
+  min-height: 4.25rem;
+  align-items: center;
+  gap: 1.25rem;
+  margin: 0 auto;
+}
+
+.brand-lockup {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.6rem;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  display: grid;
+  width: 1.9rem;
+  height: 1.9rem;
+  place-items: center;
+  border-radius: 0.65rem;
+  background: linear-gradient(145deg, #5ea1ff, #1e67e4);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 28%);
+  font-size: 0.92rem;
+}
+
+.workspace-nav {
+  display: flex;
+  align-self: stretch;
+  gap: 0.2rem;
+}
+
+.workspace-nav__item {
+  min-height: 0;
+  padding: 0 0.7rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #b5c6e3;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.workspace-nav__item:hover,
+.workspace-nav__item--active {
+  border-bottom-color: #65a4ff;
+  color: #fff;
+}
+
+.teacher-identity {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+  color: #d7e3f8;
+  font-size: 0.85rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.teacher-identity__dot {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: #51d7a6;
+  box-shadow: 0 0 0 3px rgb(81 215 166 / 14%);
+}
+
 .schedule-shell {
   width: 100%;
-  max-width: 900px;
+  max-width: 76rem;
   margin: 0 auto;
-  padding: 0 0.5rem 2rem;
+  padding: 1.5rem 1rem 3rem;
   overflow-x: clip;
 }
 
 .schedule-date-bar {
   position: sticky;
-  top: 0;
+  top: 4.25rem;
   z-index: 5;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.25rem 0.5rem;
   align-items: center;
-  padding: 0.75rem 0.25rem 0.5rem;
-  background: rgb(245 247 251 / 96%);
-  backdrop-filter: blur(4px);
+  padding: 0.25rem 0 1rem;
+  background: rgb(241 245 251 / 96%);
+  backdrop-filter: blur(10px);
 }
 
 .schedule-date-bar h1 {
   margin: 0;
-  font-size: clamp(1.2rem, 5vw, 1.6rem);
+  font-size: clamp(1.45rem, 4vw, 2.05rem);
+  letter-spacing: -0.045em;
 }
 
 .timezone-label,
 .selected-date {
   margin: 0.15rem 0 0;
-  color: #5b6578;
-  font-size: 0.8rem;
+  color: #62708a;
+  font-size: 0.82rem;
 }
 
 .date-controls {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.25rem;
+  gap: 0.4rem;
 }
 
 .date-controls button,
 .date-controls input {
   min-width: 44px;
   min-height: 44px;
-  border: 1px solid #b8c1d1;
-  border-radius: 0.4rem;
+  border: 1px solid #c9d5e6;
+  border-radius: 0.6rem;
   background: #fff;
   color: inherit;
 }
 
 .date-controls button {
   padding: 0 0.65rem;
+  font-weight: 700;
+  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.date-controls button:hover {
+  border-color: #9ebaea;
+  background: #eff5ff;
+  transform: translateY(-1px);
 }
 
 .date-controls input {
@@ -90,14 +235,15 @@ button:disabled {
 
 .selected-date {
   grid-column: 1 / -1;
+  font-weight: 650;
 }
 
 .schedule-loading,
 .schedule-message {
   margin: 1rem 0;
   padding: 1rem;
-  border: 1px solid #c7d0df;
-  border-radius: 0.5rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.75rem;
   background: #fff;
 }
 
@@ -131,11 +277,12 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(3.2rem, auto) minmax(0, 1fr) minmax(0, 1fr);
   width: 100%;
-  border-top: 1px solid #c7d0df;
-  border-left: 1px solid #c7d0df;
-  border-radius: 0.5rem;
+  border-top: 1px solid #d6e0ee;
+  border-left: 1px solid #d6e0ee;
+  border-radius: 0.9rem;
   overflow: hidden;
-  background: #c7d0df;
+  background: #d6e0ee;
+  box-shadow: 0 1rem 2.5rem rgb(26 60 108 / 8%);
 }
 
 .schedule-grid__corner,
@@ -143,20 +290,20 @@ button:disabled {
 .schedule-grid__hour,
 .schedule-grid__cell {
   min-width: 0;
-  border-right: 1px solid #c7d0df;
-  border-bottom: 1px solid #c7d0df;
+  border-right: 1px solid #d6e0ee;
+  border-bottom: 1px solid #d6e0ee;
 }
 
 .schedule-grid__corner,
 .schedule-grid__header {
   position: sticky;
-  top: 5.25rem;
+  top: 8.65rem;
   z-index: 3;
   min-height: 44px;
   margin: 0;
   padding: 0.6rem 0.3rem;
-  background: #e8edf5;
-  color: #26334a;
+  background: #eaf1fb;
+  color: #2b3d5d;
   font-size: 0.85rem;
   font-weight: 700;
   text-align: center;
@@ -177,8 +324,8 @@ button:disabled {
   align-items: center;
   justify-content: flex-end;
   padding: 0.25rem;
-  background: #f1f4f9;
-  color: #4b5870;
+  background: #f7f9fd;
+  color: #5c6b84;
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
 }
@@ -196,7 +343,7 @@ button:disabled {
   min-height: 4rem;
   align-items: center;
   justify-content: center;
-  padding: 0.3rem;
+  padding: 0.4rem;
   border: 0;
   border-radius: 0;
   text-align: center;
@@ -204,13 +351,15 @@ button:disabled {
 
 .empty-slot {
   background: #fff;
-  color: #2563eb;
-  font-size: 1.6rem;
+  color: #286edb;
+  font-size: 1.35rem;
+  transition: background 140ms ease, color 140ms ease;
 }
 
 .empty-slot:hover,
 .empty-slot:focus-visible {
-  background: #eaf1ff;
+  background: #e7f0ff;
+  color: #1556bf;
 }
 
 .schedule-grid__cell > button:disabled {
@@ -223,8 +372,8 @@ button:disabled {
   flex-direction: column;
   gap: 0.15rem;
   overflow-wrap: anywhere;
-  background: #dceafe;
-  color: #153b70;
+  background: #d9eafe;
+  color: #123b75;
   font-size: 0.76rem;
   line-height: 1.15;
 }
@@ -244,7 +393,7 @@ button:disabled {
 
 .booking--editable:hover,
 .booking--editable:focus-visible {
-  background: #c7ddff;
+  background: #c5ddff;
 }
 
 .schedule-grid__unknown {
@@ -300,9 +449,9 @@ button:disabled {
 
 .classes-shell {
   width: 100%;
-  max-width: 42rem;
+  max-width: 54rem;
   margin: 0 auto;
-  padding: 1rem 0.75rem 2rem;
+  padding: 2rem 1rem 3rem;
 }
 
 .classes-header h1,
@@ -315,11 +464,16 @@ button:disabled {
   color: #5b6578;
 }
 
+.classes-header h1 {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
 .classes-panel {
   margin-top: 1rem;
   padding: 1rem;
-  border: 1px solid #c7d0df;
-  border-radius: 0.5rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.85rem;
   background: #fff;
 }
 
@@ -479,10 +633,10 @@ button:disabled {
 
 .booking-form {
   width: min(100%, 32rem);
-  margin: 1rem auto;
-  padding: 1rem;
-  border: 1px solid #c7d0df;
-  border-radius: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: #fff;
 }
 
@@ -573,11 +727,11 @@ button:disabled {
 }
 
 .booking-details {
-  width: min(100% - 1rem, 32rem);
-  margin: 1rem auto;
-  padding: 1rem;
-  border: 1px solid #c7d0df;
-  border-radius: 0.5rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: #fff;
 }
 
@@ -683,4 +837,103 @@ button:disabled {
   border: 1px solid #72a77d;
   background: #effaf1;
   color: #245a2c;
+}
+
+.workspace-overlay {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  align-items: start;
+  justify-items: end;
+  padding: 0.75rem;
+  background: rgb(13 28 53 / 35%);
+  backdrop-filter: blur(3px);
+}
+
+.workspace-panel {
+  position: relative;
+  width: min(100%, 34rem);
+  max-height: calc(100vh - 1.5rem);
+  margin-top: 0;
+  overflow: auto;
+  padding: 1.35rem;
+  border: 1px solid #d7e1ef;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 1.25rem 3.5rem rgb(5 23 51 / 24%);
+}
+
+.workspace-panel__close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  min-height: 2.25rem;
+  padding: 0 0.65rem;
+  border: 1px solid #cbd7e7;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #34445f;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.workspace-panel .booking-form header,
+.workspace-panel .booking-details__header {
+  padding-right: 4.25rem;
+}
+
+@media (max-width: 640px) {
+  .app-bar__inner {
+    width: min(100% - 1rem, 76rem);
+    gap: 0.45rem;
+  }
+
+  .brand-lockup > span:last-child,
+  .teacher-identity > span:last-child {
+    display: none;
+  }
+
+  .workspace-nav {
+    margin-left: auto;
+  }
+
+  .workspace-nav__item {
+    padding-inline: 0.45rem;
+    font-size: 0.82rem;
+  }
+
+  .teacher-identity {
+    margin-left: 0.25rem;
+  }
+
+  .schedule-shell {
+    padding: 1rem 0.5rem 2rem;
+  }
+
+  .schedule-grid__corner,
+  .schedule-grid__header {
+    top: 8.2rem;
+  }
+
+  .workspace-overlay {
+    align-items: end;
+    padding: 0;
+  }
+
+  .workspace-panel {
+    max-height: min(90vh, 46rem);
+    border-radius: 1rem 1rem 0 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .schedule-date-bar {
+    position: static;
+  }
+
+  .schedule-grid__corner,
+  .schedule-grid__header {
+    top: 4.25rem;
+  }
 }
