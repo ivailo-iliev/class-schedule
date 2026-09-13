@@ -44,12 +44,8 @@ describe('public health endpoint', () => {
     expect(response.status).toBe(200);
   });
 
-  test('routes the health path before the SPA fallback and configures the function path', () => {
-    const healthRedirect = netlify.indexOf('from = "/api/health"');
-    const spaFallback = netlify.indexOf('from = "/*"');
-
-    expect(healthRedirect).toBeGreaterThanOrEqual(0);
-    expect(healthRedirect).toBeLessThan(spaFallback);
+  test('uses the function path without a conflicting health redirect', () => {
+    expect(netlify).not.toMatch(/from\s*=\s*"\/api\/health"/);
     expect(netlify).toMatch(/\[functions\.health\][\s\S]*path\s*=\s*"\/api\/health"/);
   });
 });

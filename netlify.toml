@@ -29,21 +29,15 @@
     Vary = "Cookie"
 
 [[redirects]]
-  from = "/api/access"
-  to = "/.netlify/functions/access"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/manifest.webmanifest"
   to = "/.netlify/functions/manifest"
   status = 200
   force = true
 
 [[redirects]]
-  from = "/api/health"
-  to = "/.netlify/functions/health"
-  status = 200
+  from = "/api/*"
+  to = "/404.html"
+  status = 404
   force = true
 
 [[redirects]]

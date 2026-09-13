@@ -24,10 +24,19 @@ describe('Netlify deployment boundaries', () => {
   });
 
   test('routes each private endpoint directly to its function', () => {
-    expect(netlify).toMatch(/from = "\/api\/access"[\s\S]*to = "\/.netlify\/functions\/access"/);
     expect(netlify).toMatch(/from = "\/manifest\.webmanifest"[\s\S]*to = "\/.netlify\/functions\/manifest"/);
+    expect(netlify).not.toMatch(/from = "\/api\/access"/);
     expect(accessFunction).toMatch(/path:\s*['"]\/api\/access['"]/);
     expect(manifestFunction).toMatch(/path:\s*['"]\/manifest\.webmanifest['"]/);
+  });
+
+  test('returns unknown API routes as 404 before the SPA fallback', () => {
+    const apiNotFound = netlify.indexOf('from = "/api/*"');
+    const spaFallback = netlify.indexOf('from = "/*"');
+
+    expect(apiNotFound).toBeGreaterThanOrEqual(0);
+    expect(apiNotFound).toBeLessThan(spaFallback);
+    expect(netlify.slice(apiNotFound, spaFallback)).toMatch(/status = 404/);
   });
 
   test('documents separate public build and function-only variables', () => {

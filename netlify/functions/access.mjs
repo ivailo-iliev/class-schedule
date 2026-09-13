@@ -1,14 +1,22 @@
 import { handleAccessRequest } from '../lib/access.mjs';
 
-export async function handler(event) {
-  const clientIp = Object.entries(event.headers ?? {})
-    .find(([name]) => name.toLowerCase() === 'x-nf-client-connection-ip')?.[1];
-  return handleAccessRequest({
-    method: event.httpMethod,
-    headers: event.headers,
-    body: event.body,
+function toResponse(result) {
+  return new Response(result.body, {
+    status: result.status,
+    headers: result.headers,
+  });
+}
+
+export default async (req) => {
+  const headers = Object.fromEntries(req.headers);
+  const clientIp = req.headers.get('x-nf-client-connection-ip') ?? undefined;
+  const result = await handleAccessRequest({
+    method: req.method,
+    headers,
+    body: await req.text(),
     clientIp,
   });
+  return toResponse(result);
 }
 
 export const config = {
