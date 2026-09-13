@@ -443,3 +443,47 @@ revoke all on function public.edit_booking(uuid, integer, uuid, public.room, dat
   public.cancel_booking(uuid, integer) from public, anon, authenticated;
 grant execute on function public.edit_booking(uuid, integer, uuid, public.room, date, integer),
   public.cancel_booking(uuid, integer) to authenticated;
+
+-- A7. Daily schedule read
+create function public.get_day(p_date date) returns jsonb
+language plpgsql stable security invoker set search_path = '' as $$
+declare slots jsonb; items jsonb;
+begin
+  if private.actor_id() is null then
+    raise insufficient_privilege using message = 'access_required';
+  end if;
+  if p_date is null or not isfinite(p_date) then
+    raise sqlstate 'PT422' using message = 'invalid_date';
+  end if;
+  select jsonb_agg(jsonb_build_object(
+    'hour', h,
+    'valid', valid,
+    'starts_at', case when valid then instant else null end
+  ) order by h) into slots
+  from (
+    select h, instant, private.valid_slot(instant)
+      and instant at time zone 'Europe/Sofia' = wall as valid
+    from (
+      select h, p_date + make_time(h, 0, 0) as wall,
+        (p_date + make_time(h, 0, 0)) at time zone 'Europe/Sofia' as instant
+      from generate_series(0, 23) as g(h)
+    ) x
+  ) y;
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', b.id, 'class_id', b.class_id, 'teacher_id', c.teacher_id,
+    'class_name', c.name, 'teacher_name', p.name, 'room', b.room,
+    'starts_at', b.starts_at,
+    'hour', extract(hour from b.starts_at at time zone 'Europe/Sofia'),
+    'cancelled_at', b.cancelled_at, 'version', b.version,
+    'can_edit', private.can_manage(c.teacher_id) and b.cancelled_at is null
+  ) order by b.starts_at, b.room, b.id), '[]'::jsonb) into items
+  from public.bookings b
+  join public.classes c on c.id = b.class_id
+  join public.profiles p on p.id = c.teacher_id
+  where b.starts_at >= (p_date::timestamp at time zone 'Europe/Sofia')
+    and b.starts_at < ((p_date + 1)::timestamp at time zone 'Europe/Sofia');
+  return jsonb_build_object('date', p_date, 'slots', slots, 'bookings', items);
+end;
+$$;
+revoke all on function public.get_day(date) from public, anon, authenticated;
+grant execute on function public.get_day(date) to authenticated;

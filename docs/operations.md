@@ -1,0 +1,160 @@
+# Operations — Supabase-only administration and reporting
+
+This document records the direct Supabase (SQL Editor, Table Editor, or CLI)
+operations for this project. There is no billing UI, reporting app surface,
+profile-administration screen, or export endpoint in the application. Every
+task below runs in the Supabase Dashboard SQL Editor, Table Editor, or via the
+Supabase CLI against the target project (local or hosted).
+
+> **Rule:** the application has no custom reporting API. `get_day` is the only
+> read RPC used by the app's daily schedule; all billing/export/administration
+> work is done here, by an owner, in Supabase directly. Never commit `.env`,
+> credentials, or personal access-link tokens into the repository.
+
+## Default timezone
+
+The application assumes `Europe/Sofia`. Confirm or change this in the timing
+RPCs (`private.resolve_slot`, `private.valid_slot`, `get_day`) and in the
+billability queries below before storing production bookings. Existing stored
+`timestamptz` values retain their UTC instant, so a timezone change would
+display a different local time for historical data.
+
+## Profile administration
+
+### Create a profile and issue a personal access link
+
+```sql
+insert into public.profiles (name, role) values ('Maria', 'teacher');
+select private.issue_access_link('<inserted-uuid>');
+```
+
+Call `private.issue_access_link` from the `postgres` or `supabase_admin` role
+via SQL Editor; no other role has EXECUTE privilege. It sets the SHA-256 hash
+and returns the raw 64-char token. The administrator copies and distributes the
+raw token as `APP_ORIGIN/access#<returned-token>`. Never paste real links into
+the repository, task descriptions, fixtures, CI output, or chat logs.
+
+### Replace a compromised link
+
+```sql
+select private.issue_access_link('<profile-uuid>');
+```
+
+### Deactivate a teacher (revokes access on the next DB statement)
+
+```sql
+update public.profiles set active = false where id = '<profile-uuid>';
+```
+
+### Revoke then reactivate
+
+Reactivation alone does not restore the old link — issue a new one:
+
+```sql
+update public.profiles set active = true where id = '<profile-uuid>';
+-- Then issue a new link separately
+select private.issue_access_link('<profile-uuid>');
+```
+
+## Annual room-hour rate
+
+```sql
+insert into private.annual_rates (year, room_hour_rate, currency)
+values (2026, 20.00, 'BGN')
+on conflict (year) do update set room_hour_rate = excluded.room_hour_rate,
+  currency = excluded.currency;
+```
+
+A missing `annual_rates` row for a year that has bookings means the
+billed-total computation must surface a missing rate; it is not implied to be
+zero.
+
+## Monthly usage report
+
+Total billed uncancelled hours per teacher/class/room, grouped by year-month.
+Parameterized by the year-month window:
+
+```sql
+select p.name as teacher, c.name as class, b.room,
+  to_char(date_trunc('month', b.starts_at at time zone 'Europe/Sofia'), 'YYYY-MM-DD') as month,
+  count(b.id) as uncancelled_hours
+from public.bookings b
+join public.classes c on c.id = b.class_id
+join public.profiles p on p.id = c.teacher_id
+where b.cancelled_at is null
+  and b.starts_at >= :start_date::date
+  and b.starts_at <  :end_date::date
+group by p.name, c.name, b.room, month
+order by p.name, month, b.room;
+```
+
+For September 2026: `:start_date = '2026-09-01'`, `:end_date = '2026-10-01'`.
+
+## Cancelled hours (reported separately)
+
+```sql
+select p.name as teacher, c.name as class, b.room,
+  count(b.id) as cancelled_hours
+from public.bookings b
+join public.classes c on c.id = b.class_id
+join public.profiles p on p.id = c.teacher_id
+where b.cancelled_at is not null
+  and b.cancelled_at >= :start_date::date
+  and b.cancelled_at <  :end_date::date
+group by p.name, c.name, b.room;
+```
+
+Cancellation is nonbillable in the default usage query; cancelled rows are
+never counted as billable hours.
+
+## Export all bookings for a period (CSV)
+
+Supabase Table Editor provides a direct CSV download for the `public.bookings`
+join below. This SQL produces the same data:
+
+```sql
+select b.id, p.name as teacher, c.name as class, b.room,
+  b.starts_at at time zone 'Europe/Sofia' as local_start,
+  b.cancelled_at at time zone 'Europe/Sofia' as local_cancelled,
+  b.version, b.created_at at time zone 'Europe/Sofia' as created_local
+from public.bookings b
+join public.classes c on c.id = b.class_id
+join public.profiles p on p.id = c.teacher_id
+where b.starts_at >= :start_date::date
+  and b.starts_at <  :end_date::date
+order by b.starts_at;
+```
+
+## Holiday closures
+
+There is no holiday-exclusion table or automation in V1. An administrator
+simply inserts no bookings on a closed day, or manually removes a single
+conflicting slot after coordination. This is an operational communication task,
+not a technical guard.
+
+## Restore a paused Supabase Free project
+
+Log into Supabase Dashboard → project → a paused banner appears → click Resume.
+This can take several minutes. The application landing page shows a public
+connectivity error during pause. No scheduled keep-alive is part of V1.
+
+## Backups (administrator responsibility)
+
+Backups are not automatic on the Free plan. Export via `pg_dump` or the
+Supabase CLI before any risky operational change:
+
+```bash
+pg_dump --connection-string "$SUPABASE_DB_URL" --schema=public --schema=private \
+  --no-owner --no-acl > backup-$(date -I).sql
+```
+
+The application has no export/billing UI; periodic exports are the
+administrator's responsibility.
+
+## Changing the studio timezone after initial booking data
+
+Update `private.resolve_slot`, `private.valid_slot`, `get_day`, and the
+billability queries above to the new zone. Existing stored `timestamptz` values
+keep their UTC instant and would display a different local time. If the real
+timezone differs from `Europe/Sofia`, change all references before storing
+production data and notify the implementer. No migration script is provided.
