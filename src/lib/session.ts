@@ -75,23 +75,32 @@ async function persistedSession(supabase: AuthClient): Promise<Session | null> {
   return session;
 }
 
-async function restoreProfile(session: Session, supabase: AuthClient): Promise<void> {
+async function restoreProfile(session: Session, supabase: AuthClient, fetchImpl: typeof fetch): Promise<void> {
   const profileId = session.user.user_metadata?.class_scheduler_profile_id;
-  if (typeof profileId !== 'string') return;
+  if (typeof profileId === 'string') {
+    const result = await supabase.from('profiles')
+      .select('id, name, role')
+      .eq('id', profileId)
+      .maybeSingle() as unknown as SupabaseResult<RestoredProfile>;
+    if (!result.error && validProfile(result.data)) {
+      currentProfile = result.data;
+      return;
+    }
+  }
 
-  const result = await supabase.from('profiles')
-    .select('id, name, role')
-    .eq('id', profileId)
-    .maybeSingle() as unknown as SupabaseResult<RestoredProfile>;
-  if (result.error) throw result.error;
-  if (validProfile(result.data)) currentProfile = result.data;
+  const response = await fetchImpl('/api/profile', {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) return;
+  const profile = await response.json();
+  if (validProfile(profile)) currentProfile = profile;
 }
 
 async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fetch): Promise<Session | null> {
   const supabase = getSupabaseClient();
   const existing = await persistedSession(supabase);
   if (existing) {
-    await restoreProfile(existing, supabase);
+    await restoreProfile(existing, supabase, fetchImpl);
     clearAccessFragment();
     return existing;
   }
@@ -115,7 +124,7 @@ async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fet
   });
   if (result.error || !result.data.session) throw result.error ?? new Error('invalid_access');
   if (validProfile(payload.profile)) currentProfile = payload.profile;
-  else await restoreProfile(result.data.session, supabase);
+  else await restoreProfile(result.data.session, supabase, fetchImpl);
 
   // The opaque link is only an exchange credential. The native refresh token
   // is persisted by Supabase and is the sole credential used after this point.

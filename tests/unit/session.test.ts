@@ -82,7 +82,9 @@ describe('native browser session', () => {
 
     expect(result).toBe(session);
     expect(auth.refreshSession).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledWith('/api/profile', {
+      headers: { authorization: 'Bearer access-token' },
+    });
   });
 
   test('restores the teacher profile from a persisted native session', async () => {
@@ -104,6 +106,21 @@ describe('native browser session', () => {
 
     expect(getProfile()).toEqual({ id: 'profile-id', name: 'Teacher', role: 'teacher' });
     expect(from).toHaveBeenCalledWith('profiles');
+  });
+
+  test('looks up the profile server-side when an older session has no profile metadata', async () => {
+    const auth = authStub(session);
+    createClient.mockReturnValue({ auth } as unknown as SupabaseClient);
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      id: 'profile-id', name: 'Teacher', role: 'teacher',
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await bootstrapNativeSession({ hash: '', origin: window.location.origin }, fetchImpl);
+
+    expect(fetchImpl).toHaveBeenCalledWith('/api/profile', {
+      headers: { authorization: 'Bearer access-token' },
+    });
+    expect(getProfile()).toEqual({ id: 'profile-id', name: 'Teacher', role: 'teacher' });
   });
 
   test('clears a revoked native session through the client', async () => {
