@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { editBooking as editBookingApi, getMyClasses, scheduleBookings } from '../lib/api';
 import { getProfile } from '../lib/session';
-import type { Booking, ClassItem, Profile, Room } from '../lib/types';
+import type { Booking, ClassItem, DaySchedule, Profile, Room } from '../lib/types';
 
 type ClassLoader = () => Promise<ClassItem[]>;
 type BookingSubmitter = (
@@ -26,12 +26,12 @@ export interface BookingFormProps {
   hour: number;
   room: Room;
   existingBooking?: Booking;
-  onDone: () => void;
+  onDone: (updated?: Booking, refreshed?: DaySchedule, refreshFailed?: boolean) => void;
   profile?: Profile | null;
   loadClasses?: ClassLoader;
   submitBooking?: BookingSubmitter;
   editBooking?: BookingEditor;
-  onRefresh?: () => Promise<void> | void;
+  onRefresh?: () => Promise<DaySchedule | void> | DaySchedule | void;
 }
 
 const ROOMS: readonly { id: Room; label: string }[] = [
@@ -160,6 +160,16 @@ export default function BookingForm({
     return () => { mounted = false; };
   }, [loadClasses, profile?.id, profile?.role]);
 
+  const refreshAfterFailure = async (): Promise<boolean> => {
+    if (!onRefresh) return false;
+    try {
+      await onRefresh();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!classId || pending) return;
@@ -179,10 +189,19 @@ export default function BookingForm({
     setSuccess(null);
     try {
       if (editing && existingBooking) {
-        await editBooking(existingBooking.id, existingBooking.version, classId, room, date, hour);
-        if (onRefresh) await onRefresh();
+        const updated = await editBooking(existingBooking.id, existingBooking.version, classId, room, date, hour);
+        let refreshed: DaySchedule | undefined;
+        let refreshFailed = false;
+        if (onRefresh) {
+          try {
+            const result = await onRefresh();
+            if (result && 'bookings' in result) refreshed = result;
+          } catch {
+            refreshFailed = true;
+          }
+        }
         setSuccess('Booking updated.');
-        onDone();
+        onDone(updated, refreshed, refreshFailed);
         return;
       }
       const created = await submitBooking(
@@ -198,16 +217,16 @@ export default function BookingForm({
       if (match) {
         setError(countMismatch(Number(match[1]), Number(match[2])));
       } else if (isConflict(reason)) {
-        if (onRefresh) await Promise.resolve(onRefresh()).catch(() => undefined);
+        const refreshFailed = await refreshAfterFailure();
         const dates = conflictDates(reason);
         setError(isStale(reason)
-          ? 'This booking changed elsewhere. The schedule was refreshed; review it before trying again.'
+          ? `This booking changed elsewhere. ${refreshFailed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`
           : weekly && dates.length > 0
             ? `Conflict dates: ${dates.join(', ')}. All weekly bookings were left unchanged.`
-            : 'Conflict: this slot is no longer available. Refresh the schedule and choose another slot.');
+            : `Conflict: this slot is no longer available. ${refreshFailed ? 'The schedule refresh failed; ' : 'Refresh the schedule and '}choose another slot.`);
       } else if (isUnknownOutcome(reason)) {
-        if (onRefresh) await Promise.resolve(onRefresh()).catch(() => undefined);
-        setError('We could not confirm the booking change. The schedule was refreshed; review it before trying again.');
+        const refreshFailed = await refreshAfterFailure();
+        setError(`We could not confirm the booking change. ${refreshFailed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`);
       } else {
         setError(weekly
           ? 'Unable to create weekly bookings. Please try again.'
@@ -332,7 +351,7 @@ export default function BookingForm({
             <button type="submit" disabled={pending || !classId}>
               {pending ? (editing ? 'Saving…' : 'Booking…') : editing ? 'Save booking' : weekly ? 'Book weekly bookings' : 'Book slot'}
             </button>
-            <button type="button" onClick={onDone} disabled={pending}>Cancel</button>
+            <button type="button" onClick={() => onDone()} disabled={pending}>Cancel</button>
           </div>
         </form>
       )}

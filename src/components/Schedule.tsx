@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { getDay } from '../lib/api';
 import type { Booking, DaySchedule, Room } from '../lib/types';
 
@@ -14,9 +14,12 @@ type LoadSchedule = (date: string) => Promise<DaySchedule>;
 export interface ScheduleProps {
   initialDate?: string;
   loadSchedule?: LoadSchedule;
-  refreshSignal?: number;
   onSelectSlot?: (selection: SlotSelection) => void;
   onSelectBooking?: (booking: Booking) => void;
+}
+
+export interface ScheduleHandle {
+  refresh: () => Promise<DaySchedule | undefined>;
 }
 
 function todayInSofia(): string {
@@ -60,13 +63,12 @@ function bookingMap(schedule: DaySchedule): Map<string, Booking> {
   return bookings;
 }
 
-export default function Schedule({
+const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({
   initialDate = todayInSofia(),
   loadSchedule = getDay,
-  refreshSignal,
   onSelectSlot,
   onSelectBooking,
-}: ScheduleProps) {
+}: ScheduleProps, ref) {
   const [date, setDate] = useState(initialDate);
   const [schedule, setSchedule] = useState<DaySchedule | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,12 +78,11 @@ export default function Schedule({
   const dateRef = useRef(date);
   const scheduleRef = useRef<DaySchedule | null>(null);
   const lastLoadedAt = useRef(0);
-  const previousRefreshSignal = useRef(refreshSignal);
 
   dateRef.current = date;
   scheduleRef.current = schedule;
 
-  const load = useCallback(async (nextDate: string) => {
+  const load = useCallback(async (nextDate: string): Promise<DaySchedule | undefined> => {
     const request = ++requestId.current;
     const hasCurrentSchedule = scheduleRef.current?.date === nextDate;
     if (!hasCurrentSchedule) {
@@ -93,35 +94,35 @@ export default function Schedule({
     setError(null);
     try {
       const result = await loadSchedule(nextDate);
-      if (request !== requestId.current) return;
+      if (request !== requestId.current) return undefined;
       setSchedule(result);
       scheduleRef.current = result;
       setStale(false);
       lastLoadedAt.current = Date.now();
+      return result;
     } catch (reason) {
       if (request !== requestId.current) return;
       setError(reason);
       setStale(hasCurrentSchedule);
+      throw reason;
     } finally {
       if (request === requestId.current) setLoading(false);
     }
   }, [loadSchedule]);
 
-  useEffect(() => {
-    void load(date);
-  }, [date, load]);
+  useImperativeHandle(ref, () => ({
+    refresh: () => load(dateRef.current),
+  }), [load]);
 
   useEffect(() => {
-    if (previousRefreshSignal.current === refreshSignal) return;
-    previousRefreshSignal.current = refreshSignal;
-    void load(dateRef.current);
-  }, [load, refreshSignal]);
+    void load(date).catch(() => undefined);
+  }, [date, load]);
 
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
       if (Date.now() - lastLoadedAt.current < FOREGROUND_REFRESH_MS) return;
-      void load(dateRef.current);
+      void load(dateRef.current).catch(() => undefined);
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -156,7 +157,7 @@ export default function Schedule({
           <button type="button" onClick={() => selectDate(shiftDate(date, 1))} aria-label="Next day">
             ›
           </button>
-          <button type="button" onClick={() => void load(date)} aria-label="Refresh schedule">
+          <button type="button" onClick={() => void load(date).catch(() => undefined)} aria-label="Refresh schedule">
             Refresh
           </button>
         </div>
@@ -167,7 +168,7 @@ export default function Schedule({
         <section className="schedule-message" role="alert">
           <strong>Unable to load schedule</strong>
           <p>Availability is hidden until the connection is restored.</p>
-          <button type="button" onClick={() => void load(date)}>Try again</button>
+          <button type="button" onClick={() => void load(date).catch(() => undefined)}>Try again</button>
         </section>
       )}
       {error !== null && showGrid && (
@@ -232,4 +233,6 @@ export default function Schedule({
       )}
     </main>
   );
-}
+});
+
+export default Schedule;

@@ -5,7 +5,7 @@ import {
   getMyClasses,
 } from '../lib/api';
 import { getProfile } from '../lib/session';
-import type { Booking, ClassItem, Profile, Room } from '../lib/types';
+import type { Booking, ClassItem, DaySchedule, Profile, Room } from '../lib/types';
 import BookingForm from './BookingForm';
 
 type ClassLoader = () => Promise<ClassItem[]>;
@@ -22,7 +22,7 @@ type BookingCanceller = (id: string, expectedVersion: number) => Promise<Booking
 export interface BookingDetailsProps {
   booking: Booking;
   onClose: () => void;
-  onRefresh: () => Promise<void> | void;
+  onRefresh: () => Promise<DaySchedule | void> | DaySchedule | void;
   profile?: Profile | null;
   loadClasses?: ClassLoader;
   editBooking?: BookingEditor;
@@ -72,6 +72,18 @@ function isStale(error: unknown): boolean {
   return /stale_booking|version/i.test(errorMessage(error));
 }
 
+function reconcileBooking(current: Booking, updated: Booking, schedule?: DaySchedule): Booking {
+  const persisted = schedule?.bookings.find((candidate) => candidate.id === updated.id);
+  const candidate = persisted ?? updated;
+  return {
+    ...current,
+    ...candidate,
+    className: candidate.className || current.className,
+    teacherName: candidate.teacherName || current.teacherName,
+    teacherId: candidate.teacherId || current.teacherId,
+  };
+}
+
 export default function BookingDetails({
   booking,
   onClose,
@@ -99,11 +111,12 @@ export default function BookingDetails({
   const formattedHour = hourLabel(currentBooking);
   const formattedRoom = roomLabel(currentBooking.room);
 
-  const reconcileAfterFailure = async () => {
+  const refreshSchedule = async (): Promise<{ schedule?: DaySchedule; failed: boolean }> => {
     try {
-      await onRefresh();
+      const result = await onRefresh();
+      return { schedule: result && 'bookings' in result ? result : undefined, failed: false };
     } catch {
-      // The original write outcome remains unknown; do not retry it.
+      return { failed: true };
     }
   };
 
@@ -113,20 +126,26 @@ export default function BookingDetails({
     setError(null);
     setNotice(null);
     try {
-      const updated = await cancelBooking(currentBooking.id, currentBooking.version);
-      await onRefresh();
-      setCurrentBooking(updated);
+      let updated: Booking;
+      try {
+        updated = await cancelBooking(currentBooking.id, currentBooking.version);
+      } catch (reason) {
+        const refreshed = await refreshSchedule();
+        setError(isUnknownOutcome(reason)
+          ? `We could not confirm the cancellation. ${refreshed.failed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`
+          : isStale(reason)
+            ? `This booking changed elsewhere. ${refreshed.failed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`
+            : isConflict(reason)
+              ? `This booking conflicts with a newer schedule change. ${refreshed.failed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`
+              : 'Unable to cancel this booking. Please try again.');
+        return;
+      }
+      const refreshed = await refreshSchedule();
+      setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed.schedule));
       setConfirming(false);
-      setNotice('Booking cancelled.');
-    } catch (reason) {
-      await reconcileAfterFailure();
-      setError(isUnknownOutcome(reason)
-        ? 'We could not confirm the cancellation. The schedule was refreshed; review it before trying again.'
-        : isStale(reason)
-          ? 'This booking changed elsewhere. The schedule was refreshed; review it before trying again.'
-          : isConflict(reason)
-            ? 'This booking conflicts with a newer schedule change. The schedule was refreshed; review it before trying again.'
-            : 'Unable to cancel this booking. Please try again.');
+      setNotice(refreshed.failed
+        ? 'Booking cancelled, but the schedule could not be refreshed.'
+        : 'Booking cancelled.');
     } finally {
       setPending(false);
     }
@@ -143,9 +162,12 @@ export default function BookingDetails({
         loadClasses={loadClasses}
         editBooking={editBooking}
         onRefresh={onRefresh}
-        onDone={() => {
+        onDone={(updated, refreshed, refreshFailed) => {
+          if (updated) setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed));
           setEditing(false);
-          setNotice('Booking updated.');
+          setNotice(refreshFailed
+            ? 'Booking updated, but the schedule could not be refreshed.'
+            : 'Booking updated.');
         }}
       />
     );
@@ -170,6 +192,7 @@ export default function BookingDetails({
         <div><dt>Date</dt><dd>{formattedDate}</dd></div>
         <div><dt>Hour</dt><dd>{formattedHour}</dd></div>
         <div><dt>Room</dt><dd>{formattedRoom}</dd></div>
+        <div><dt>Version</dt><dd>{currentBooking.version}</dd></div>
         <div><dt>Status</dt><dd>{cancelled ? 'Cancelled' : canEdit ? 'Editable' : 'Read-only'}</dd></div>
       </dl>
 

@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { bootstrapNativeSession, onNativeAuthStateChange } from './lib/session';
-import type { Booking } from './lib/types';
+import type { Booking, DaySchedule } from './lib/types';
 import BookingDetails from './components/BookingDetails';
-import Schedule from './components/Schedule';
+import Schedule, { type ScheduleHandle } from './components/Schedule';
 
 export default function App() {
   const [state, setState] = useState<'loading' | 'connected' | 'unavailable'>(() =>
     typeof window !== 'undefined' && window.location.hash.length > 1 ? 'loading' : 'unavailable',
   );
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [refreshSignal, setRefreshSignal] = useState(0);
+  const scheduleRef = useRef<ScheduleHandle>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -28,8 +28,8 @@ export default function App() {
     };
   }, []);
 
-  const refreshSchedule = useCallback(() => {
-    setRefreshSignal((current) => current + 1);
+  const refreshSchedule = useCallback((): Promise<DaySchedule | undefined> => {
+    return scheduleRef.current?.refresh() ?? Promise.resolve(undefined);
   }, []);
 
   if (state === 'loading') {
@@ -41,7 +41,7 @@ export default function App() {
   return (
     <>
       <Schedule
-        refreshSignal={refreshSignal}
+        ref={scheduleRef}
         onSelectBooking={setSelectedBooking}
       />
       {selectedBooking && (

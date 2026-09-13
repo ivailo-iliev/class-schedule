@@ -70,6 +70,20 @@ export async function getDay(date: string): Promise<DaySchedule> {
   };
 }
 
+async function getBookingById(id: string): Promise<Booking> {
+  const row = await fetchOr(() => client().from('bookings')
+    .select('id, class_id, room, starts_at, cancelled_at, cancelled_by, version, classes!inner(id, name, teacher_id)')
+    .eq('id', id)
+    .single() as unknown as PromiseLike<SupabaseResult<BookingRow>>);
+  if (!row.classes) throw new Error('booking_class_missing');
+  const teacherId = row.classes.teacher_id;
+  const teacher = await fetchOr(() => client().from('profiles')
+    .select('id, name')
+    .eq('id', teacherId)
+    .single() as unknown as PromiseLike<SupabaseResult<ProfileRow>>);
+  return mapBooking(row, teacher.name, getProfile());
+}
+
 export async function getMyClasses(): Promise<ClassItem[]> {
   const rows = await fetchOr(() => client().from('classes')
     .select('id, teacher_id, name, active')
@@ -160,11 +174,7 @@ export async function editBooking(
     p_date: date,
     p_hour: hour,
   }).single() as unknown as PromiseLike<SupabaseResult<Tables<'bookings'>>>);
-  return {
-    id: row.id, classId: row.class_id, teacherId: '', className: '', teacherName: '',
-    room: row.room, startsAt: row.starts_at, hour: localHourOf(row.starts_at),
-    cancelledAt: row.cancelled_at, cancelledBy: row.cancelled_by, version: row.version, canEdit: true,
-  };
+  return getBookingById(row.id);
 }
 
 export async function cancelBooking(id: string, expectedVersion: number): Promise<Booking> {
@@ -172,9 +182,5 @@ export async function cancelBooking(id: string, expectedVersion: number): Promis
     p_id: id,
     p_expected_version: expectedVersion,
   }).single() as unknown as PromiseLike<SupabaseResult<Tables<'bookings'>>>);
-  return {
-    id: row.id, classId: row.class_id, teacherId: '', className: '', teacherName: '',
-    room: row.room, startsAt: row.starts_at, hour: localHourOf(row.starts_at),
-    cancelledAt: row.cancelled_at, cancelledBy: row.cancelled_by, version: row.version, canEdit: false,
-  };
+  return getBookingById(row.id);
 }
