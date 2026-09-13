@@ -75,17 +75,17 @@ Total billed uncancelled hours per teacher/class/room, grouped by year-month.
 Parameterized by the year-month window:
 
 ```sql
-select p.name as teacher, c.name as class, b.room,
+select p.id as teacher_id, p.name as teacher, c.id as class_id, c.name as class, b.room,
   to_char(date_trunc('month', b.starts_at at time zone 'Europe/Sofia'), 'YYYY-MM-DD') as month,
   count(b.id) as uncancelled_hours
 from public.bookings b
 join public.classes c on c.id = b.class_id
 join public.profiles p on p.id = c.teacher_id
 where b.cancelled_at is null
-  and b.starts_at >= :start_date::date
-  and b.starts_at <  :end_date::date
-group by p.name, c.name, b.room, month
-order by p.name, month, b.room;
+  and b.starts_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
+  and b.starts_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
+group by p.id, p.name, c.id, c.name, b.room, month
+order by p.name, p.id, month, b.room, c.name, c.id;
 ```
 
 For September 2026: `:start_date = '2026-09-01'`, `:end_date = '2026-10-01'`.
@@ -93,15 +93,16 @@ For September 2026: `:start_date = '2026-09-01'`, `:end_date = '2026-10-01'`.
 ## Cancelled hours (reported separately)
 
 ```sql
-select p.name as teacher, c.name as class, b.room,
+select p.id as teacher_id, p.name as teacher, c.id as class_id, c.name as class, b.room,
   count(b.id) as cancelled_hours
 from public.bookings b
 join public.classes c on c.id = b.class_id
 join public.profiles p on p.id = c.teacher_id
 where b.cancelled_at is not null
-  and b.cancelled_at >= :start_date::date
-  and b.cancelled_at <  :end_date::date
-group by p.name, c.name, b.room;
+  and b.cancelled_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
+  and b.cancelled_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
+group by p.id, p.name, c.id, c.name, b.room
+order by p.name, p.id, c.name, c.id, b.room;
 ```
 
 Cancellation is nonbillable in the default usage query; cancelled rows are
@@ -113,16 +114,16 @@ Supabase Table Editor provides a direct CSV download for the `public.bookings`
 join below. This SQL produces the same data:
 
 ```sql
-select b.id, p.name as teacher, c.name as class, b.room,
+select b.id, p.id as teacher_id, p.name as teacher, c.id as class_id, c.name as class, b.room,
   b.starts_at at time zone 'Europe/Sofia' as local_start,
   b.cancelled_at at time zone 'Europe/Sofia' as local_cancelled,
   b.version, b.created_at at time zone 'Europe/Sofia' as created_local
 from public.bookings b
 join public.classes c on c.id = b.class_id
 join public.profiles p on p.id = c.teacher_id
-where b.starts_at >= :start_date::date
-  and b.starts_at <  :end_date::date
-order by b.starts_at;
+where b.starts_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
+  and b.starts_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
+order by b.starts_at, b.id;
 ```
 
 ## Holiday closures
@@ -144,12 +145,13 @@ Backups are not automatic on the Free plan. Export via `pg_dump` or the
 Supabase CLI before any risky operational change:
 
 ```bash
-pg_dump --connection-string "$SUPABASE_DB_URL" --schema=public --schema=private \
+pg_dump --dbname "$SUPABASE_DB_URL" --schema=public --schema=private \
   --no-owner --no-acl > backup-$(date -I).sql
 ```
 
 The application has no export/billing UI; periodic exports are the
-administrator's responsibility.
+administrator's responsibility. The root-level `backup-YYYY-MM-DD.sql`
+output is ignored by git.
 
 ## Changing the studio timezone after initial booking data
 

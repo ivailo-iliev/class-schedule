@@ -1,5 +1,19 @@
 import { describe, test, expect, afterAll } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { db, asAuthenticated } from './helpers';
+
+function documentedSql(heading: string): string {
+  const text = readFileSync(resolve(process.cwd(), 'docs/operations.md'), 'utf8');
+  const start = text.indexOf(`## ${heading}`);
+  if (start < 0) throw new Error(`Missing documentation section: ${heading}`);
+  const block = text.slice(start).match(/```sql\n([\s\S]*?)\n```/)?.[1];
+  if (!block) throw new Error(`Missing SQL code block: ${heading}`);
+  if (!block.includes(':start_date') || !block.includes(':end_date')) {
+    throw new Error(`Missing period placeholders: ${heading}`);
+  }
+  return block.replaceAll(':start_date', '$1').replaceAll(':end_date', '$2');
+}
 
 // Seed fixtures (supabase/seed.sql) provide:
 //   Teacher A 11111111-... owns class aaaaaaaa-... 'Morning Yoga' (room_1)
@@ -197,6 +211,30 @@ describe('daily schedule read via get_day', () => {
 });
 
 describe('Supabase-only billing report (Appendix F SQL)', () => {
+
+  test('executes the three documented period queries independent of session timezone', async () => {
+    const queries = [
+      documentedSql('Monthly usage report'),
+      documentedSql('Cancelled hours (reported separately)'),
+      documentedSql('Export all bookings for a period (CSV)'),
+    ];
+    const results: string[] = [];
+    for (const zone of ['UTC', 'America/New_York']) {
+      const c = await db();
+      try {
+        await c.query('BEGIN');
+        await c.query(`SET LOCAL TIME ZONE '${zone}'`);
+        for (const query of queries) {
+          const result = await c.query(query, ['2026-09-01', '2026-10-01']);
+          results.push(JSON.stringify(result.rows));
+        }
+        await c.query('ROLLBACK');
+      } finally { c.release(); }
+    }
+    expect(results[0]).toBe(results[3]);
+    expect(results[1]).toBe(results[4]);
+    expect(results[2]).toBe(results[5]);
+  });
 
   test('monthly usage groups by teacher/class/room and respects month boundaries', async () => {
     await ensureBillingFixtures();
