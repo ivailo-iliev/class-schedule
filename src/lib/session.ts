@@ -6,6 +6,8 @@ export type NativeSessionPayload = NativeSessionResponse;
 
 type BrowserLocation = Pick<Location, 'hash' | 'origin'>;
 type AuthClient = SupabaseClient<Database>;
+type RestoredProfile = Pick<Profile, 'id' | 'name' | 'role'>;
+type SupabaseResult<T> = { data: T | null; error: unknown | null };
 
 let client: AuthClient | undefined;
 let bootstrapPromise: Promise<Session | null> | null = null;
@@ -73,10 +75,23 @@ async function persistedSession(supabase: AuthClient): Promise<Session | null> {
   return session;
 }
 
+async function restoreProfile(session: Session, supabase: AuthClient): Promise<void> {
+  const profileId = session.user.user_metadata?.class_scheduler_profile_id;
+  if (typeof profileId !== 'string') return;
+
+  const result = await supabase.from('profiles')
+    .select('id, name, role')
+    .eq('id', profileId)
+    .maybeSingle() as unknown as SupabaseResult<RestoredProfile>;
+  if (result.error) throw result.error;
+  if (validProfile(result.data)) currentProfile = result.data;
+}
+
 async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fetch): Promise<Session | null> {
   const supabase = getSupabaseClient();
   const existing = await persistedSession(supabase);
   if (existing) {
+    await restoreProfile(existing, supabase);
     clearAccessFragment();
     return existing;
   }
@@ -100,6 +115,7 @@ async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fet
   });
   if (result.error || !result.data.session) throw result.error ?? new Error('invalid_access');
   if (validProfile(payload.profile)) currentProfile = payload.profile;
+  else await restoreProfile(result.data.session, supabase);
 
   // The opaque link is only an exchange credential. The native refresh token
   // is persisted by Supabase and is the sole credential used after this point.

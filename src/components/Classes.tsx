@@ -118,7 +118,7 @@ export default function Classes({
     setError(null);
     setNotice(null);
     try {
-      const created = await createClass(className.trim(), isAdmin ? selectedTeacherId : profile?.id);
+      const created = await createClass(className.trim(), isAdmin ? selectedTeacherId : undefined);
       applyReturnedClass(created);
       setClassName('');
       setNotice(`Class “${created.name}” created.`);

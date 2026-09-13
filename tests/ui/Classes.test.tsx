@@ -58,7 +58,7 @@ describe('Classes screen', () => {
     await screen.findByText(/no classes yet/i);
     fireEvent.change(screen.getByLabelText('Class name'), { target: { value: '  Dance  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add class' }));
-    await waitFor(() => expect(create).toHaveBeenCalledWith('Dance', teacher.id));
+    await waitFor(() => expect(create).toHaveBeenCalledWith('Dance', undefined));
     expect(await screen.findByText('Dance')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Rename Dance' }));

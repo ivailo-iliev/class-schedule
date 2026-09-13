@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bootstrapNativeSession, getProfile, onNativeAuthStateChange } from './lib/session';
 import { ensurePrivateManifest, removePrivateManifest, useOnlineStatus } from './lib/pwa';
-import type { Booking, DaySchedule, Room } from './lib/types';
+import type { Booking, DaySchedule, Profile, Room } from './lib/types';
 import BookingDetails from './components/BookingDetails';
 import BookingForm from './components/BookingForm';
 import Classes from './components/Classes';
@@ -69,6 +69,7 @@ export default function App() {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<SlotSelection | null>(null);
   const [activeView, setActiveView] = useState<'schedule' | 'classes'>('schedule');
+  const [profile, setProfile] = useState<Profile | null>(() => getProfile());
   const scheduleRef = useRef<ScheduleHandle>(null);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
   const bootstrapStarted = useRef(false);
@@ -79,10 +80,13 @@ export default function App() {
     const subscription = onNativeAuthStateChange((session) => {
       if (!mounted) return;
       if (session) {
-        const profileId = getProfile()?.id;
+        const nextProfile = getProfile();
+        setProfile(nextProfile);
+        const profileId = nextProfile?.id;
         if (profileId) ensurePrivateManifest(profileId);
         setState('connected');
       } else {
+        setProfile(null);
         removePrivateManifest();
         setState('unavailable');
       }
@@ -98,7 +102,9 @@ export default function App() {
     bootstrapStarted.current = true;
     bootstrapNativeSession().then((session) => {
       if (!session) return;
-      const profileId = getProfile()?.id;
+      const nextProfile = getProfile();
+      setProfile(nextProfile);
+      const profileId = nextProfile?.id;
       if (profileId) ensurePrivateManifest(profileId);
       setState('connected');
     }).catch(() => {
@@ -145,7 +151,6 @@ export default function App() {
       </main>
     );
   }
-  const profile = getProfile();
   return (
     <div className="app-shell">
       <header className="app-bar">

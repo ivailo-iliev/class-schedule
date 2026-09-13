@@ -6,6 +6,7 @@ import App from '../../src/App';
 import {
   bootstrapNativeSession,
   clearSession,
+  getProfile,
   resetSessionForTests,
 } from '../../src/lib/session';
 
@@ -82,6 +83,27 @@ describe('native browser session', () => {
     expect(result).toBe(session);
     expect(auth.refreshSession).toHaveBeenCalledTimes(1);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test('restores the teacher profile from a persisted native session', async () => {
+    const persisted = {
+      ...session,
+      user: { id: 'auth-user', user_metadata: { class_scheduler_profile_id: 'profile-id' } },
+    } as unknown as Session;
+    const auth = authStub(persisted);
+    const maybeSingle = vi.fn(async () => ({
+      data: { id: 'profile-id', name: 'Teacher', role: 'teacher' },
+      error: null,
+    }));
+    const eq = vi.fn(() => ({ maybeSingle }));
+    const select = vi.fn(() => ({ eq }));
+    const from = vi.fn(() => ({ select }));
+    createClient.mockReturnValue({ auth, from } as unknown as SupabaseClient);
+
+    await bootstrapNativeSession({ hash: '', origin: window.location.origin });
+
+    expect(getProfile()).toEqual({ id: 'profile-id', name: 'Teacher', role: 'teacher' });
+    expect(from).toHaveBeenCalledWith('profiles');
   });
 
   test('clears a revoked native session through the client', async () => {
