@@ -129,6 +129,20 @@ describe('native access exchange', () => {
     expect(calls).toHaveLength(0);
   });
 
+  test('rejects the 61st request from one IP in a 60-second window', async () => {
+    const { fetchImpl } = fetchStub({ consumed: true });
+    const results = await Promise.all(
+      Array.from({ length: 61 }, () => handleAccessRequest({
+        ...request({ token }),
+        clientIp: '198.51.100.61',
+      }, { env, fetchImpl })),
+    );
+
+    expect(results.slice(0, 60).every(result => result.status === 401)).toBe(true);
+    expect(results[60]?.status).toBe(429);
+    expect(JSON.parse(results[60]!.body)).toEqual({ error: 'rate_limited' });
+  });
+
   test('rejects when consume loses the single-use race', async () => {
     const { calls, fetchImpl } = fetchStub({ consumed: true });
     const result = await handleAccessRequest(request({ token }), { env, fetchImpl });

@@ -6,12 +6,36 @@ const JSON_HEADERS = {
   'netlify-cdn-cache-control': 'no-store',
 };
 
+const ACCESS_RATE_LIMIT = 60;
+const ACCESS_RATE_WINDOW_MS = 60_000;
+const MAX_RATE_LIMIT_BUCKETS = 10_000;
+const rateLimitBuckets = new Map();
+
 export function isAccessToken(value) {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 }
 
-function result(status, body) {
-  return { status, headers: JSON_HEADERS, body: JSON.stringify(body) };
+function result(status, body, headers = {}) {
+  return { status, headers: { ...JSON_HEADERS, ...headers }, body: JSON.stringify(body) };
+}
+
+function rateLimitKey(clientIp) {
+  return typeof clientIp === 'string' && clientIp.trim() ? clientIp.trim().slice(0, 128) : 'unknown';
+}
+
+function isRateLimited(clientIp, now = Date.now()) {
+  const key = rateLimitKey(clientIp);
+  const bucket = rateLimitBuckets.get(key);
+  if (!bucket || now - bucket.windowStart >= ACCESS_RATE_WINDOW_MS || now < bucket.windowStart) {
+    if (!bucket && rateLimitBuckets.size >= MAX_RATE_LIMIT_BUCKETS) {
+      rateLimitBuckets.delete(rateLimitBuckets.keys().next().value);
+    }
+    rateLimitBuckets.set(key, { count: 1, windowStart: now });
+    return false;
+  }
+
+  bucket.count += 1;
+  return bucket.count > ACCESS_RATE_LIMIT;
 }
 
 function header(headers, name) {
@@ -89,6 +113,9 @@ async function nativeSession(profile, config) {
 export async function handleAccessRequest(request, options = {}) {
   const env = options.env ?? process.env;
   const fetchImpl = options.fetchImpl ?? fetch;
+  if (isRateLimited(request.clientIp, options.now)) {
+    return result(429, { error: 'rate_limited' }, { 'retry-after': '60' });
+  }
   const appOrigin = env.APP_ORIGIN;
   const supabaseUrl = env.SUPABASE_URL;
   const serviceKey = env.SUPABASE_SECRET_API_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY ?? env.SUPABASE_SECRET_KEY;
