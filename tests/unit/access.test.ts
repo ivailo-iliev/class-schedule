@@ -58,6 +58,7 @@ const env = {
   APP_ORIGIN: 'https://class-admin.netlify.app',
   SUPABASE_URL: 'http://supabase.test',
   SUPABASE_SECRET_API_KEY: 'service-key',
+  SUPABASE_PUBLISHABLE_KEY: 'function-publishable-key',
   VITE_SUPABASE_PUBLISHABLE_KEY: 'publishable-key',
 };
 
@@ -91,7 +92,7 @@ describe('native access exchange', () => {
     });
     const verify = calls.find(call => call.url.endsWith('/auth/v1/verify'))!;
     expect(JSON.parse(verify.init.body as string)).toEqual({ type: 'magiclink', token_hash: 'native-one-time-token' });
-    expect(verify.init.headers).toMatchObject({ apikey: 'publishable-key', Authorization: 'Bearer publishable-key' });
+    expect(verify.init.headers).toMatchObject({ apikey: 'function-publishable-key', Authorization: 'Bearer function-publishable-key' });
   });
 
   test('creates and links the native auth user for a legacy profile on first exchange', async () => {

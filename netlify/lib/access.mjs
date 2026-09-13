@@ -119,7 +119,9 @@ export async function handleAccessRequest(request, options = {}) {
   const appOrigin = env.APP_ORIGIN;
   const supabaseUrl = env.SUPABASE_URL;
   const serviceKey = env.SUPABASE_SECRET_API_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY ?? env.SUPABASE_SECRET_KEY;
-  const publishableKey = env.VITE_SUPABASE_PUBLISHABLE_KEY ?? env.SUPABASE_PUBLISHABLE_KEY;
+  // Native verification runs in the function. Prefer its function-scoped key
+  // so a stale or rotated build variable cannot break the live exchange.
+  const publishableKey = env.SUPABASE_PUBLISHABLE_KEY ?? env.VITE_SUPABASE_PUBLISHABLE_KEY;
   const origin = header(request.headers, 'origin');
   const contentType = header(request.headers, 'content-type').split(';', 1)[0].trim().toLowerCase();
   if (!appOrigin || !supabaseUrl || !serviceKey || !publishableKey || origin !== appOrigin ||
