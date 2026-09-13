@@ -11,8 +11,8 @@ function scheduleFor(date = '2026-03-29'): DaySchedule {
     date,
     slots: Array.from({ length: 24 }, (_, hour) => ({
       hour,
-      valid: hour !== 3,
-      startsAt: hour === 3 ? null : `${date}T${hour.toString().padStart(2, '0')}:00:00+02:00`,
+      valid: hour !== 9,
+      startsAt: hour === 9 ? null : `${date}T${hour.toString().padStart(2, '0')}:00:00+02:00`,
     })),
     bookings: [
       {
@@ -68,14 +68,19 @@ describe('Schedule screen', () => {
     expect(screen.getByText('Open your personal access link')).toBeInTheDocument();
   });
 
-  test('renders two room headings and all 24 hourly labels', async () => {
+  test('renders two room headings and only the teaching hours', async () => {
     renderLoaded();
 
     expect(await screen.findByRole('heading', { name: 'Room 1' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Room 2' })).toBeInTheDocument();
-    for (let hour = 0; hour < 24; hour += 1) {
+    expect(screen.getByRole('button', { name: 'Refresh schedule' })).toHaveTextContent('⟳');
+    expect(screen.queryByText('Daily schedule')).not.toBeInTheDocument();
+    expect(screen.queryByText('Europe/Sofia')).not.toBeInTheDocument();
+    for (let hour = 8; hour <= 21; hour += 1) {
       expect(screen.getByText(`${hour.toString().padStart(2, '0')}:00`)).toBeInTheDocument();
     }
+    expect(screen.queryByText('07:00')).not.toBeInTheDocument();
+    expect(screen.queryByText('22:00')).not.toBeInTheDocument();
   });
 
   test('offers empty valid slots as book buttons', async () => {
@@ -103,8 +108,8 @@ describe('Schedule screen', () => {
       teacherId: 'teacher-a',
       teacherName: 'Teacher A',
       room: 'room_1',
-      hour: 9,
-      startsAt: '2026-03-29T09:00:00+02:00',
+      hour: 11,
+      startsAt: '2026-03-29T11:00:00+02:00',
       canEdit: true,
     });
     schedule.bookings.push({
@@ -112,36 +117,36 @@ describe('Schedule screen', () => {
       id: 'booking-cancelled',
       className: 'Cancelled yoga class',
       room: 'room_1',
-      hour: 11,
-      startsAt: '2026-03-29T11:00:00+02:00',
+      hour: 12,
+      startsAt: '2026-03-29T12:00:00+02:00',
       cancelledAt: '2026-03-28T12:00:00+02:00',
       canEdit: false,
     });
     renderScheduleWithDetails(schedule);
 
     fireEvent.click(await screen.findByRole('button', { name: /Owned yoga class/ }));
-    expect(screen.getByRole('heading', { name: 'Booking details' })).toBeInTheDocument();
-    expect(screen.getByText('Editable')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Booking details' })).toBeInTheDocument();
+    expect(screen.getByText('One booking instance')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit booking' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close booking details' }));
     fireEvent.click(screen.getByRole('button', { name: /Very long pilates class title/ }));
     const details = screen.getByRole('region', { name: 'Booking details' });
     expect(within(details).getByText('Teacher B')).toBeInTheDocument();
-    expect(within(details).getByText('Read-only')).toBeInTheDocument();
+    expect(within(details).getByText('One booking instance')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close booking details' }));
     fireEvent.click(screen.getByRole('button', { name: /Cancelled yoga class/ }));
-    expect(within(screen.getByRole('region', { name: 'Booking details' })).getByText('Cancelled')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Booking details' })).getByText(/Cancelled on/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
   });
 
   test('renders invalid DST starts as disabled non-interactive cells', async () => {
     renderLoaded();
 
-    const invalid = await screen.findAllByLabelText('03:00 unavailable on this date');
+    const invalid = await screen.findAllByLabelText('09:00 unavailable on this date');
     expect(invalid).toHaveLength(2);
     invalid.forEach((cell) => {
       expect(cell).toBeDisabled();
@@ -168,7 +173,7 @@ describe('Schedule screen', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/booking is disabled/i);
     expect(screen.queryByRole('button', { name: /Book Room/ })).not.toBeInTheDocument();
-    expect(screen.getAllByText('Unavailable offline')).toHaveLength(45);
+    expect(screen.getAllByText('Unavailable offline')).toHaveLength(25);
     expect(onSelectSlot).not.toHaveBeenCalled();
   });
 

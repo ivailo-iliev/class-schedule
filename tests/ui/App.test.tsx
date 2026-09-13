@@ -115,13 +115,13 @@ describe('App booking details integration', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Owned teacher class/ }));
     const ownedDetails = screen.getByRole('region', { name: 'Booking details' });
-    expect(within(ownedDetails).getByText('Editable')).toBeInTheDocument();
+    expect(within(ownedDetails).getByText('One booking instance')).toBeInTheDocument();
     expect(within(ownedDetails).getByRole('button', { name: 'Edit booking' })).toBeInTheDocument();
 
     fireEvent.click(within(ownedDetails).getByRole('button', { name: 'Close booking details' }));
     fireEvent.click(screen.getByRole('button', { name: /Other teacher class/ }));
     const otherDetails = screen.getByRole('region', { name: 'Booking details' });
-    expect(within(otherDetails).getByText('Read-only')).toBeInTheDocument();
+    expect(within(otherDetails).getByText('One booking instance')).toBeInTheDocument();
     expect(within(otherDetails).queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
     expect(within(otherDetails).queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
   });
@@ -167,7 +167,7 @@ describe('App booking details integration', () => {
     mocks.getProfile.mockReturnValue({ id: '11111111-1111-4111-8111-111111111111', name: 'Teacher A', role: 'teacher' });
     render(<App />);
 
-    await screen.findByRole('heading', { name: 'Daily schedule' });
+    await screen.findByRole('main', { name: 'Schedule' });
     expect(document.head.querySelector('link[rel="manifest"]')).toHaveAttribute(
       'href',
       '/manifest.webmanifest?profile=11111111-1111-4111-8111-111111111111',
@@ -235,7 +235,7 @@ describe('App booking details integration', () => {
     expect(within(details).getByText('Persisted Teacher')).toBeInTheDocument();
     expect(within(details).getByText('Room 2')).toBeInTheDocument();
     expect(within(details).getByText('12:00')).toBeInTheDocument();
-    expect(within(details).getByText('7')).toBeInTheDocument();
+    expect(within(details).getByText('One booking instance')).toBeInTheDocument();
   });
 
   test('reconciles successful cancellations from the persisted schedule row before showing success', async () => {
@@ -269,6 +269,6 @@ describe('App booking details integration', () => {
     expect(within(details).getByText('Persisted Teacher')).toBeInTheDocument();
     expect(within(details).getByText('Room 2')).toBeInTheDocument();
     expect(within(details).getByText('11:00')).toBeInTheDocument();
-    expect(within(details).getByText('9')).toBeInTheDocument();
+    expect(within(details).getByText('One booking instance')).toBeInTheDocument();
   });
 });

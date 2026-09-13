@@ -177,13 +177,9 @@ export default function BookingDetails({
   }
 
   return (
-    <section className="booking-details" aria-labelledby="booking-details-title">
+    <section className="booking-details" aria-label="Booking details">
       <header className="booking-details__header">
-        <div>
-          <h2 id="booking-details-title">Booking details</h2>
-          <p>One booking instance</p>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Close booking details">Close</button>
+        <button type="button" onClick={onClose} aria-label="Close booking details">×</button>
       </header>
 
       {error && <p className="booking-details__message booking-details__message--error" role="alert">{error}</p>}
@@ -195,8 +191,7 @@ export default function BookingDetails({
         <div><dt>Date</dt><dd>{formattedDate}</dd></div>
         <div><dt>Hour</dt><dd>{formattedHour}</dd></div>
         <div><dt>Room</dt><dd>{formattedRoom}</dd></div>
-        <div><dt>Version</dt><dd>{currentBooking.version}</dd></div>
-        <div><dt>Status</dt><dd>{cancelled ? 'Cancelled' : canEdit ? 'Editable' : 'Read-only'}</dd></div>
+        <div><dt>Type</dt><dd>One booking instance</dd></div>
       </dl>
 
       {cancelled && (

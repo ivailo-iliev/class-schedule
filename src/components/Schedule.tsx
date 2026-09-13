@@ -141,13 +141,9 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({
   const showGrid = schedule !== null;
 
   return (
-    <main className="schedule-shell" aria-labelledby="schedule-title">
+    <main className="schedule-shell" aria-label="Schedule">
       <p className="visually-hidden">Connected</p>
       <header className="schedule-date-bar">
-        <div>
-          <h1 id="schedule-title">Daily schedule</h1>
-          <p className="timezone-label">Europe/Sofia</p>
-        </div>
         <div className="date-controls" aria-label="Schedule date controls">
           <button type="button" onClick={() => selectDate(shiftDate(date, -1))} aria-label="Previous day">
             ‹
@@ -160,7 +156,7 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({
             ›
           </button>
           <button type="button" onClick={() => void load(date).catch(() => undefined)} aria-label="Refresh schedule">
-            Refresh
+            ⟳
           </button>
         </div>
         <p className="selected-date">{displayDate(date)}</p>
@@ -193,7 +189,7 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({
           {ROOMS.map((room) => (
             <h2 className="schedule-grid__header" key={room.id}>{room.label}</h2>
           ))}
-          {Array.from({ length: 24 }, (_, hour) => {
+          {Array.from({ length: 14 }, (_, index) => index + 8).map((hour) => {
             const slot = currentSlots.get(hour);
             const valid = slot?.valid === true;
             return (

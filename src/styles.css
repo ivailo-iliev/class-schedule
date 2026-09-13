@@ -178,7 +178,7 @@ select:focus-visible {
   top: 4.25rem;
   z-index: 5;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 0.25rem 0.5rem;
   align-items: center;
   padding: 0.25rem 0 1rem;
@@ -186,13 +186,6 @@ select:focus-visible {
   backdrop-filter: blur(10px);
 }
 
-.schedule-date-bar h1 {
-  margin: 0;
-  font-size: clamp(1.45rem, 4vw, 2.05rem);
-  letter-spacing: -0.045em;
-}
-
-.timezone-label,
 .selected-date {
   margin: 0.15rem 0 0;
   color: #62708a;
@@ -236,6 +229,7 @@ select:focus-visible {
 .selected-date {
   grid-column: 1 / -1;
   font-weight: 650;
+  margin-top: 0.15rem;
 }
 
 .schedule-loading,

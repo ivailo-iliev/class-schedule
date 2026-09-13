@@ -48,10 +48,14 @@ describe('BookingDetails', () => {
   test('shows another teacher booking as readonly', () => {
     renderDetails({ booking: booking({ canEdit: false, teacherId: 'teacher-b', teacherName: 'Teacher B' }) });
 
-    expect(screen.getByRole('heading', { name: 'Booking details' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Booking details' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close booking details' })).toHaveTextContent('×');
     expect(screen.getByText('Pilates')).toBeInTheDocument();
     expect(screen.getByText('Teacher B')).toBeInTheDocument();
-    expect(screen.getByText('Read-only')).toBeInTheDocument();
+    expect(screen.getByText('One booking instance')).toBeInTheDocument();
+    expect(screen.queryByText('Read-only')).not.toBeInTheDocument();
+    expect(screen.queryByText('Version')).not.toBeInTheDocument();
+    expect(screen.queryByText('Status')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
   });
@@ -143,7 +147,7 @@ describe('BookingDetails', () => {
       booking: booking({ cancelledAt: '2026-09-15T12:00:00.000Z', canEdit: false }),
     });
 
-    expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    expect(screen.getByText('One booking instance')).toBeInTheDocument();
     expect(screen.getByText(/Cancelled on September 15, 2026/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
@@ -154,7 +158,9 @@ describe('BookingDetails', () => {
     const cancelBooking = vi.fn();
     renderDetails({ offline: true, editBooking, cancelBooking });
 
-    expect(screen.getByText('Read-only')).toBeInTheDocument();
+    expect(screen.getByText('One booking instance')).toBeInTheDocument();
+    expect(screen.queryByText('Version')).not.toBeInTheDocument();
+    expect(screen.queryByText('Status')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(/editing and cancellation are disabled/i);
     expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
