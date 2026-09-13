@@ -10,6 +10,7 @@ export async function db(): Promise<pg.PoolClient> {
 export async function asAuthenticated<T>(claims: Record<string, unknown>,
   fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   const client = await POOL.connect();
+  let ok = false;
   try {
     await client.query('BEGIN');
     await client.query(`SELECT set_config('request.jwt.claims', $1, true)`,
@@ -17,12 +18,15 @@ export async function asAuthenticated<T>(claims: Record<string, unknown>,
     await client.query('SET LOCAL ROLE authenticated');
     const result = await fn(client);
     await client.query('COMMIT');
+    ok = true;
     return result;
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;
   } finally {
-    client.release();
+    // On error discard the connection so an aborted transaction never returns
+    // to the pool and breaks later queries. pg's release() returns void.
+    client.release(!ok);
   }
 };
 
