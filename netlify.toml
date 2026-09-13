@@ -41,6 +41,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
@@ -51,4 +57,8 @@
 
 [functions.manifest]
   path = "/manifest.webmanifest"
+  rateLimit = { windowLimit = 120, windowSize = 60, aggregateBy = ["ip", "domain"] }
+
+[functions.health]
+  path = "/api/health"
   rateLimit = { windowLimit = 120, windowSize = 60, aggregateBy = ["ip", "domain"] }
