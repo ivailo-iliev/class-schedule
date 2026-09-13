@@ -10,3 +10,8 @@ export async function handler(event) {
     clientIp,
   });
 }
+
+export const config = {
+  path: '/api/access',
+  rateLimit: { windowLimit: 60, windowSize: 60, aggregateBy: ['ip', 'domain'] },
+};

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/assert-public-build.mjs",
+    "build": "vite build && node scripts/write-headers.mjs && node scripts/assert-public-build.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --config vitest.config.ts",

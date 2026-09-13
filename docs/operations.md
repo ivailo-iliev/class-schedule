@@ -11,6 +11,36 @@ Supabase CLI against the target project (local or hosted).
 > work is done here, by an owner, in Supabase directly. Never commit `.env`,
 > credentials, or personal access-link tokens into the repository.
 
+## Netlify deployment and environment isolation
+
+`netlify.toml` is the deployment source of truth. Netlify builds with Node 24
+using `npm run build`, publishes `dist`, and loads functions from
+`netlify/functions`. The access function owns `/api/access`; the installation
+manifest function owns `/manifest.webmanifest`; both routes appear before the
+final `/*` SPA fallback so function errors cannot become an HTML 200 response.
+The access and manifest functions use Netlify rate limits of 60 and 120
+requests per IP/domain per 60 seconds respectively.
+
+Configure environment variables in Netlify's site settings, not in this
+repository:
+
+- Production build variables: `VITE_SUPABASE_URL` and
+  `VITE_SUPABASE_PUBLISHABLE_KEY`. These are intentionally public and are the
+  only Supabase variables available to the Vite client bundle.
+- Production function variables: `SUPABASE_URL`,
+  `SUPABASE_SECRET_API_KEY`, and `APP_ORIGIN`. Keep these scoped to Functions
+  or the production context; never prefix a secret with `VITE_`.
+- Deploy previews: use a separate disposable Supabase project or local/test
+  values for both public variables and function variables. Do not inherit
+  production `SUPABASE_SECRET_API_KEY`, production database credentials, or
+  any production write access into a preview context.
+
+There are no signing-key, JWKS, or custom-JWT variables in this native-session
+design. Frontend builds never run Supabase migrations. Before accepting a
+deployment, inspect the generated `dist` with `npm run check:public-build` and
+verify the production response headers include CSP, `Referrer-Policy:
+no-referrer`, and `X-Content-Type-Options: nosniff`.
+
 ## Default timezone
 
 The application assumes `Europe/Sofia`. Confirm or change this in the timing

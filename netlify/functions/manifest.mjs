@@ -7,3 +7,8 @@ export async function handler(event) {
     queryStringParameters: event.queryStringParameters,
   });
 }
+
+export const config = {
+  path: '/manifest.webmanifest',
+  rateLimit: { windowLimit: 120, windowSize: 60, aggregateBy: ['ip', 'domain'] },
+};
