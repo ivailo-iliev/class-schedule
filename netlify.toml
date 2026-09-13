@@ -6,3 +6,9 @@
   from = "/api/access"
   to = "/.netlify/functions/access"
   status = 200
+
+[[redirects]]
+  from = "/manifest.webmanifest"
+  to = "/.netlify/functions/manifest"
+  status = 200
+  force = true

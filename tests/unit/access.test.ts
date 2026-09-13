@@ -80,6 +80,9 @@ describe('native access exchange', () => {
       profile: { id: profile.id, name: profile.name, role: profile.role },
     });
     expect(result.headers['cache-control']).toBe('private, no-store');
+    expect(result.headers['set-cookie']).toBe(
+      `__Host-install=${token}; Path=/; Max-Age=600; Secure; HttpOnly; SameSite=Strict`,
+    );
 
     const rpc = calls.filter(call => call.url.includes('/rpc/'));
     expect(rpc.map(call => call.url.split('/').at(-1))).toEqual(['resolve_access', 'consume_access']);
