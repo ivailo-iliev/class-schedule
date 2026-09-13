@@ -11,8 +11,24 @@ coverage/
 !.env.example
 *.pem
 *.key
+/backup-*.sql
 
 # Local/editor files
 .DS_Store
 .vscode/
 .idea/
+# Netlify
+.netlify/
+
+# Supabase
+supabase/.temp/
+supabase/.branches/
+
+# Keys
+.keys/
+
+# Test results
+test-results/
+
+# Playwright
+playwright-report/

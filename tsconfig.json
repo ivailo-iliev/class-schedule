@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ES2022", "moduleResolution": "bundler",
+    "jsx": "react-jsx", "strict": true, "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true, "isolatedModules": true,
+    "resolveJsonModule": true, "allowImportingTsExtensions": true,
+ "skipLibCheck": true,
+ "types": ["vite/client", "node"],
+    "verbatimModuleSyntax": true, "noEmit": true,
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", "vite-env.d.ts"]
+}
