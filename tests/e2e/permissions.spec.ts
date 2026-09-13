@@ -101,6 +101,25 @@ async function verifyTeacherBookingPermissions(
     data: { cancelled_at: sofiaSlot(fixture.nextDay, 17) },
   });
   await expectDeniedMutation(crossCancel);
+
+  const crossRpcEdit = await api.post('/rest/v1/rpc/edit_booking', {
+    headers: restHeaders(accessToken),
+    data: {
+      p_id: bBookingId,
+      p_expected_version: bBefore.version,
+      p_class_id: fixture.teacherB.classId,
+      p_room: 'room_2',
+      p_date: fixture.nextDay,
+      p_hour: 16,
+    },
+  });
+  await expectDeniedMutation(crossRpcEdit);
+
+  const crossRpcCancel = await api.post('/rest/v1/rpc/cancel_booking', {
+    headers: restHeaders(accessToken),
+    data: { p_id: bBookingId, p_expected_version: bBefore.version },
+  });
+  await expectDeniedMutation(crossRpcCancel);
   expect(await bookingSnapshot(api, accessToken, bBookingId!)).toEqual(bBefore);
 
   const ownInsert = await api.post('/rest/v1/bookings', {
