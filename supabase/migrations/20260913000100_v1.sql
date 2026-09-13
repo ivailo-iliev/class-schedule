@@ -312,3 +312,61 @@ with check (exists (
   select 1 from public.classes c
   where c.id = class_id and private.can_manage(c.teacher_id)
 ));
+
+-- A5. Atomic one-off and weekly creation
+create function public.schedule_bookings(
+  p_class_id uuid, p_room public.room, p_first_date date, p_hour integer,
+  p_occurrences integer default 1, p_weekday integer default null
+) returns setof public.bookings
+language plpgsql security invoker set search_path = '' as $$
+declare
+  owner_row public.classes%rowtype;
+  slots timestamptz[];
+  conflicts jsonb;
+  constraint_name text;
+begin
+  if private.actor_id() is null then
+    raise insufficient_privilege using message = 'access_required';
+  end if;
+  if p_occurrences is null or p_occurrences not between 1 and 104
+     or p_first_date is null or not isfinite(p_first_date) or p_room is null
+     or (p_occurrences > 1 and p_weekday is null)
+     or (p_weekday is not null and (
+       p_weekday not between 1 and 7 or extract(isodow from p_first_date) <> p_weekday
+     )) then
+    raise sqlstate 'PT422' using message = 'invalid_recurrence';
+  end if;
+  select * into owner_row from public.classes where id = p_class_id for share;
+  if not found or not private.can_manage(owner_row.teacher_id) then
+    raise insufficient_privilege using message = 'class_forbidden';
+  end if;
+  if not owner_row.active then
+    raise sqlstate 'PT422' using message = 'active_class_required';
+  end if;
+  select array_agg(private.resolve_slot(p_first_date + 7 * i, p_hour) order by i)
+  into slots from generate_series(0, p_occurrences - 1) as g(i);
+
+  select jsonb_agg(b.starts_at order by b.starts_at) into conflicts
+  from public.bookings b
+  where b.room = p_room and b.cancelled_at is null and b.starts_at = any(slots);
+  if conflicts is not null then
+    raise sqlstate 'PT409' using message = 'booking_conflict', detail = conflicts::text;
+  end if;
+  return query
+    insert into public.bookings(class_id, room, starts_at)
+    select p_class_id, p_room, s from unnest(slots) as t(s) order by s
+    returning *;
+exception when unique_violation then
+  get stacked diagnostics constraint_name = constraint_name;
+  if constraint_name <> 'bookings_room_active_slot_key' then raise; end if;
+  select jsonb_agg(b.starts_at order by b.starts_at) into conflicts
+  from public.bookings b
+  where b.room = p_room and b.cancelled_at is null and b.starts_at = any(slots);
+  raise sqlstate 'PT409' using message = 'booking_conflict',
+    detail = coalesce(conflicts, '[]'::jsonb)::text;
+end;
+$$;
+revoke all on function public.schedule_bookings(uuid, public.room, date, integer, integer, integer)
+  from public, anon, authenticated;
+grant execute on function public.schedule_bookings(uuid, public.room, date, integer, integer, integer)
+  to authenticated;
