@@ -512,3 +512,286 @@ describe('booking ownership and audit guards', () => {
   });
 
 });
+
+describe('edit and cancel individual bookings (A6 RPCs)', () => {
+
+  // Insert a concrete booking directly (bypassing RLS) so we can exercise the
+  // version-checked RPCs from the authenticated owner/admin/other roles.
+  async function seedBooking(id: string, cls: string, room: string, date: string, hour: number) {
+    const c = await db();
+    try {
+      await c.query('alter table public.bookings disable trigger bookings_guard');
+      await c.query(
+        `insert into public.bookings (id, class_id, room, starts_at)
+         values ($1, $2, $3::public.room, ${sofia(date, hour)})
+         on conflict (id) do nothing`,
+        [id, cls, room],
+      );
+      await c.query('alter table public.bookings enable trigger bookings_guard');
+    } finally {
+      c.release();
+    }
+  }
+
+  async function row(client: pg.PoolClient, id: string) {
+    const { rows } = await client.query(
+      `select class_id, room, version, cancelled_at,
+              extract(hour from starts_at at time zone 'Europe/Sofia') as hour
+       from public.bookings where id = $1`,
+      [id],
+    );
+    return rows[0];
+  }
+
+  test('owned edit moves the booking and increments version', async () => {
+    await ensureProfiles();
+    const id = 'ed1f0000-0000-0000-0000-000000000001';
+    await seedBooking(id, CLASS_E, 'room_1', '2026-12-01', 9);
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      const { rows } = await client.query(
+        `select * from public.edit_booking($1, 1, $2, 'room_2'::public.room,
+           '2026-12-15'::date, 14)`,
+        [id, CLASS_E],
+      );
+      const b = rows[0];
+      expect(b.room).toBe('room_2');
+      expect(Number(b.version)).toBe(2);
+    });
+    const verify = await db();
+    try {
+      const r = await row(verify, id);
+      expect(r.room).toBe('room_2');
+      expect(Number(r.hour)).toBe(14);
+      expect(Number(r.version)).toBe(2);
+    } finally {
+      verify.release();
+    }
+  });
+
+  test('admin can edit another teacher booking', async () => {
+    await ensureProfiles();
+    const id = 'ed1f0000-0000-0000-0000-000000000002';
+    await seedBooking(id, CLASS_E, 'room_1', '2026-12-02', 9);
+    await asAuthenticated(CLAIMS_ADM, async (client) => {
+      const { rows } = await client.query(
+        `select * from public.edit_booking($1, 1, $2, 'room_1'::public.room,
+           '2026-12-16'::date, 11)`,
+        [id, CLASS_E],
+      );
+      expect(Number(rows[0].version)).toBe(2);
+    });
+    const verify = await db();
+    try {
+      const r = await row(verify, id);
+      expect(Number(r.hour)).toBe(11);
+      expect(Number(r.version)).toBe(2);
+    } finally {
+      verify.release();
+    }
+  });
+
+  test('cross-owner edit is denied and the row is unchanged', async () => {
+    await ensureProfiles();
+    const id = 'ed1f0000-0000-0000-0000-000000000003';
+    await seedBooking(id, CLASS_E, 'room_1', '2026-12-03', 9);
+    await asAuthenticated(CLAIMS_F, async (client) => {
+      await expect(
+        client.query(
+          `select * from public.edit_booking($1, 1, $2, 'room_2'::public.room,
+             '2026-12-17'::date, 14)`,
+          [id, CLASS_E],
+        ),
+      ).rejects.toThrow(/booking_forbidden|permission denied/);
+    });
+    const verify = await db();
+    try {
+      const r = await row(verify, id);
+      expect(r.room).toBe('room_1');
+      expect(Number(r.hour)).toBe(9);
+      expect(Number(r.version)).toBe(1);
+    } finally {
+      verify.release();
+    }
+  });
+
+  test('stale version is rejected and the row is unchanged', async () => {
+    await ensureProfiles();
+    const id = 'ed1f0000-0000-0000-0000-000000000004';
+    await seedBooking(id, CLASS_E, 'room_1', '2026-12-04', 9);
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      await expect(
+        client.query(
+          `select * from public.edit_booking($1, 5, $2, 'room_2'::public.room,
+             '2026-12-18'::date, 14)`,
+          [id, CLASS_E],
+        ),
+      ).rejects.toThrow(/stale_booking/);
+    });
+    const verify = await db();
+    try {
+      const r = await row(verify, id);
+      expect(r.room).toBe('room_1');
+      expect(Number(r.hour)).toBe(9);
+      expect(Number(r.version)).toBe(1);
+    } finally {
+      verify.release();
+    }
+  });
+
+  test('conflicting move leaves the original row unchanged', async () => {
+    await ensureProfiles();
+    const a = 'ed1f0000-0000-0000-0000-000000000005';
+    const b = 'ed1f0000-0000-0000-0000-000000000006';
+    await seedBooking(a, CLASS_E, 'room_1', '2026-12-20', 9);
+    await seedBooking(b, CLASS_E, 'room_1', '2026-12-20', 14); // occupies target
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      await expect(
+        client.query(
+          `select * from public.edit_booking($1, 1, $2, 'room_1'::public.room,
+             '2026-12-20'::date, 14)`,
+          [a, CLASS_E],
+        ),
+      ).rejects.toThrow(/booking_conflict/);
+    });
+    const verify = await db();
+    try {
+      const ra = await row(verify, a);
+      expect(ra.room).toBe('room_1');
+      expect(Number(ra.hour)).toBe(9);
+      expect(Number(ra.version)).toBe(1);
+      const rb = await row(verify, b);
+      expect(Number(rb.hour)).toBe(14);
+    } finally {
+      verify.release();
+    }
+  });
+
+  test('cancellation releases the slot for rebooking', async () => {
+    await ensureProfiles();
+    const id = 'ed1f0000-0000-0000-0000-000000000007';
+    await seedBooking(id, CLASS_E, 'room_1', '2026-12-25', 9);
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      const c = await client.query(
+        `select * from public.cancel_booking($1, 1)`, [id],
+      );
+      expect(c.rows[0].cancelled_at).not.toBeNull();
+      expect(c.rows[0].cancelled_by).toBe(T_E);
+      // Same room/instant must now be bookable again.
+      const r = await client.query(
+        `select count(*)::int as n from public.schedule_bookings(
+           $1, 'room_1'::public.room, '2026-12-25'::date, 9, 1, null)`,
+        [CLASS_E],
+      );
+      expect(Number(r.rows[0].n)).toBe(1);
+    });
+  });
+
+  test('repeat cancellation preserves original cancellation metadata', async () => {
+    await ensureProfiles();
+    const id = 'ed1f0000-0000-0000-0000-000000000008';
+    await seedBooking(id, CLASS_E, 'room_1', '2026-12-26', 9);
+    let firstCancelledAt: string | null = null;
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      const c1 = await client.query(
+        `select * from public.cancel_booking($1, 1)`, [id],
+      );
+      firstCancelledAt = c1.rows[0].cancelled_at;
+      const c2 = await client.query(
+        `select * from public.cancel_booking($1, 1)`, [id],
+      );
+      expect((c2.rows[0].cancelled_at as Date).toISOString())
+        .toBe((firstCancelledAt as Date).toISOString());
+      expect(c2.rows[0].cancelled_by).toBe(T_E);
+    });
+    const verify = await db();
+    try {
+      const r = await row(verify, id);
+      expect((r.cancelled_at as Date).toISOString())
+        .toBe((firstCancelledAt as Date).toISOString());
+    } finally {
+      verify.release();
+    }
+  });
+
+  test('cannot edit an already-cancelled booking via RPC', async () => {
+    await ensureProfiles();
+    const id = 'ed1f0000-0000-0000-0000-000000000009';
+    await seedBooking(id, CLASS_E, 'room_1', '2026-12-27', 9);
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      await client.query(`select * from public.cancel_booking($1, 1)`, [id]);
+      await expect(
+        client.query(
+          `select * from public.edit_booking($1, 1, $2, 'room_2'::public.room,
+             '2026-12-27'::date, 14)`,
+          [id, CLASS_E],
+        ),
+      ).rejects.toThrow(/cancelled_booking_read_only/);
+    });
+  });
+
+  test('cancel/edit of a missing booking returns not_found', async () => {
+    await ensureProfiles();
+    const ghost = 'ed1f0000-0000-0000-0000-deadbeef0001';
+    // Separate authenticated connections: a rejected query aborts its own
+    // transaction, so each call must run on its own.
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      await expect(
+        client.query(`select * from public.cancel_booking($1, 1)`, [ghost]),
+      ).rejects.toThrow(/booking_not_found/);
+    });
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      await expect(
+        client.query(
+          `select * from public.edit_booking($1, 1, $2, 'room_1'::public.room,
+             '2026-12-27'::date, 14)`,
+          [ghost, CLASS_E],
+        ),
+      ).rejects.toThrow(/booking_not_found/);
+    });
+  });
+
+  test('editing one of 12 generated bookings leaves the other 11 unchanged', async () => {
+    await ensureProfiles();
+    let booked: { id: string }[] = [];
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      const r = await client.query(
+        `select id from public.schedule_bookings(
+           $1, 'room_1'::public.room, '2026-12-01'::date, 9, 12, 2)`,
+        [CLASS_E],
+      );
+      booked = r.rows;
+    });
+    expect(booked.length).toBe(12);
+    const target = booked[5].id;
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      const r = await client.query(
+        `select * from public.edit_booking($1, 1, $2, 'room_2'::public.room,
+           '2027-01-05'::date, 14)`,
+        [target, CLASS_E],
+      );
+      expect(Number(r.rows[0].version)).toBe(2);
+    });
+    const verify = await db();
+    try {
+      const { rows } = await verify.query(
+        `select id, version, room,
+                extract(hour from starts_at at time zone 'Europe/Sofia') as hour
+         from public.bookings where id = any($1) order by starts_at`,
+        [booked.map((b) => b.id)],
+      );
+      expect(rows.length).toBe(12);
+      const moved = rows.find((x: any) => x.id === target)!;
+      expect(moved.room).toBe('room_2');
+      expect(Number(moved.version)).toBe(2);
+      const unchanged = rows.filter((x: any) => x.id !== target);
+      expect(unchanged.length).toBe(11);
+      for (const u of unchanged) {
+        expect(Number(u.version)).toBe(1);
+        expect(u.room).toBe('room_1');
+      }
+    } finally {
+      verify.release();
+    }
+  });
+
+});

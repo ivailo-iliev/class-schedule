@@ -370,3 +370,76 @@ revoke all on function public.schedule_bookings(uuid, public.room, date, integer
   from public, anon, authenticated;
 grant execute on function public.schedule_bookings(uuid, public.room, date, integer, integer, integer)
   to authenticated;
+
+-- A6. Optimistic edits and cancellation
+create function public.edit_booking(
+  p_id uuid, p_expected_version integer, p_class_id uuid,
+  p_room public.room, p_date date, p_hour integer
+) returns public.bookings
+language plpgsql security invoker set search_path = '' as $$
+declare b public.bookings%rowtype; c public.classes%rowtype; violated_constraint text;
+begin
+  if private.actor_id() is null then
+    raise insufficient_privilege using message = 'access_required';
+  end if;
+  -- Resolve ownership with a plain read first: under RLS a non-owner cannot
+  -- acquire a row lock, so FOR UPDATE alone would mask the row as not found.
+  select class_id into c.teacher_id from public.bookings where id = p_id;
+  if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
+  select teacher_id into c.teacher_id from public.classes where id = c.teacher_id;
+  if not private.can_manage(c.teacher_id) then
+    raise insufficient_privilege using message = 'booking_forbidden';
+  end if;
+  select * into b from public.bookings where id = p_id for update;
+  if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
+  if b.cancelled_at is not null then
+    raise sqlstate 'PT409' using message = 'cancelled_booking_read_only';
+  end if;
+  if p_expected_version is distinct from b.version then
+    raise sqlstate 'PT409' using message = 'stale_booking';
+  end if;
+  select * into c from public.classes where id = p_class_id for share;
+  if not found or not private.can_manage(c.teacher_id) then
+    raise insufficient_privilege using message = 'class_forbidden';
+  end if;
+  update public.bookings set class_id = p_class_id, room = p_room,
+    starts_at = private.resolve_slot(p_date, p_hour)
+  where id = p_id returning * into b;
+  return b;
+exception when unique_violation then
+  get stacked diagnostics violated_constraint = constraint_name;
+  if violated_constraint <> 'bookings_room_active_slot_key' then raise; end if;
+  raise sqlstate 'PT409' using message = 'booking_conflict';
+end;
+$$;
+create function public.cancel_booking(p_id uuid, p_expected_version integer)
+returns public.bookings
+language plpgsql security invoker set search_path = '' as $$
+declare b public.bookings%rowtype; owner_id uuid;
+begin
+  if private.actor_id() is null then
+    raise insufficient_privilege using message = 'access_required';
+  end if;
+  -- Resolve ownership with a plain read first: under RLS a non-owner cannot
+  -- acquire a row lock, so FOR UPDATE alone would mask the row as not found.
+  select class_id into owner_id from public.bookings where id = p_id;
+  if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
+  select teacher_id into owner_id from public.classes where id = owner_id;
+  if not private.can_manage(owner_id) then
+    raise insufficient_privilege using message = 'booking_forbidden';
+  end if;
+  select * into b from public.bookings where id = p_id for update;
+  if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
+  if b.cancelled_at is not null then return b; end if;
+  if p_expected_version is distinct from b.version then
+    raise sqlstate 'PT409' using message = 'stale_booking';
+  end if;
+  update public.bookings set cancelled_at = statement_timestamp()
+  where id = p_id returning * into b;
+  return b;
+end;
+$$;
+revoke all on function public.edit_booking(uuid, integer, uuid, public.room, date, integer),
+  public.cancel_booking(uuid, integer) from public, anon, authenticated;
+grant execute on function public.edit_booking(uuid, integer, uuid, public.room, date, integer),
+  public.cancel_booking(uuid, integer) to authenticated;
