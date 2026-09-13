@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Run named class-scheduler cron jobs without remembering Hermes IDs.
+
+Usage:
+  scripts/kanban-cron list
+  scripts/kanban-cron status
+  scripts/kanban-cron gaps
+  scripts/kanban-cron retry-quota
+  scripts/kanban-cron tick
+  scripts/kanban-cron pause|resume <status|gaps|retry-quota>
+
+Jobs live on the planner profile. This wrapper resolves the current job ID
+from that profile's jobs.json, so IDs never belong in shell history or docs.
+"""
+import json
+import subprocess
+import sys
+
+PROFILE = "planner"
+JOBS = "/home/ivailo/.hermes/profiles/planner/cron/jobs.json"
+NAMES = {
+    "status": "status",
+    "gaps": "gaps",
+    "retry-quota": "retry-quota",
+}
+
+
+def job_id(name):
+    try:
+        data = json.load(open(JOBS))
+    except OSError as exc:
+        raise SystemExit(f"cannot read planner cron jobs: {exc}")
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"planner cron jobs are invalid JSON: {exc}")
+    jobs = data if isinstance(data, list) else data.get("jobs", [])
+    wanted = NAMES.get(name, name)
+    for job in jobs:
+        if job.get("name") == wanted:
+            return job.get("id")
+    names = ", ".join(sorted(NAMES))
+    raise SystemExit(f"unknown job {name!r}; choose one of: {names}")
+
+
+def run(args):
+    return subprocess.run(["hermes", "-p", PROFILE, "cron", *args],
+                          check=False).returncode
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in {"-h", "--help"}:
+        print(__doc__.strip())
+        return 0
+    command = args[0]
+    if command == "list":
+        return run(["list", "--all"])
+    if command == "tick":
+        return run(["tick"])
+    if command in {"status", "gaps", "retry-quota"}:
+        return run(["run", job_id(command)])
+    if command in {"pause", "resume"}:
+        if len(args) != 2:
+            print(f"usage: {sys.argv[0]} {command} <status|gaps|retry-quota>",
+                  file=sys.stderr)
+            return 2
+        return run([command, job_id(args[1])])
+    print(f"unknown command {command!r}; use --help", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
