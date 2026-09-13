@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getMyClasses, scheduleBookings } from '../lib/api';
+import { editBooking as editBookingApi, getMyClasses, scheduleBookings } from '../lib/api';
 import { getProfile } from '../lib/session';
 import type { Booking, ClassItem, Profile, Room } from '../lib/types';
 
@@ -12,6 +12,14 @@ type BookingSubmitter = (
   occurrences?: number,
   weekday?: number,
 ) => Promise<Booking[]>;
+type BookingEditor = (
+  id: string,
+  expectedVersion: number,
+  classId: string,
+  room: Room,
+  date: string,
+  hour: number,
+) => Promise<Booking>;
 
 export interface BookingFormProps {
   date: string;
@@ -22,6 +30,8 @@ export interface BookingFormProps {
   profile?: Profile | null;
   loadClasses?: ClassLoader;
   submitBooking?: BookingSubmitter;
+  editBooking?: BookingEditor;
+  onRefresh?: () => Promise<void> | void;
 }
 
 const ROOMS: readonly { id: Room; label: string }[] = [
@@ -44,6 +54,21 @@ function isConflict(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const value = error as { code?: unknown; message?: unknown };
   return value.code === 'PT409' || value.code === 'booking_conflict' || value.message === 'booking_conflict';
+}
+
+function errorMessage(error: unknown): string {
+  if (!error || typeof error !== 'object') return '';
+  const value = error as { code?: unknown; message?: unknown };
+  return `${typeof value.code === 'string' ? value.code : ''} ${typeof value.message === 'string' ? value.message : ''}`;
+}
+
+function isStale(error: unknown): boolean {
+  return /stale_booking|version/i.test(errorMessage(error));
+}
+
+function isUnknownOutcome(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  return /network|fetch|timeout|timed out|abort/i.test(errorMessage(error));
 }
 
 function localDateOf(instant: string): string {
@@ -99,6 +124,8 @@ export default function BookingForm({
   profile: suppliedProfile,
   loadClasses = getMyClasses,
   submitBooking = scheduleBookings,
+  editBooking = editBookingApi,
+  onRefresh,
 }: BookingFormProps) {
   const profile = suppliedProfile ?? getProfile();
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -119,12 +146,12 @@ export default function BookingForm({
     setLoading(true);
     void loadClasses().then((items) => {
       if (!mounted) return;
-      const ownActive = items.filter((item) => item.active &&
+      const available = items.filter((item) => (item.active || item.id === existingBooking?.classId) &&
         (profile?.role === 'admin' || item.teacherId === profile?.id));
-      setClasses(ownActive);
-      setClassId((current) => ownActive.some((item) => item.id === current)
+      setClasses(available);
+      setClassId((current) => available.some((item) => item.id === current)
         ? current
-        : (ownActive[0]?.id ?? ''));
+        : (available[0]?.id ?? ''));
     }).catch(() => {
       if (mounted) setError('Unable to load classes. Please try again.');
     }).finally(() => {
@@ -151,6 +178,13 @@ export default function BookingForm({
     setError(null);
     setSuccess(null);
     try {
+      if (editing && existingBooking) {
+        await editBooking(existingBooking.id, existingBooking.version, classId, room, date, hour);
+        if (onRefresh) await onRefresh();
+        setSuccess('Booking updated.');
+        onDone();
+        return;
+      }
       const created = await submitBooking(
         classId, room, date, hour, requested, weekly ? weekday : undefined,
       );
@@ -164,14 +198,22 @@ export default function BookingForm({
       if (match) {
         setError(countMismatch(Number(match[1]), Number(match[2])));
       } else if (isConflict(reason)) {
+        if (onRefresh) await Promise.resolve(onRefresh()).catch(() => undefined);
         const dates = conflictDates(reason);
-        setError(weekly && dates.length > 0
-          ? `Conflict dates: ${dates.join(', ')}. All weekly bookings were left unchanged.`
-          : 'Conflict: this slot is no longer available. Refresh the schedule and choose another slot.');
+        setError(isStale(reason)
+          ? 'This booking changed elsewhere. The schedule was refreshed; review it before trying again.'
+          : weekly && dates.length > 0
+            ? `Conflict dates: ${dates.join(', ')}. All weekly bookings were left unchanged.`
+            : 'Conflict: this slot is no longer available. Refresh the schedule and choose another slot.');
+      } else if (isUnknownOutcome(reason)) {
+        if (onRefresh) await Promise.resolve(onRefresh()).catch(() => undefined);
+        setError('We could not confirm the booking change. The schedule was refreshed; review it before trying again.');
       } else {
         setError(weekly
           ? 'Unable to create weekly bookings. Please try again.'
-          : 'Unable to book this slot. Please try again.');
+          : editing
+            ? 'Unable to update this booking. Please try again.'
+            : 'Unable to book this slot. Please try again.');
       }
     } finally {
       setPending(false);
@@ -184,8 +226,10 @@ export default function BookingForm({
   return (
     <section className="booking-form" aria-labelledby="booking-form-title">
       <header>
-        <h2 id="booking-form-title">Book a room</h2>
-        <p>{weekly ? 'Book the same class and room every week.' : 'Book one hourly slot using one of your active classes.'}</p>
+        <h2 id="booking-form-title">{editing ? 'Edit booking' : 'Book a room'}</h2>
+        <p>{editing
+          ? 'Edit this booking instance only.'
+          : weekly ? 'Book the same class and room every week.' : 'Book one hourly slot using one of your active classes.'}</p>
       </header>
 
       {error && <p className="booking-form__message booking-form__message--error" role="alert">{error}</p>}
@@ -286,7 +330,7 @@ export default function BookingForm({
 
           <div className="booking-form__actions">
             <button type="submit" disabled={pending || !classId}>
-              {pending ? 'Booking…' : weekly ? 'Book weekly bookings' : 'Book slot'}
+              {pending ? (editing ? 'Saving…' : 'Booking…') : editing ? 'Save booking' : weekly ? 'Book weekly bookings' : 'Book slot'}
             </button>
             <button type="button" onClick={onDone} disabled={pending}>Cancel</button>
           </div>

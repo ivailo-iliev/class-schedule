@@ -571,3 +571,116 @@ button:disabled {
   background: #effaf1;
   color: #245a2c;
 }
+
+.booking-details {
+  width: min(100% - 1rem, 32rem);
+  margin: 1rem auto;
+  padding: 1rem;
+  border: 1px solid #c7d0df;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.booking-details__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.booking-details__header h2,
+.booking-details__header p {
+  margin: 0;
+}
+
+.booking-details__header p {
+  margin-top: 0.35rem;
+  color: #5b6578;
+  font-size: 0.85rem;
+}
+
+.booking-details__header > button,
+.booking-details__actions button {
+  min-height: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.4rem;
+  background: #2563eb;
+  color: #fff;
+}
+
+.booking-details__list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1.25rem 0;
+}
+
+.booking-details__list > div {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e4e8ef;
+}
+
+.booking-details__list dt {
+  color: #5b6578;
+  font-weight: 600;
+}
+
+.booking-details__list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.booking-details__history {
+  margin: 0 0 1rem;
+  color: #5b6578;
+}
+
+.booking-details__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.booking-details__actions button:last-child {
+  border-color: #9da9bc;
+  background: #fff;
+  color: #172033;
+}
+
+.booking-details__confirm {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid #c28a25;
+  border-radius: 0.4rem;
+  background: #fff8e6;
+}
+
+.booking-details__confirm h3 {
+  margin: 0;
+}
+
+.booking-details__confirm p {
+  line-height: 1.4;
+}
+
+.booking-details__message {
+  margin: 0.75rem 0;
+  padding: 0.7rem;
+  border-radius: 0.4rem;
+}
+
+.booking-details__message--error {
+  border: 1px solid #c14c4c;
+  background: #fff0f0;
+  color: #8c2020;
+}
+
+.booking-details__message--success {
+  border: 1px solid #72a77d;
+  background: #effaf1;
+  color: #245a2c;
+}

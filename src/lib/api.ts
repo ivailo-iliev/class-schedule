@@ -4,7 +4,7 @@ import { getProfile, getSupabaseClient, clearSession, isSessionRevokedError } fr
 import type { Database, Tables, TablesInsert } from './database.types';
 import type { Booking, ClassItem, DaySchedule, Profile, Room } from './types';
 
-type BookingRow = Pick<Tables<'bookings'>, 'id' | 'class_id' | 'room' | 'starts_at' | 'cancelled_at' | 'version'> & {
+type BookingRow = Pick<Tables<'bookings'>, 'id' | 'class_id' | 'room' | 'starts_at' | 'cancelled_at' | 'cancelled_by' | 'version'> & {
   classes: Pick<Tables<'classes'>, 'id' | 'name' | 'teacher_id'> | null;
 };
 type ProfileRow = Pick<Tables<'profiles'>, 'id' | 'name'>;
@@ -42,6 +42,7 @@ function mapBooking(row: BookingRow, teacherName: string, profile: Profile | nul
     startsAt: row.starts_at,
     hour: localHourOf(row.starts_at),
     cancelledAt: row.cancelled_at,
+    cancelledBy: row.cancelled_by,
     version: row.version,
     canEdit: Boolean(profile && row.cancelled_at === null &&
       (profile.role === 'admin' || profile.id === row.classes.teacher_id)),
@@ -51,7 +52,7 @@ function mapBooking(row: BookingRow, teacherName: string, profile: Profile | nul
 export async function getDay(date: string): Promise<DaySchedule> {
   const { start, end } = dayBounds(date);
   const rows = await fetchOr(() => client().from('bookings')
-    .select('id, class_id, room, starts_at, cancelled_at, version, classes!inner(id, name, teacher_id)')
+    .select('id, class_id, room, starts_at, cancelled_at, cancelled_by, version, classes!inner(id, name, teacher_id)')
     .gte('starts_at', start.toISOString())
     .lt('starts_at', end.toISOString())
     .order('starts_at') as unknown as PromiseLike<SupabaseResult<BookingRow[]>>);
@@ -137,6 +138,7 @@ export async function scheduleBookings(
     startsAt: row.starts_at,
     hour: localHourOf(row.starts_at),
     cancelledAt: row.cancelled_at,
+    cancelledBy: row.cancelled_by,
     version: row.version,
     canEdit: true,
   }));
@@ -161,7 +163,7 @@ export async function editBooking(
   return {
     id: row.id, classId: row.class_id, teacherId: '', className: '', teacherName: '',
     room: row.room, startsAt: row.starts_at, hour: localHourOf(row.starts_at),
-    cancelledAt: row.cancelled_at, version: row.version, canEdit: true,
+    cancelledAt: row.cancelled_at, cancelledBy: row.cancelled_by, version: row.version, canEdit: true,
   };
 }
 
@@ -173,6 +175,6 @@ export async function cancelBooking(id: string, expectedVersion: number): Promis
   return {
     id: row.id, classId: row.class_id, teacherId: '', className: '', teacherName: '',
     room: row.room, startsAt: row.starts_at, hour: localHourOf(row.starts_at),
-    cancelledAt: row.cancelled_at, version: row.version, canEdit: false,
+    cancelledAt: row.cancelled_at, cancelledBy: row.cancelled_by, version: row.version, canEdit: false,
   };
 }

@@ -26,6 +26,7 @@ export interface Booking {
   startsAt: string;
   hour: number;
   cancelledAt: string | null;
+  cancelledBy?: string | null;
   version: number;
   canEdit: boolean;
 }

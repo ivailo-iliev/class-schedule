@@ -1,0 +1,211 @@
+import { useEffect, useState } from 'react';
+import {
+  cancelBooking as cancelBookingApi,
+  editBooking as editBookingApi,
+  getMyClasses,
+} from '../lib/api';
+import { getProfile } from '../lib/session';
+import type { Booking, ClassItem, Profile, Room } from '../lib/types';
+import BookingForm from './BookingForm';
+
+type ClassLoader = () => Promise<ClassItem[]>;
+type BookingEditor = (
+  id: string,
+  expectedVersion: number,
+  classId: string,
+  room: Room,
+  date: string,
+  hour: number,
+) => Promise<Booking>;
+type BookingCanceller = (id: string, expectedVersion: number) => Promise<Booking>;
+
+export interface BookingDetailsProps {
+  booking: Booking;
+  onClose: () => void;
+  onRefresh: () => Promise<void> | void;
+  profile?: Profile | null;
+  loadClasses?: ClassLoader;
+  editBooking?: BookingEditor;
+  cancelBooking?: BookingCanceller;
+}
+
+function localDate(instant: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Sofia', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(instant));
+  const values = Object.fromEntries(parts
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function readableDate(instant: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Sofia', year: 'numeric', month: 'long', day: 'numeric',
+  }).format(new Date(instant));
+}
+
+function hourLabel(booking: Booking): string {
+  return `${booking.hour.toString().padStart(2, '0')}:00`;
+}
+
+function roomLabel(room: Room): string {
+  return room === 'room_1' ? 'Room 1' : 'Room 2';
+}
+
+function errorMessage(error: unknown): string {
+  if (!error || typeof error !== 'object') return '';
+  const value = error as { code?: unknown; message?: unknown };
+  return `${typeof value.code === 'string' ? value.code : ''} ${typeof value.message === 'string' ? value.message : ''}`;
+}
+
+function isConflict(error: unknown): boolean {
+  return error === 'booking_conflict' || /PT409|booking_conflict|stale_booking|version/i.test(errorMessage(error));
+}
+
+function isUnknownOutcome(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  return /network|fetch|timeout|timed out|abort/i.test(errorMessage(error));
+}
+
+function isStale(error: unknown): boolean {
+  return /stale_booking|version/i.test(errorMessage(error));
+}
+
+export default function BookingDetails({
+  booking,
+  onClose,
+  onRefresh,
+  profile: suppliedProfile,
+  loadClasses = getMyClasses,
+  editBooking = editBookingApi,
+  cancelBooking = cancelBookingApi,
+}: BookingDetailsProps) {
+  const profile = suppliedProfile ?? getProfile();
+  const [currentBooking, setCurrentBooking] = useState(booking);
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCurrentBooking(booking);
+  }, [booking]);
+
+  const cancelled = currentBooking.cancelledAt !== null;
+  const canEdit = currentBooking.canEdit && !cancelled;
+  const formattedDate = readableDate(currentBooking.startsAt);
+  const formattedHour = hourLabel(currentBooking);
+  const formattedRoom = roomLabel(currentBooking.room);
+
+  const reconcileAfterFailure = async () => {
+    try {
+      await onRefresh();
+    } catch {
+      // The original write outcome remains unknown; do not retry it.
+    }
+  };
+
+  const handleCancel = async () => {
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await cancelBooking(currentBooking.id, currentBooking.version);
+      await onRefresh();
+      setCurrentBooking(updated);
+      setConfirming(false);
+      setNotice('Booking cancelled.');
+    } catch (reason) {
+      await reconcileAfterFailure();
+      setError(isUnknownOutcome(reason)
+        ? 'We could not confirm the cancellation. The schedule was refreshed; review it before trying again.'
+        : isStale(reason)
+          ? 'This booking changed elsewhere. The schedule was refreshed; review it before trying again.'
+          : isConflict(reason)
+            ? 'This booking conflicts with a newer schedule change. The schedule was refreshed; review it before trying again.'
+            : 'Unable to cancel this booking. Please try again.');
+    } finally {
+      setPending(false);
+    }
+  };
+
+  if (editing && canEdit) {
+    return (
+      <BookingForm
+        date={localDate(currentBooking.startsAt)}
+        hour={currentBooking.hour}
+        room={currentBooking.room}
+        existingBooking={currentBooking}
+        profile={profile}
+        loadClasses={loadClasses}
+        editBooking={editBooking}
+        onRefresh={onRefresh}
+        onDone={() => {
+          setEditing(false);
+          setNotice('Booking updated.');
+        }}
+      />
+    );
+  }
+
+  return (
+    <section className="booking-details" aria-labelledby="booking-details-title">
+      <header className="booking-details__header">
+        <div>
+          <h2 id="booking-details-title">Booking details</h2>
+          <p>One booking instance</p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close booking details">Close</button>
+      </header>
+
+      {error && <p className="booking-details__message booking-details__message--error" role="alert">{error}</p>}
+      {notice && <p className="booking-details__message booking-details__message--success" role="status">{notice}</p>}
+
+      <dl className="booking-details__list">
+        <div><dt>Class</dt><dd>{currentBooking.className}</dd></div>
+        <div><dt>Teacher</dt><dd>{currentBooking.teacherName}</dd></div>
+        <div><dt>Date</dt><dd>{formattedDate}</dd></div>
+        <div><dt>Hour</dt><dd>{formattedHour}</dd></div>
+        <div><dt>Room</dt><dd>{formattedRoom}</dd></div>
+        <div><dt>Status</dt><dd>{cancelled ? 'Cancelled' : canEdit ? 'Editable' : 'Read-only'}</dd></div>
+      </dl>
+
+      {cancelled && (
+        <p className="booking-details__history">
+          Cancelled on {readableDate(currentBooking.cancelledAt as string)}
+          {currentBooking.cancelledBy ? ` by ${currentBooking.cancelledBy}` : ''}.
+        </p>
+      )}
+
+      {canEdit && (
+        <div className="booking-details__actions">
+          <button type="button" onClick={() => { setError(null); setNotice(null); setEditing(true); }} disabled={pending}>
+            Edit booking
+          </button>
+          <button type="button" onClick={() => { setError(null); setNotice(null); setConfirming(true); }} disabled={pending}>
+            Cancel booking
+          </button>
+        </div>
+      )}
+
+      {confirming && (
+        <div className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
+          <h3 id="cancel-booking-title">Cancel this booking?</h3>
+          <p>
+            Cancel “{currentBooking.className}” on {formattedDate} at {formattedHour} in {formattedRoom}?
+            This cancels one instance only.
+          </p>
+          <div className="booking-details__actions">
+            <button type="button" onClick={() => void handleCancel()} disabled={pending}>
+              {pending ? 'Cancelling…' : 'Confirm cancellation'}
+            </button>
+            <button type="button" onClick={() => setConfirming(false)} disabled={pending}>Keep booking</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
