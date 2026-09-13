@@ -23,11 +23,20 @@ describe('Netlify deployment boundaries', () => {
     expect(netlify).toMatch(/to\s*=\s*"\/index\.html"[\s\S]*status\s*=\s*200/);
   });
 
-  test('routes each private endpoint directly to its function', () => {
+  test('routes public endpoints to their default function URLs before the API fallback', () => {
+    const accessRedirect = netlify.indexOf('from = "/api/access"');
+    const manifestRedirect = netlify.indexOf('from = "/manifest.webmanifest"');
+    const healthRedirect = netlify.indexOf('from = "/api/health"');
+    const apiFallback = netlify.indexOf('from = "/api/*"');
+
+    expect(netlify).toMatch(/from = "\/api\/access"[\s\S]*to = "\/.netlify\/functions\/access"/);
     expect(netlify).toMatch(/from = "\/manifest\.webmanifest"[\s\S]*to = "\/.netlify\/functions\/manifest"/);
-    expect(netlify).not.toMatch(/from = "\/api\/access"/);
-    expect(accessFunction).toMatch(/path:\s*['"]\/api\/access['"]/);
-    expect(manifestFunction).toMatch(/path:\s*['"]\/manifest\.webmanifest['"]/);
+    expect(netlify).toMatch(/from = "\/api\/health"[\s\S]*to = "\/.netlify\/functions\/health"/);
+    expect(accessRedirect).toBeLessThan(apiFallback);
+    expect(manifestRedirect).toBeLessThan(apiFallback);
+    expect(healthRedirect).toBeLessThan(apiFallback);
+    expect(accessFunction).not.toMatch(/path:\s*['"]\/api\/access['"]/);
+    expect(manifestFunction).not.toMatch(/path:\s*['"]\/manifest\.webmanifest['"]/);
   });
 
   test('returns unknown API routes as 404 before the SPA fallback', () => {

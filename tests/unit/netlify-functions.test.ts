@@ -51,7 +51,7 @@ describe('Netlify function boundaries', () => {
     expect(await response.json()).toEqual({ status });
   });
 
-  test('uses modern function configs and translates request fields', async () => {
+  test('uses default Netlify endpoints behind the public-route redirects', async () => {
     handleAccessRequest.mockResolvedValueOnce(result(400));
     await accessFunction(
       new Request('https://class-admin.netlify.app/api/access', {
@@ -62,7 +62,6 @@ describe('Netlify function boundaries', () => {
       {},
     );
     expect(accessConfig).toEqual({
-      path: '/api/access',
       rateLimit: { windowLimit: 60, windowSize: 60, aggregateBy: ['ip', 'domain'] },
     });
     expect(handleAccessRequest).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -77,7 +76,6 @@ describe('Netlify function boundaries', () => {
       {},
     );
     expect(manifestConfig).toEqual({
-      path: '/manifest.webmanifest',
       rateLimit: { windowLimit: 120, windowSize: 60, aggregateBy: ['ip', 'domain'] },
     });
     expect(handleManifestRequest).toHaveBeenLastCalledWith(expect.objectContaining({

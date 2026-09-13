@@ -36,16 +36,22 @@ describe('public health endpoint', () => {
     await expect(response.json()).resolves.toEqual({ error: 'method_not_allowed' });
   });
 
-  test('exports the modern Netlify handler with an explicit path', async () => {
+  test('exports the modern Netlify handler for its default function URL', async () => {
     const response = await healthFunction(new Request('https://class-admin.netlify.app/api/health'), {});
 
-    expect(healthConfig).toEqual({ path: '/api/health' });
+    expect(healthConfig).toBeUndefined();
     expect(response).toBeInstanceOf(Response);
     expect(response.status).toBe(200);
   });
 
-  test('uses the function path without a conflicting health redirect', () => {
-    expect(netlify).not.toMatch(/from\s*=\s*"\/api\/health"/);
-    expect(netlify).toMatch(/\[functions\.health\][\s\S]*path\s*=\s*"\/api\/health"/);
+  test('routes the health path before the API and SPA fallbacks', () => {
+    const healthRedirect = netlify.indexOf('from = "/api/health"');
+    const apiFallback = netlify.indexOf('from = "/api/*"');
+    const spaFallback = netlify.indexOf('from = "/*"');
+
+    expect(healthRedirect).toBeGreaterThanOrEqual(0);
+    expect(healthRedirect).toBeLessThan(apiFallback);
+    expect(healthRedirect).toBeLessThan(spaFallback);
+    expect(netlify).toMatch(/from = "\/api\/health"[\s\S]*to = "\/.netlify\/functions\/health"/);
   });
 });

@@ -29,8 +29,20 @@
     Vary = "Cookie"
 
 [[redirects]]
+  from = "/api/access"
+  to = "/.netlify/functions/access"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/manifest.webmanifest"
   to = "/.netlify/functions/manifest"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
   status = 200
   force = true
 
@@ -46,13 +58,10 @@
   status = 200
 
 [functions.access]
-  path = "/api/access"
   rateLimit = { windowLimit = 60, windowSize = 60, aggregateBy = ["ip", "domain"] }
 
 [functions.manifest]
-  path = "/manifest.webmanifest"
   rateLimit = { windowLimit = 120, windowSize = 60, aggregateBy = ["ip", "domain"] }
 
 [functions.health]
-  path = "/api/health"
   rateLimit = { windowLimit = 120, windowSize = 60, aggregateBy = ["ip", "domain"] }
