@@ -510,6 +510,27 @@ button:disabled {
   background: #fff;
 }
 
+.booking-form__checkbox {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  font-weight: 600;
+}
+
+.booking-form__checkbox input {
+  width: 1.25rem;
+  min-height: 1.25rem;
+  margin: 0;
+}
+
+.booking-form__help {
+  margin: 0;
+  color: #5b6578;
+  font-size: 0.85rem;
+}
+
 .booking-form__actions {
   display: flex;
   flex-wrap: wrap;
@@ -543,4 +564,10 @@ button:disabled {
   border: 1px solid #c14c4c;
   background: #fff0f0;
   color: #8c2020;
+}
+
+.booking-form__message--success {
+  border: 1px solid #72a77d;
+  background: #effaf1;
+  color: #245a2c;
 }

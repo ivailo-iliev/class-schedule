@@ -117,3 +117,81 @@ describe('BookingForm one-off flow', () => {
     expect(screen.getByRole('combobox', { name: 'Room' })).toHaveValue('room_1');
   });
 });
+
+describe('BookingForm weekly flow', () => {
+  test('reveals bounded weekly controls and all-or-nothing guidance', async () => {
+    renderForm();
+    await screen.findByRole('option', { name: 'Pilates' });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
+
+    expect(screen.getByLabelText(/first booking date/i)).toHaveValue('2026-09-15');
+    expect(screen.getByRole('combobox', { name: 'Weekday' })).toHaveValue('2');
+    expect(screen.getByLabelText(/number of weekly bookings/i)).toHaveAttribute('min', '1');
+    expect(screen.getByLabelText(/number of weekly bookings/i)).toHaveAttribute('max', '104');
+    expect(screen.getByLabelText(/number of weekly bookings/i)).toHaveAttribute('step', '1');
+    expect(screen.getByText(/all weekly bookings succeed or none are created/i)).toBeInTheDocument();
+  });
+
+  test('rejects a weekday that does not match the first date', async () => {
+    const submit = vi.fn(async () => [booking(), booking()]);
+    renderForm([classItem()], { submitBooking: submit });
+    await screen.findByRole('option', { name: 'Pilates' });
+    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Weekday' }), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText(/number of weekly bookings/i), { target: { value: '2' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/weekday.*match.*date/i);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  test('submits weekly values and reports the returned count', async () => {
+    const submit = vi.fn(async () => [booking(), { ...booking(), id: 'booking-2' }]);
+    const onDone = vi.fn();
+    renderForm([classItem()], { submitBooking: submit, onDone });
+    await screen.findByRole('option', { name: 'Pilates' });
+    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
+    fireEvent.change(screen.getByLabelText(/number of weekly bookings/i), { target: { value: '2' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    expect(submit).toHaveBeenCalledWith('class-a', 'room_1', '2026-09-15', 18, 2, 2);
+    expect(await screen.findByRole('status')).toHaveTextContent('Created 2 weekly bookings.');
+  });
+
+  test('keeps weekly inputs and displays returned conflict dates', async () => {
+    const submit = vi.fn(async () => {
+      throw { code: 'PT409', message: 'booking_conflict', details: [
+        '2026-09-22T15:00:00.000Z', '2026-10-06T16:00:00.000Z',
+      ] };
+    });
+    renderForm([classItem()], { submitBooking: submit });
+    await screen.findByRole('option', { name: 'Pilates' });
+    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
+    fireEvent.change(screen.getByLabelText(/number of weekly bookings/i), { target: { value: '3' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/2026-09-22/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/2026-10-06/);
+    expect(screen.getByLabelText(/number of weekly bookings/i)).toHaveValue(3);
+    expect(screen.getByRole('combobox', { name: 'Weekday' })).toHaveValue('2');
+  });
+
+  test('does not report success when the RPC returns fewer bookings than requested', async () => {
+    const submit = vi.fn(async () => [booking()]);
+    const onDone = vi.fn();
+    renderForm([classItem()], { submitBooking: submit, onDone });
+    await screen.findByRole('option', { name: 'Pilates' });
+    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
+    fireEvent.change(screen.getByLabelText(/number of weekly bookings/i), { target: { value: '2' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/expected 2.*received 1/i);
+    expect(onDone).not.toHaveBeenCalled();
+  });
+});
