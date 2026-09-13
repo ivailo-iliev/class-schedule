@@ -16,6 +16,7 @@ export interface ScheduleProps {
   loadSchedule?: LoadSchedule;
   onSelectSlot?: (selection: SlotSelection) => void;
   onSelectBooking?: (booking: Booking) => void;
+  offline?: boolean;
 }
 
 export interface ScheduleHandle {
@@ -68,6 +69,7 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({
   loadSchedule = getDay,
   onSelectSlot,
   onSelectBooking,
+  offline = false,
 }: ScheduleProps, ref) {
   const [date, setDate] = useState(initialDate);
   const [schedule, setSchedule] = useState<DaySchedule | null>(null);
@@ -166,10 +168,17 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({
 
       {error !== null && !showGrid && (
         <section className="schedule-message" role="alert">
-          <strong>Unable to load schedule</strong>
-          <p>Availability is hidden until the connection is restored.</p>
+          <strong>{offline ? 'You are offline.' : 'Unable to load schedule'}</strong>
+          <p>{offline
+            ? 'Reconnect to load the latest availability. Booking is disabled while offline.'
+            : 'Availability is hidden until the connection is restored.'}</p>
           <button type="button" onClick={() => void load(date).catch(() => undefined)}>Try again</button>
         </section>
+      )}
+      {offline && showGrid && (
+        <p className="schedule-message schedule-message--inline" role="alert">
+          <strong>You are offline.</strong> Availability is hidden and booking is disabled until the connection is restored.
+        </p>
       )}
       {error !== null && showGrid && (
         <p className="schedule-message schedule-message--inline" role="alert">
@@ -209,9 +218,9 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({
                           <strong>{booking.className}</strong>
                           <span>{booking.teacherName}</span>
                         </button>
-                      ) : stale ? (
-                        <div className="schedule-grid__unknown" aria-label={`${cellLabel} unavailable while schedule is stale`}>
-                          Unavailable
+                      ) : stale || offline ? (
+                        <div className="schedule-grid__unknown" aria-label={`${cellLabel} unavailable ${offline ? 'offline' : 'while schedule is stale'}`}>
+                          {offline ? 'Unavailable offline' : 'Unavailable'}
                         </div>
                       ) : (
                         <button

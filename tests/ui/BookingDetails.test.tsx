@@ -148,4 +148,17 @@ describe('BookingDetails', () => {
     expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
   });
+
+  test('keeps an owned booking readable but disables writes offline', () => {
+    const editBooking = vi.fn();
+    const cancelBooking = vi.fn();
+    renderDetails({ offline: true, editBooking, cancelBooking });
+
+    expect(screen.getByText('Read-only')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/editing and cancellation are disabled/i);
+    expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
+    expect(editBooking).not.toHaveBeenCalled();
+    expect(cancelBooking).not.toHaveBeenCalled();
+  });
 });

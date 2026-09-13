@@ -27,6 +27,7 @@ export interface BookingDetailsProps {
   loadClasses?: ClassLoader;
   editBooking?: BookingEditor;
   cancelBooking?: BookingCanceller;
+  offline?: boolean;
 }
 
 function localDate(instant: string): string {
@@ -92,6 +93,7 @@ export default function BookingDetails({
   loadClasses = getMyClasses,
   editBooking = editBookingApi,
   cancelBooking = cancelBookingApi,
+  offline = false,
 }: BookingDetailsProps) {
   const profile = suppliedProfile ?? getProfile();
   const [currentBooking, setCurrentBooking] = useState(booking);
@@ -106,7 +108,7 @@ export default function BookingDetails({
   }, [booking]);
 
   const cancelled = currentBooking.cancelledAt !== null;
-  const canEdit = currentBooking.canEdit && !cancelled;
+  const canEdit = currentBooking.canEdit && !cancelled && !offline;
   const formattedDate = readableDate(currentBooking.startsAt);
   const formattedHour = hourLabel(currentBooking);
   const formattedRoom = roomLabel(currentBooking.room);
@@ -162,6 +164,7 @@ export default function BookingDetails({
         loadClasses={loadClasses}
         editBooking={editBooking}
         onRefresh={onRefresh}
+        offline={offline}
         onDone={(updated, refreshed, refreshFailed) => {
           if (updated) setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed));
           setEditing(false);
@@ -214,6 +217,12 @@ export default function BookingDetails({
         </div>
       )}
 
+      {offline && !cancelled && (
+        <p className="booking-details__message booking-details__message--offline" role="alert">
+          You are offline. Editing and cancellation are disabled until the connection is restored.
+        </p>
+      )}
+
       {confirming && (
         <div className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
           <h3 id="cancel-booking-title">Cancel this booking?</h3>
@@ -222,7 +231,7 @@ export default function BookingDetails({
             This cancels one instance only.
           </p>
           <div className="booking-details__actions">
-            <button type="button" onClick={() => void handleCancel()} disabled={pending}>
+            <button type="button" onClick={() => void handleCancel()} disabled={pending || offline}>
               {pending ? 'Cancelling…' : 'Confirm cancellation'}
             </button>
             <button type="button" onClick={() => setConfirming(false)} disabled={pending}>Keep booking</button>

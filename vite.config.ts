@@ -8,12 +8,23 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,ico}'],
+        // Only the public application shell is precached. Private manifests,
+        // Supabase responses, sessions and API calls never enter Workbox.
+        globPatterns: [
+          'index.html',
+          'registerSW.js',
+          'assets/**/*.{js,css}',
+          'icons/**/*.{png,svg,ico}',
+        ],
         runtimeCaching: [
           {
-            urlPattern: /\/assets\//,
+            urlPattern: ({ url }) => url.origin === self.location.origin &&
+              (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/')),
             handler: 'CacheFirst',
-            options: { cacheName: 'public-assets' },
+            options: {
+              cacheName: 'public-assets',
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
           },
         ],
       },

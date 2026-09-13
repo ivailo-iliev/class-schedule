@@ -28,4 +28,14 @@ for (const entry of readdirSync(dist, { recursive: true })) {
   }
 }
 
+const serviceWorkerPath = resolve(dist, 'sw.js');
+const serviceWorker = readFileSync(serviceWorkerPath, 'utf8');
+const requiredPublicEntries = ['index.html', 'assets/', 'icons/icon-192.png', 'icons/icon-512.png'];
+const missingPublicEntry = requiredPublicEntries.find((entry) => !serviceWorker.includes(entry));
+const privateEntry = ['manifest.webmanifest', '/api/', 'supabase'].find((entry) => serviceWorker.includes(entry));
+if (missingPublicEntry || privateEntry) {
+  console.error(`SERVICE WORKER CACHE CHECK FAILED: ${missingPublicEntry ? `missing ${missingPublicEntry}` : `contains ${privateEntry}`}`);
+  process.exit(1);
+}
+
 console.log('Build looks safe (no detected static secrets)');

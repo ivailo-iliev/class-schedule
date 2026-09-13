@@ -157,6 +157,21 @@ describe('Schedule screen', () => {
     expect(screen.queryByRole('button', { name: /Book Room/ })).not.toBeInTheDocument();
   });
 
+  test('disables booking writes and explains offline availability', async () => {
+    const onSelectSlot = vi.fn();
+    render(<Schedule
+      initialDate="2026-03-29"
+      loadSchedule={async () => scheduleFor()}
+      onSelectSlot={onSelectSlot}
+      offline
+    />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/booking is disabled/i);
+    expect(screen.queryByRole('button', { name: /Book Room/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Unavailable offline')).toHaveLength(45);
+    expect(onSelectSlot).not.toHaveBeenCalled();
+  });
+
   test('retains a stale read-only schedule after a refresh error', async () => {
     const loader = vi.fn()
       .mockResolvedValueOnce(scheduleFor())

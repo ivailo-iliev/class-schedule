@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { bootstrapNativeSession, onNativeAuthStateChange } from './lib/session';
+import { bootstrapNativeSession, getProfile, onNativeAuthStateChange } from './lib/session';
+import { ensurePrivateManifest, removePrivateManifest, useOnlineStatus } from './lib/pwa';
 import type { Booking, DaySchedule } from './lib/types';
 import BookingDetails from './components/BookingDetails';
 import Schedule, { type ScheduleHandle } from './components/Schedule';
@@ -10,15 +11,26 @@ export default function App() {
   );
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const scheduleRef = useRef<ScheduleHandle>(null);
+  const offline = !useOnlineStatus();
 
   useEffect(() => {
     let mounted = true;
     const subscription = onNativeAuthStateChange((session) => {
-      if (mounted && session) setState('connected');
-      if (mounted && !session) setState('unavailable');
+      if (!mounted) return;
+      if (session) {
+        const profileId = getProfile()?.id;
+        if (profileId) ensurePrivateManifest(profileId);
+        setState('connected');
+      } else {
+        removePrivateManifest();
+        setState('unavailable');
+      }
     });
     bootstrapNativeSession().then((session) => {
-      if (mounted && session) setState('connected');
+      if (!mounted || !session) return;
+      const profileId = getProfile()?.id;
+      if (profileId) ensurePrivateManifest(profileId);
+      setState('connected');
     }).catch(() => {
       if (mounted) setState('unavailable');
     });
@@ -36,19 +48,23 @@ export default function App() {
     return <main><h1>Class Scheduler</h1><p>Connecting…</p></main>;
   }
   if (state === 'unavailable') {
-    return <main><h1>Class Scheduler</h1><p>Open your personal access link</p></main>;
+    return <main><h1>Class Scheduler</h1><p>{offline
+      ? 'You are offline. Reconnect before opening your personal access link.'
+      : 'Open your personal access link'}</p></main>;
   }
   return (
     <>
       <Schedule
         ref={scheduleRef}
         onSelectBooking={setSelectedBooking}
+        offline={offline}
       />
       {selectedBooking && (
         <BookingDetails
           booking={selectedBooking}
           onClose={() => setSelectedBooking(null)}
           onRefresh={refreshSchedule}
+          offline={offline}
         />
       )}
     </>

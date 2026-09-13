@@ -32,6 +32,7 @@ export interface BookingFormProps {
   submitBooking?: BookingSubmitter;
   editBooking?: BookingEditor;
   onRefresh?: () => Promise<DaySchedule | void> | DaySchedule | void;
+  offline?: boolean;
 }
 
 const ROOMS: readonly { id: Room; label: string }[] = [
@@ -126,6 +127,7 @@ export default function BookingForm({
   submitBooking = scheduleBookings,
   editBooking = editBookingApi,
   onRefresh,
+  offline = false,
 }: BookingFormProps) {
   const profile = suppliedProfile ?? getProfile();
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -173,6 +175,10 @@ export default function BookingForm({
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!classId || pending) return;
+    if (offline) {
+      setError('You are offline. Reconnect before saving a booking.');
+      return;
+    }
 
     const requested = weekly ? Number(occurrences) : 1;
     if (weekly && (!Number.isInteger(requested) || requested < 1 || requested > 104)) {
@@ -260,6 +266,12 @@ export default function BookingForm({
         </p>
       )}
 
+      {offline && (
+        <p className="booking-form__message booking-form__message--offline" role="alert">
+          You are offline. Booking changes are disabled until the connection is restored.
+        </p>
+      )}
+
       {!loading && !noClasses && (
         <form onSubmit={handleSubmit}>
           <label htmlFor="booking-class">Class</label>
@@ -267,7 +279,7 @@ export default function BookingForm({
             id="booking-class"
             value={classId}
             onChange={(event) => setClassId(event.target.value)}
-            disabled={pending}
+            disabled={pending || offline}
           >
             {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
@@ -293,7 +305,7 @@ export default function BookingForm({
             type="date"
             value={date}
             onChange={(event) => setDate(event.target.value)}
-            disabled={pending}
+            disabled={pending || offline}
             required
           />
 
@@ -304,7 +316,7 @@ export default function BookingForm({
                 id="booking-weekday"
                 value={weekday}
                 onChange={(event) => setWeekday(Number(event.target.value))}
-                disabled={pending}
+                disabled={pending || offline}
               >
                 {WEEKDAYS.map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}
               </select>
@@ -318,7 +330,7 @@ export default function BookingForm({
                 step={1}
                 value={occurrences}
                 onChange={(event) => setOccurrences(event.target.value)}
-                disabled={pending}
+                disabled={pending || offline}
                 required
               />
             </>
@@ -333,7 +345,7 @@ export default function BookingForm({
             step={1}
             value={hour}
             onChange={(event) => setHour(Number(event.target.value))}
-            disabled={pending}
+            disabled={pending || offline}
             required
           />
 
@@ -342,13 +354,13 @@ export default function BookingForm({
             id="booking-room"
             value={room}
             onChange={(event) => setRoom(event.target.value as Room)}
-            disabled={pending}
+            disabled={pending || offline}
           >
             {ROOMS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
 
           <div className="booking-form__actions">
-            <button type="submit" disabled={pending || !classId}>
+            <button type="submit" disabled={pending || offline || !classId}>
               {pending ? (editing ? 'Saving…' : 'Booking…') : editing ? 'Save booking' : weekly ? 'Book weekly bookings' : 'Book slot'}
             </button>
             <button type="button" onClick={() => onDone()} disabled={pending}>Cancel</button>
