@@ -290,9 +290,6 @@ select:focus-visible {
 
 .schedule-grid__corner,
 .schedule-grid__header {
-  position: sticky;
-  top: 8.65rem;
-  z-index: 3;
   min-height: 44px;
   margin: 0;
   padding: 0.6rem 0.3rem;
@@ -304,7 +301,6 @@ select:focus-visible {
 }
 
 .schedule-grid__corner {
-  z-index: 4;
   text-align: right;
 }
 
@@ -426,11 +422,6 @@ select:focus-visible {
   .date-controls input,
   .date-controls button {
     flex: 1 1 0;
-  }
-
-  .schedule-grid__corner,
-  .schedule-grid__header {
-    top: 8.2rem;
   }
 
   .schedule-grid__cell > button,
@@ -905,11 +896,6 @@ select:focus-visible {
     padding: 1rem 0.5rem 2rem;
   }
 
-  .schedule-grid__corner,
-  .schedule-grid__header {
-    top: 8.2rem;
-  }
-
   .workspace-overlay {
     align-items: end;
     padding: 0;
@@ -926,8 +912,4 @@ select:focus-visible {
     position: static;
   }
 
-  .schedule-grid__corner,
-  .schedule-grid__header {
-    top: 4.25rem;
-  }
 }

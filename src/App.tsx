@@ -207,7 +207,7 @@ export default function App() {
               void refreshSchedule().catch(() => undefined);
             }}
           />
-          <button className="workspace-panel__close" type="button" onClick={closeSlotPanel}>Close</button>
+          <button className="workspace-panel__close" type="button" onClick={closeSlotPanel} aria-label="Close booking form">×</button>
         </WorkspacePanel>
       )}
       {selectedBooking && (
