@@ -7,12 +7,21 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,ico}'], runtimeCaching: [] },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,ico}'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\//,
+            handler: 'CacheFirst',
+            options: { cacheName: 'public-assets' },
+          },
+        ],
+      },
       manifest: false,
       pwaAssets: false,
       includeAssets: false,
     }),
   ],
   server: { port: 4173 },
-  build: { minify: true, sourcemap: false, rollupOptions: { output: { manualChunks: {} } } },
+  build: { minify: true, sourcemap: false },
 });
