@@ -46,10 +46,18 @@ function hourLabel(hour: number): string {
   return `${hour.toString().padStart(2, '0')}:00`;
 }
 
-function activeBookingMap(schedule: DaySchedule): Map<string, Booking> {
-  return new Map(schedule.bookings
-    .filter((booking) => booking.cancelledAt === null)
-    .map((booking) => [`${booking.room}:${booking.hour}`, booking]));
+function bookingMap(schedule: DaySchedule): Map<string, Booking> {
+  const bookings = new Map<string, Booking>();
+  for (const booking of schedule.bookings) {
+    const key = `${booking.room}:${booking.hour}`;
+    const existing = bookings.get(key);
+    // A cancelled historical instance may share a slot with a later booking.
+    // Prefer the current booking while retaining cancelled-only history.
+    if (!existing || (existing.cancelledAt !== null && booking.cancelledAt === null)) {
+      bookings.set(key, booking);
+    }
+  }
+  return bookings;
 }
 
 export default function Schedule({
@@ -126,7 +134,7 @@ export default function Schedule({
   };
 
   const currentSlots = new Map((schedule?.slots ?? []).map((slot) => [slot.hour, slot]));
-  const bookings = schedule ? activeBookingMap(schedule) : new Map<string, Booking>();
+  const bookings = schedule ? bookingMap(schedule) : new Map<string, Booking>();
   const showGrid = schedule !== null;
 
   return (
@@ -191,22 +199,15 @@ export default function Schedule({
                           Unavailable
                         </button>
                       ) : booking ? (
-                        booking.canEdit && !stale ? (
-                          <button
-                            type="button"
-                            className="booking booking--editable"
-                            aria-label={`Edit ${booking.className} in ${cellLabel}`}
-                            onClick={() => onSelectBooking?.(booking)}
-                          >
-                            <strong>{booking.className}</strong>
-                            <span>{booking.teacherName}</span>
-                          </button>
-                        ) : (
-                          <div className="booking" aria-label={`${booking.className} in ${cellLabel}`}>
-                            <strong>{booking.className}</strong>
-                            <span>{booking.teacherName}</span>
-                          </div>
-                        )
+                        <button
+                          type="button"
+                          className={`booking${booking.canEdit ? ' booking--editable' : ''}`}
+                          aria-label={`View details for ${booking.className} in ${cellLabel}`}
+                          onClick={() => onSelectBooking?.(booking)}
+                        >
+                          <strong>{booking.className}</strong>
+                          <span>{booking.teacherName}</span>
+                        </button>
                       ) : stale ? (
                         <div className="schedule-grid__unknown" aria-label={`${cellLabel} unavailable while schedule is stale`}>
                           Unavailable

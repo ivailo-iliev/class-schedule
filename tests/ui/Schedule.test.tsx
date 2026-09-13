@@ -1,8 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
+import BookingDetails from '../../src/components/BookingDetails';
 import Schedule from '../../src/components/Schedule';
-import type { DaySchedule } from '../../src/lib/types';
+import type { Booking, DaySchedule } from '../../src/lib/types';
 
 function scheduleFor(date = '2026-03-29'): DaySchedule {
   return {
@@ -33,6 +35,30 @@ function scheduleFor(date = '2026-03-29'): DaySchedule {
 function renderLoaded(loader = vi.fn(async (date: string) => scheduleFor(date))) {
   render(<Schedule initialDate="2026-03-29" loadSchedule={loader} />);
   return loader;
+}
+
+function renderScheduleWithDetails(schedule: DaySchedule) {
+  function ScheduleWithDetails() {
+    const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+    return (
+      <>
+        <Schedule
+          initialDate={schedule.date}
+          loadSchedule={async () => schedule}
+          onSelectBooking={setSelectedBooking}
+        />
+        {selectedBooking && (
+          <BookingDetails
+            booking={selectedBooking}
+            onClose={() => setSelectedBooking(null)}
+            onRefresh={vi.fn(async () => undefined)}
+          />
+        )}
+      </>
+    );
+  }
+
+  render(<ScheduleWithDetails />);
 }
 
 describe('Schedule screen', () => {
@@ -66,6 +92,50 @@ describe('Schedule screen', () => {
     expect(screen.getByText('Teacher B')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Edit.*Teacher B/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Cancel.*Teacher B/i })).not.toBeInTheDocument();
+  });
+
+  test('opens editable and another-teacher bookings in their details view', async () => {
+    const schedule = scheduleFor();
+    schedule.bookings.push({
+      ...schedule.bookings[0],
+      id: 'booking-owned',
+      className: 'Owned yoga class',
+      teacherId: 'teacher-a',
+      teacherName: 'Teacher A',
+      room: 'room_1',
+      hour: 9,
+      startsAt: '2026-03-29T09:00:00+02:00',
+      canEdit: true,
+    });
+    schedule.bookings.push({
+      ...schedule.bookings[0],
+      id: 'booking-cancelled',
+      className: 'Cancelled yoga class',
+      room: 'room_1',
+      hour: 11,
+      startsAt: '2026-03-29T11:00:00+02:00',
+      cancelledAt: '2026-03-28T12:00:00+02:00',
+      canEdit: false,
+    });
+    renderScheduleWithDetails(schedule);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Owned yoga class/ }));
+    expect(screen.getByRole('heading', { name: 'Booking details' })).toBeInTheDocument();
+    expect(screen.getByText('Editable')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit booking' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close booking details' }));
+    fireEvent.click(screen.getByRole('button', { name: /Very long pilates class title/ }));
+    const details = screen.getByRole('region', { name: 'Booking details' });
+    expect(within(details).getByText('Teacher B')).toBeInTheDocument();
+    expect(within(details).getByText('Read-only')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close booking details' }));
+    fireEvent.click(screen.getByRole('button', { name: /Cancelled yoga class/ }));
+    expect(within(screen.getByRole('region', { name: 'Booking details' })).getByText('Cancelled')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
   });
 
   test('renders invalid DST starts as disabled non-interactive cells', async () => {
