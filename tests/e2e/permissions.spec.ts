@@ -29,6 +29,119 @@ function jwtWithWrongKey() {
   return `${header}.${payload}.${signature}`;
 }
 
+function sofiaSlot(date: string, hour: number): string {
+  return new Date(`${date}T${String(hour).padStart(2, '0')}:00:00+03:00`).toISOString();
+}
+
+type BookingSnapshot = {
+  id: string;
+  class_id: string;
+  room: string;
+  starts_at: string;
+  cancelled_at: string | null;
+  version: number;
+};
+
+async function bookingSnapshot(
+  api: import('@playwright/test').APIRequestContext,
+  accessToken: string,
+  bookingId: string,
+): Promise<BookingSnapshot> {
+  const response = await api.get(`/rest/v1/bookings?id=eq.${bookingId}&select=id,class_id,room,starts_at,cancelled_at,version`, {
+    headers: restHeaders(accessToken),
+  });
+  expect(response.status()).toBe(200);
+  const rows = await response.json() as BookingSnapshot[];
+  expect(rows).toHaveLength(1);
+  return rows[0]!;
+}
+
+async function expectDeniedMutation(response: import('@playwright/test').APIResponse): Promise<void> {
+  if (response.status() === 200) {
+    expect(await response.json()).toEqual([]);
+    return;
+  }
+  expect(response.status()).toBeGreaterThanOrEqual(400);
+}
+
+async function verifyTeacherBookingPermissions(
+  api: import('@playwright/test').APIRequestContext,
+  accessToken: string,
+  fixture: E2EState['sets'][string],
+): Promise<void> {
+  const bRows = await api.get(`/rest/v1/bookings?class_id=eq.${fixture.teacherB.classId}&select=id`, {
+    headers: restHeaders(accessToken),
+  });
+  expect(bRows.status()).toBe(200);
+  const bBookingId = (await bRows.json() as Array<{ id: string }>)[0]?.id;
+  expect(bBookingId).toBeTruthy();
+  const bBefore = await bookingSnapshot(api, accessToken, bBookingId!);
+
+  const crossInsert = await api.post('/rest/v1/bookings', {
+    headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
+    data: {
+      class_id: fixture.teacherB.classId,
+      room: 'room_1',
+      starts_at: sofiaSlot(fixture.nextDay, 15),
+    },
+  });
+  await expectDeniedMutation(crossInsert);
+
+  const crossEdit = await api.patch(`/rest/v1/bookings?id=eq.${bBookingId}`, {
+    headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
+    data: {
+      room: 'room_2',
+      starts_at: sofiaSlot(fixture.nextDay, 16),
+    },
+  });
+  await expectDeniedMutation(crossEdit);
+
+  const crossCancel = await api.patch(`/rest/v1/bookings?id=eq.${bBookingId}`, {
+    headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
+    data: { cancelled_at: sofiaSlot(fixture.nextDay, 17) },
+  });
+  await expectDeniedMutation(crossCancel);
+  expect(await bookingSnapshot(api, accessToken, bBookingId!)).toEqual(bBefore);
+
+  const ownInsert = await api.post('/rest/v1/bookings', {
+    headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
+    data: {
+      class_id: fixture.teacherA.classId,
+      room: 'room_1',
+      starts_at: sofiaSlot(fixture.nextDay, 13),
+    },
+  });
+  expect(ownInsert.status()).toBe(201);
+  const ownRows = await ownInsert.json() as Array<{ id: string }>;
+  expect(ownRows).toHaveLength(1);
+  const ownBookingId = ownRows[0]!.id;
+
+  const ownEdit = await api.post('/rest/v1/rpc/edit_booking', {
+    headers: restHeaders(accessToken),
+    data: {
+      p_id: ownBookingId,
+      p_expected_version: 1,
+      p_class_id: fixture.teacherA.classId,
+      p_room: 'room_2',
+      p_date: fixture.nextDay,
+      p_hour: 14,
+    },
+  });
+  expect(ownEdit.status()).toBe(200);
+
+  const ownCancel = await api.post('/rest/v1/rpc/cancel_booking', {
+    headers: restHeaders(accessToken),
+    data: { p_id: ownBookingId, p_expected_version: 2 },
+  });
+  expect(ownCancel.status()).toBe(200);
+  expect(await bookingSnapshot(api, accessToken, ownBookingId)).toMatchObject({
+    class_id: fixture.teacherA.classId,
+    room: 'room_2',
+    cancelled_at: expect.any(String),
+    version: 3,
+  });
+}
+
 async function issuedAccessToken(page: import('@playwright/test').Page): Promise<string> {
   return page.evaluate(() => {
     for (const value of Object.values(localStorage)) {
@@ -137,6 +250,13 @@ test('teacher A keeps a native session and sees both occupied rooms', async ({ p
     expect(mismatch.status()).toBe(403);
   } finally {
     await manifestApi.dispose();
+  }
+
+  const writeApi = await request.newContext({ baseURL: state.apiUrl });
+  try {
+    await verifyTeacherBookingPermissions(writeApi, accessToken, fixture);
+  } finally {
+    await writeApi.dispose();
   }
 });
 
