@@ -1,369 +1,236 @@
-# Class Scheduler V2 Clean Rewrite
+# Class Scheduler V2 — Simplified Clean Rewrite
 
 **Status:** APPROVED — ready for implementation
 
-**Recorded:** 2026-09-16
+**Updated:** 2026-09-16
 
-**Authority:** This document records the product and implementation decisions agreed for the clean rewrite. It supersedes earlier V1 planning where the two conflict.
+**Authority:** This is the current V2 implementation plan. It replaces the earlier version of this document and supersedes older V1 plans where they conflict.
 
-## 1. Outcome
+## 1. Goal
 
-Replace the current experimental application with a much smaller, phone-friendly internal scheduler. The rewrite keeps only the business rules the school actually needs:
+Replace the experimental app with a small, phone-friendly internal scheduler:
 
-- Teachers see a daily schedule for two rooms and create confirmed bookings.
-- A booking is one one-hour record. A batch can create several concrete records for simple recurrence.
-- A booking title is free text with suggestions from prior titles; there is no separate classes or modules model.
-- Cancellation is retained on each booking for internal billing.
-- A teacher can cancel one booking or that booking and the later bookings from the same creation batch.
-- Teachers use reusable personal access links to establish persistent native Supabase sessions.
-- The application is installable but online-only.
+- Teachers view the daily schedule for two rooms and add confirmed one-hour bookings.
+- A booking can be created once or as a batch of concrete recurring dates.
+- Teachers can cancel one booking or the selected booking and future bookings from its batch.
+- Cancelled records remain available for internal room-usage billing.
+- Teachers sign in with a six-digit email code and normally remain signed in on that device.
+- The app can be added to a home screen, but always requires a network connection.
 
-Start fresh. The application has not entered production, no existing records need migration, and no compatibility layer is required. Earlier code, schema, and APIs may be deleted when the rewrite begins, but existing planning documents remain historical records.
+This is a clean rewrite. There is no production data to migrate and no compatibility layer to preserve.
 
-## 2. Boundaries and architecture
+## 2. Architecture
 
-### Included in V2
+- Build a static SPA with **Svelte, Vite, and TypeScript**. Do not use React or SvelteKit.
+- Host the compiled assets on the existing free Netlify site.
+- Use `@supabase/supabase-js` directly from the browser for authentication and permitted database reads/writes.
+- Use **no Netlify Functions** and no application server.
+- Keep state local to a few components: login, schedule, and booking dialog. Do not add a router or global state library.
+- Add a static `manifest.webmanifest`, icons, theme metadata, `start_url: "/"`, `scope: "/"`, and `display: "standalone"`.
+- Do not add a service worker, offline storage, cached schedules, background sync, or a custom install flow.
 
-- Teacher access through a reusable personal link.
-- Persistent login on each browser or installed-app storage context.
-- One daily schedule with Room 1 and Room 2 from 08:00 through 21:00.
-- One-off booking creation.
-- Simple recurring creation by materializing selected weekdays over a number of weeks.
-- Private notes visible only to the teacher who owns the booking.
-- Cancel one and cancel future within a creation batch.
-- Internal room-usage billing queries based on a current hourly rate.
+## 3. Authentication
 
-### Explicitly excluded
+Use native **Supabase email OTP** with a six-digit code, not a clickable magic link.
 
-- Parent profiles, children, enrollment, parent booking requests, or notifications.
-- Teacher availability slots and approval workflows. Individual lessons are coordinated offline, then entered as confirmed bookings.
-- A `classes` table, module/series entities, class types, attendance, capacities, payments, invoices, or payment collection.
-- A recurrence-rule table or background recurrence engine.
-- Editing/rescheduling an existing booking. Cancel and recreate instead.
-- Admin, billing, or profile-management UI. Use Supabase SQL/Table Editor for these internal operations.
-- Offline data, cached schedules, queued writes, background sync, or reconciliation logic.
-- Roles, generic audit logs, optimistic versions, soft-delete frameworks, rooms tables, and configuration frameworks.
+### Teacher provisioning and login
 
-### Runtime shape
+1. The administrator adds the teacher's `name`, normalized `email`, and `active` state to `public.teachers` using Supabase's Table Editor or SQL Editor.
+2. The teacher enters that email in the app.
+3. Supabase sends a six-digit OTP.
+4. The teacher enters the code and Supabase creates a normal persistent session. The first successful OTP may also create the managed Supabase Auth user.
+5. RLS grants application access only when the verified email in the JWT matches an active teacher row.
 
-- Build a static single-page application with Svelte, Vite, and TypeScript. Do not use React or SvelteKit.
-- Netlify serves the compiled static assets and one JSON API function; it does not render HTML.
-- The browser uses `@supabase/supabase-js` directly for permitted reads and database RPC calls.
-- Use one Netlify Function, `POST /api/access`, only for exchanging a private access token for a native Supabase session.
-- Use a public static web manifest with `start_url: "/"` and `scope: "/"`. Do not generate a private manifest.
-- Do not register a service worker. The installed app is deliberately online-only and shows a clear network error instead of stale availability.
-- Configure the SPA fallback so `/access#<token>` loads the same static client application.
+An authenticated email that is not in the active teacher allowlist receives no application data. Deactivating the teacher row blocks the session on its next database request.
 
-The principal UI components are `App`, `AccessScreen`, `Schedule`, `BookingDialog`, and `BookingDetailsDialog`. Prefer local component state and small typed data helpers; do not add a global state framework or client-side router unless implementation proves one indispensable.
+### Email delivery
 
-## 3. Data model
+- Configure Supabase custom SMTP with a dedicated free Gmail account initially.
+- Use `smtp.gmail.com` on port `587`, the Gmail address as the username/sender, and a Google App Password stored only in Supabase configuration.
+- Enable two-step verification on that Gmail account before creating the App Password.
+- Change the Supabase email template to display `{{ .Token }}` as the login code rather than linking through `{{ .ConfirmationURL }}`.
+- Do not commit SMTP credentials or expose them through Vite environment variables.
 
-Create exactly three application-owned tables. Supabase Auth's managed tables do not count as application tables.
+Do not build custom access links or tokens, password creation/recovery, OAuth or another external identity provider, signup/account-management screens, hidden Auth-user exchange, or an authentication API.
 
-### `public.profiles`
+## 4. Minimal data model
 
-| Column | Type and rule |
+Supabase's managed Auth tables are not application tables.
+
+### `public.teachers`
+
+| Column | Rule |
 |---|---|
-| `id` | `uuid` primary key, generated by the database |
-| `name` | nonblank `text` |
-| `active` | `boolean not null default true` |
-| `access_token_hash` | nullable unique 64-character lowercase SHA-256 hex digest; never expose it to the browser |
-| `auth_user_id` | nullable unique `uuid` referencing `auth.users`; populated when native access is first established |
-| `created_at` | `timestamptz not null default now()` |
+| `id` | database-generated UUID primary key |
+| `email` | required, normalized, case-insensitively unique |
+| `name` | required, nonblank text |
+| `active` | boolean, default `true` |
+| `created_at` | timestamp, default `now()` |
 
-There is no application role column. Every active profile is a teacher. Profile provisioning, deactivation, link issuance, and exceptional Auth session revocation are administrator operations performed in Supabase, not app features.
+There are no roles or per-teacher rates. The email is the link between the Supabase session and the teacher record; no `auth_user_id` binding is needed.
 
 ### `public.bookings`
 
-| Column | Type and rule |
+| Column | Rule |
 |---|---|
-| `id` | `uuid` primary key, generated by the database |
-| `batch_id` | `uuid not null`; one generated value shared by all rows from one creation request, including a one-off request |
-| `teacher_id` | `uuid not null references public.profiles(id) on delete restrict` |
-| `title` | trimmed, nonblank `text` with a practical database length limit of 200 characters |
-| `room` | `smallint not null check (room in (1, 2))` |
-| `booking_date` | `date not null` in the studio timezone |
-| `hour` | `smallint not null check (hour between 8 and 21)` |
-| `private_note` | nullable `text`, at most 1,000 characters |
-| `cancelled_at` | nullable `timestamptz`; null means active |
-| `created_at` | `timestamptz not null default now()` |
+| `id` | database-generated UUID primary key |
+| `batch_id` | required UUID shared by one creation action |
+| `teacher_id` | required reference to `teachers.id` |
+| `title` | required trimmed free text, maximum 200 characters |
+| `details` | optional text, maximum 1,000 characters; may contain a child's name |
+| `room` | integer, Room 1 or Room 2 |
+| `booking_date` | local calendar date |
+| `hour` | whole-hour start from 08 through 21 |
+| `cancelled_at` | nullable timestamp; null means active |
+| `created_at` | timestamp, default `now()` |
 
-Each row represents exactly one hour beginning at `hour:00`. Add these partial unique indexes for rows where `cancelled_at is null`:
+Each row is exactly one hour. Add partial unique indexes for active rows:
 
-1. `(room, booking_date, hour)` — an active room can have only one booking in a slot.
-2. `(teacher_id, booking_date, hour)` — a teacher can have only one active booking in a slot, even across rooms.
+```text
+(room, booking_date, hour) where cancelled_at is null
+(teacher_id, booking_date, hour) where cancelled_at is null
+```
 
-Cancelled rows remain permanently available to privileged billing queries but stop occupying their room and teacher slot. The application receives no `DELETE`, unrestricted `INSERT`, or unrestricted `UPDATE` privilege.
+These indexes are the final authority for concurrent room and teacher conflicts. Cancelled rows remain stored but free both slots.
 
 ### `private.room_rate`
 
-| Column | Type and rule |
+Keep one private singleton configuration row:
+
+| Column | Rule |
 |---|---|
-| `singleton` | `boolean primary key default true check (singleton)`; permits exactly one row |
-| `hourly_rate` | nonnegative `numeric(10,2) not null` |
-| `currency` | uppercase three-character currency code |
-| `updated_at` | `timestamptz not null default now()` |
+| `singleton` | boolean primary key constrained to `true` |
+| `hourly_rate` | nonnegative `numeric(10,2)` |
+| `currency` | three-character currency code |
+| `updated_at` | timestamp, default `now()` |
 
-This table is private configuration, edited through Supabase only. It is not readable by ordinary application sessions.
+This is the hourly charge for **room usage**, never teacher pay. Only an administrator/service role can read or change it.
 
-Do not add tables for classes, rooms, recurrence, individual lessons, students, parents, availability, requests, attendance, payments, invoices, or audit events.
+## 5. Authorization and direct data operations
 
-## 4. Access and authorization
+Use RLS and narrow column grants. An active teacher is resolved by case-insensitive comparison of `auth.jwt() ->> 'email'` with `teachers.email`.
 
-### Reusable personal access link
+- Active teachers can read active booking rows and the `id`/`name` of active teachers.
+- A teacher can insert bookings only with their own `teacher_id`.
+- A teacher can update only the `cancelled_at` column of their own bookings.
+- Teachers cannot delete bookings or read the room-rate table.
+- Inactive or unknown authenticated users cannot read or mutate app data.
 
-The administrator issues a link shaped as:
+Use direct Supabase operations; do not add booking RPCs or security-definer functions:
 
-```text
-https://<app-origin>/access#<64-lowercase-hex-token>
-```
+- **Create:** generate one `batch_id` in the browser and send all concrete booking rows in one `insert([...])` request. PostgreSQL executes the multi-row insert atomically; if either unique index reports a conflict, no row in the batch is created.
+- **Cancel one:** update `cancelled_at` for the selected owned booking ID when it is still null.
+- **Cancel selected and future:** issue one update for active owned rows with the same `batch_id` and `booking_date` on or after the selected date. Every batch uses one fixed hour, so date ordering defines “future” within it.
+- **Correct mistakes:** cancel and recreate; there is no edit or reschedule operation.
 
-The fragment is not sent in ordinary HTTP requests or `Referer` headers. The raw token is a password-equivalent secret: generate 32 cryptographically random bytes, return the raw value once to the administrator, and store only its SHA-256 digest in `profiles.access_token_hash`.
+The client validates title/details lengths, rooms, hours, nonempty unique dates, recurrence limits, and past dates before writing. RLS protects ownership and database constraints protect referential integrity and scheduling conflicts.
 
-Provide a service/admin-only SQL function `issue_access_link(profile_id uuid)` that replaces the stored digest and returns the new raw token once. Rotation invalidates old links for future exchanges. The access token is reusable and has no `used_at` or consumption state, so messaging-app link previews cannot consume it.
+### Lesson-details privacy boundary
 
-### `POST /api/access`
+The normal schedule query omits `details`, and the frontend fetches/displays details only when the selected booking belongs to the signed-in teacher. This is deliberate **UX filtering, not a database confidentiality boundary** in the teacher-only V2: another authenticated teacher capable of making raw Supabase requests could request that column.
 
-Accept exactly this JSON body:
-
-```json
-{ "token": "<64 lowercase hexadecimal characters>" }
-```
-
-The function must:
-
-1. Require POST, JSON content type, the configured exact application origin, and a small bounded request body.
-2. Hash the token and resolve one active profile by digest with service credentials.
-3. Ensure that profile has one dedicated native Supabase Auth user. If `auth_user_id` is null, create the internal user and bind it atomically or safely recover from a concurrent first exchange.
-4. Generate and immediately verify an admin magic link server-side to obtain a normal access/refresh session for that exact Auth user. No email is sent and no SMTP dependency is introduced.
-5. Return the native session plus only the safe profile fields `id` and `name`.
-6. Return `Cache-Control: private, no-store` and the corresponding Netlify CDN no-store header on successes and errors.
-7. Return generic `invalid_access` for malformed, unknown, inactive, or rotated tokens. Do not echo tokens or provider/database details.
-8. Apply a modest Netlify rate limit. The token's entropy remains the primary protection.
-
-The SPA calls `supabase.auth.setSession(...)` and uses Supabase's normal persistent session and refresh behavior. After a successful exchange, remove the fragment from the visible URL with `history.replaceState`. A later visit through the same reusable link may establish a session on another authorized teacher device.
-
-Do not add `/api/profile`, a manifest function, health endpoint, custom JWT signing, application passwords, signup, forgot-password UI, or external identity providers.
-
-### Session and revocation semantics
-
-- A valid persisted session opens the schedule directly; teachers do not re-enter a password.
-- If there is no valid session and no access fragment, show `AccessScreen` asking the teacher to open their personal link.
-- A token preview or plain GET never performs an exchange.
-- Deactivating a profile makes RLS deny database access on the next request, including requests made with an otherwise valid existing session.
-- Rotating `access_token_hash` prevents future exchanges using the old link but intentionally does not terminate already established native sessions.
-- When immediate device revocation is required, the administrator separately revokes that Auth user's sessions.
-- Sign-out is a simple local/native Supabase sign-out action; do not build account management.
-
-### RLS, grants, and private data
-
-Use `auth.uid()` joined to `profiles.auth_user_id` for identity. Every application read or RPC requires the matching profile to exist and be active.
-
-- Active teachers can read safe schedule columns for all active bookings and the safe `id`/`name` columns of active profiles.
-- Only the owning active teacher can create or cancel their bookings through the approved RPCs.
-- `private_note` is never part of shared schedule reads. Column grants and function return types must prevent it from leaking through `select('*')`, not merely hide it in the UI.
-- `access_token_hash` and `auth_user_id` are not readable by ordinary application users.
-- Revoke default/public function execution and table privileges, then grant only the minimum explicit calls and columns.
-- Security-definer functions use a fixed `search_path`, fully qualified names, caller identity checks, and no caller-supplied teacher ID.
-- The service key is function-scoped and never included in a `VITE_*` variable or browser bundle.
-
-## 5. Database interfaces and scheduling rules
-
-### Shared schedule read
-
-For the selected `booking_date`, query active bookings directly through Supabase using only the shared-safe columns:
-
-```text
-id, batch_id, teacher_id, title, room, booking_date, hour, created_at
-```
-
-Join or separately resolve active teacher names through safe profile columns. Sort by room and hour. The UI must distinguish a failed fetch from a legitimately empty day; never display a network/auth failure as free availability.
-
-### `create_booking_batch`
-
-Expose one transactional database function with inputs equivalent to:
-
-```text
-create_booking_batch(
-  title text,
-  room smallint,
-  dates date[],
-  hour smallint,
-  private_note text default null
-)
-```
-
-Rules:
-
-- Derive `teacher_id` from the authenticated active profile. Never accept it from the client.
-- Accept 1 through 104 unique concrete dates. Reject nulls, duplicates, and an empty or oversized array.
-- Trim and validate the title; normalize an empty note to null and enforce the 1,000-character limit.
-- Validate Room 1 or 2, an hour from 08 through 21, and that no requested local slot has already elapsed in `Europe/Sofia`.
-- Generate one `batch_id` inside the function and use it for every inserted row.
-- Insert all rows in one transaction. The two partial unique indexes are the final concurrency authority.
-- If any teacher or room slot conflicts, insert zero rows and return a stable `booking_conflict` error. Do not skip occupied dates or partially create a batch.
-- Return the created safe booking rows only after the transaction succeeds.
-
-The client may preflight against its current schedule to improve feedback, but preflight is never treated as a reservation.
-
-### `get_booking_private`
-
-Expose an owner-only function:
-
-```text
-get_booking_private(booking_id uuid)
-```
-
-For an active authenticated owner, return the selected booking's `private_note` and `future_count`. `future_count` is the number of still-active bookings in the same batch strictly later than the selected booking by `(booking_date, hour)`. Other teachers receive no private data and cannot use the response to infer batch contents beyond shared schedule fields.
-
-### `cancel_booking`
-
-Expose an owner-only transactional function:
-
-```text
-cancel_booking(booking_id uuid, scope text) -- scope is 'one' or 'future'
-```
-
-Rules:
-
-- Lock and verify the selected booking belongs to the authenticated active teacher.
-- Permit cancellation only when the selected slot is the current local clock hour or later. Earlier hours and earlier dates are historical and cannot be cancelled through the app.
-- `one` sets `cancelled_at` on only the selected active row.
-- `future` sets `cancelled_at` on the selected row and all still-active rows in the same batch with a later `(booking_date, hour)`.
-- The selected row is therefore always included in `future` scope.
-- If the selected row is already cancelled, return success as a no-op, do not newly cancel related rows regardless of the requested scope, and do not replace the original timestamp.
-- Cancellation frees both unique active-slot constraints immediately.
-- Return the cancelled booking IDs/count without returning private notes.
-
-The UI offers “Cancel future classes” only when `future_count > 0`; otherwise it offers only the single-booking cancellation.
+If parent access is later implemented, expose a restricted parent-facing view or API that never returns lesson details. Do not pre-build that layer now.
 
 ## 6. Client behavior
 
-### Schedule
+### Login and session
 
-- Default to today in `Europe/Sofia` and allow previous/next day plus direct date selection.
-- Render two room columns and hourly rows for 08:00–21:00 with touch-friendly controls.
-- Empty slots can open `BookingDialog` prefilled with that room, date, and hour.
-- Occupied slots show the booking title and teacher name. Shared views never show private notes.
-- The owner can open private details and cancellation actions; another teacher sees public details only.
-- Refresh after successful creation or cancellation. Do not add polling, realtime subscriptions, stale caches, or reconciliation machinery in V2.
+- Show an email field, “Send code”, a six-digit code field, and “Verify”.
+- Use Supabase's persistent browser session; a valid session opens the schedule directly after reload.
+- Provide sign out and clear client state when authorization fails.
+- After verification, show “Access not granted” when no active matching teacher exists.
+
+### Daily schedule
+
+- Default to today in `Europe/Sofia`; support previous/next day and direct date selection.
+- Show Room 1 and Room 2 with hourly slots from 08:00 through 21:00.
+- Display each active booking's title and teacher name, never its details in the grid.
+- Distinguish a failed fetch from an empty day so unavailable data is never shown as free rooms.
+- Refresh after successful creation or cancellation; do not add realtime, polling, or client caching in V2.
 
 ### Booking creation
 
-- Use one `title` text field. Add a native `datalist` populated client-side from up to 100 of the current teacher's most recent booking titles, de-duplicated in recent-first order.
-- Do not add a class selector or class-management screen. Titles such as “English A1 part 1”, “English A1 free trial lesson”, and “Individual lesson” express the business meaning without schema.
-- Include an optional field labelled “Private notes”. It may contain a student's name or logistical detail, but there is no dedicated student, child, lesson-type, or attendance field.
-- Allow either one-off or recurring creation.
+- Clicking an empty slot opens a dialog prefilled with date, room, and hour.
+- `title` is free text with a native `datalist` built from the signed-in teacher's recent distinct titles. There is no classes table or class-management UI.
+- `details` is optional and may hold the child name or practical notes.
+- One-off creation inserts one row with one new batch ID.
+- Recurring creation chooses a Monday-based starting week, one or more weekdays, and 1–52 weeks. The browser materializes and previews the concrete dates, with a maximum of 104 rows, then submits them as one batch.
+- A later creation is always a new batch, even when its title or pattern matches an earlier batch.
 
-For recurring creation:
+### Cancellation
 
-1. Choose a week beginning on Monday; default to the Monday containing the currently selected schedule date.
-2. Choose one or more weekdays.
-3. Choose 1–52 consecutive weeks.
-4. Materialize every selected weekday in those weeks as concrete dates.
-5. Reject a result above 104 dates or containing an elapsed slot.
-6. Show the complete date preview and total count before submission.
-7. Submit the concrete date array once to `create_booking_batch`.
+- The booking owner can choose “Cancel this booking”.
+- When the batch has a later active row, also offer “Cancel this and future bookings”.
+- Confirm the selected scope before the direct update.
+- Other teachers can see that the slot is occupied but receive no cancellation controls.
 
-There is no stored recurrence rule. A later recurring creation is a separate batch even if its title and pattern match an earlier one.
+## 7. Billing
 
-### Details and cancellation
+Billing remains an administrator-only SQL/reporting task; there is no billing UI.
 
-- Opening an owned booking fetches private details only then, through `get_booking_private`.
-- Make destructive choices explicit: “Cancel this class” and, only when applicable, “Cancel this and future classes in this batch”.
-- Confirm the selected scope before calling the RPC.
-- Do not provide edit, move, restore, or whole-title-series controls. The supported correction flow is cancel and recreate.
+- One active booking row equals one billable room hour.
+- For a requested month, group active booking hours by teacher and multiply each count by the single current `private.room_rate.hourly_rate`.
+- Report cancelled hours separately and exclude them from the default billable amount.
+- Use the current rate retroactively; do not snapshot a rate on each booking.
+- If the singleton rate is missing, report “rate not configured” rather than calculating zero.
 
-### Installability and failures
+## 8. Explicit non-goals
 
-- Supply a valid static manifest, application icons, theme/background colors, display mode, root scope, and root start URL.
-- Do not add credentials to a manifest, URL path, query string, local custom storage, analytics, or logs.
-- Rely on standard browser Add to Home Screen/install behavior; do not build a dynamic install-cookie flow.
-- On loss of connectivity, keep the public shell usable enough to explain that the schedule requires a connection. Do not present old schedule data as live room availability.
-- On authorization failure, clear sensitive client state and return to `AccessScreen`.
-- Keep forms keyboard accessible, label every control, manage dialog focus, and provide readable conflict/error announcements.
+- Parent accounts, enrollment, notifications, or parent-facing schedule access.
+- Teacher availability, booking requests, or approval workflows. Individual lessons are confirmed offline and then entered as bookings.
+- Payments, invoices, teacher compensation, or online payment collection.
+- Attendance tracking.
+- A classes/modules table; group modules, trials, and individual lessons are represented by booking titles.
+- Recurrence definitions or a background recurrence engine.
+- Offline operation or cached availability.
+- Admin/profile/billing UI, audit framework, generic roles, or configurable rooms.
 
-## 7. Internal billing behavior
+## 9. Implementation sequence
 
-Billing is a privileged database/reporting concern, not an application screen.
+1. Replace the experimental schema with the three small tables, constraints, grants, RLS policies, and administrator billing query; regenerate TypeScript database types.
+2. Configure Supabase email OTP and Gmail SMTP outside the repository, including the six-digit-code template.
+3. Replace the React client with the Svelte/Vite/TypeScript SPA and native Supabase session bootstrap.
+4. Implement the daily schedule, direct atomic booking creation, recurrence preview, owner details, and both cancellation scopes.
+5. Add the static manifest/icons and responsive, accessible styling.
+6. Remove obsolete functions, custom-access code, React dependencies, and unused schema. Verify that no secret is present in source or built assets.
 
-- A scheduled hour is one booking row.
-- For a requested calendar month, aggregate active scheduled hours per teacher and multiply by the one current `private.room_rate.hourly_rate`.
-- Report cancelled scheduled hours separately using `cancelled_at is not null`; they contribute zero to the default amount.
-- Use the current singleton rate retroactively for the requested month. Do not store a rate snapshot on bookings and do not create annual/monthly rate tables.
-- Currency comes from the singleton rate row.
-- If the rate row is missing, fail/report “rate not configured”; never silently calculate zero.
-- Run billing SQL with administrator/service privileges so ordinary teachers cannot read rates, private notes, or cancelled history.
+Implementation tasks start from committed state, use their own worktree/branch, and receive independent review as required by `AGENTS.md`.
 
-This is operational internal billing, not a locked financial ledger. A later policy change can introduce snapshots only when the business actually requires them.
+## 10. Acceptance tests
 
-## 8. Implementation sequence
+### Authentication and authorization
 
-1. Replace the current migration with the three-table schema, constraints, closed grants, RLS, access-link issuance, booking RPCs, and billing query/function. Regenerate TypeScript database types.
-2. Replace the existing access function with the reusable-token native-session exchange. Remove token consumption, install cookie/manifest function, profile function, health function, custom roles, and obsolete configuration.
-3. Replace the React client with the Svelte/Vite/TypeScript shell and persistent Supabase session bootstrap.
-4. Implement the daily schedule, safe shared reads, title suggestions, one-off/recurring dialog, private details, and the two cancellation scopes.
-5. Add the static manifest/icons and responsive/accessibility styling without offline caching.
-6. Remove unused dependencies and old code paths; ensure no secret, raw access token, private note, or service key is emitted in builds or logs.
+- Email OTP sends and verifies a six-digit code through the configured Gmail SMTP account; the session survives reload.
+- A known active email can use the app; an unknown or inactive email cannot read or mutate application data.
+- Deactivation blocks an already authenticated teacher on the next database request.
+- Teachers cannot create bookings for another teacher, cancel another teacher's booking, delete rows, or read the room rate.
+- No SMTP secret, service key, custom access token, or raw credential appears in the browser bundle or logs.
 
-Each implementation task starts from committed state, is completed and committed in its own worktree, and is independently reviewed before acceptance, as required by `AGENTS.md`.
+### Scheduling and cancellation
 
-## 9. Verification and acceptance
+- One-off creation inserts one row; recurring creation inserts exactly the previewed dates with one shared batch ID.
+- A batch insert is all-or-nothing when one requested slot conflicts.
+- Concurrent attempts for the same room/time or teacher/time produce one winner through the unique indexes.
+- Cancelling one affects only the selected row; cancelling future affects the selected and later active rows only in that batch.
+- Cancellation frees the room and teacher slot, retains the cancelled row, and the correction flow is cancel/recreate.
+- The normal schedule omits lesson details; the owner UI shows them only on demand. Tests and documentation acknowledge that this is not confidentiality against raw API use by another teacher.
 
-### Database and authorization tests
+### UI, recurrence, billing, and installability
 
-- Inactive profiles and unbound/unknown users cannot read or mutate application data.
-- An active teacher can read the safe schedule and safe active profile names, but cannot select `private_note`, `access_token_hash`, `auth_user_id`, rates, or cancelled history directly.
-- Creation stamps the authenticated teacher regardless of any client attempt to supply identity.
-- One-off creation stores one row and one batch ID.
-- Recurring creation stores exactly the previewed dates with one shared batch ID.
-- Duplicate dates, elapsed slots, invalid rooms/hours, invalid field lengths, and more than 104 dates fail without inserts.
-- Room collision and teacher collision each return `booking_conflict`; concurrent attempts yield one winner and no partial batch.
-- Two different teachers can book different rooms at different times; they cannot book the same room/time or be double-booked across rooms.
-- Only the owner can read a private note or cancel a booking.
-- Single cancellation affects one row. Future cancellation affects the selected row plus only later active rows in its batch, not earlier rows or another batch with the same title.
-- Cancellation is idempotent, preserves the first timestamp, permits the current clock hour, and rejects elapsed slots.
-- A cancelled slot can be booked again.
-- Billing counts one hour per row, excludes cancelled rows from the amount, reports cancelled hours separately, applies the current rate retroactively, and errors when the rate is absent.
+- The two-room 08:00–21:00 grid works on phone and desktop, and failures are not rendered as free slots.
+- Recurrence handles multiple weekdays, year boundaries, 52 weeks, and the 104-row limit using Sofia calendar dates rather than UTC duration arithmetic.
+- Monthly billing counts active one-hour rows times the global room rate, reports cancelled hours separately, and fails clearly when the rate is absent.
+- The manifest and icons validate, installed display mode is standalone, and no service worker or offline cache is registered.
+- Type checking, unit/component tests, database integration tests, production build, secret scan, and a manual two-teacher conflict/cancellation smoke test pass.
 
-### Access tests
+## 11. Fixed assumptions
 
-- A valid reusable token can establish native sessions more than once and is never marked consumed.
-- A link-preview GET has no effect.
-- Malformed, unknown, rotated, or inactive-profile tokens receive generic no-store errors.
-- Concurrent first exchanges create/bind only one Auth user for the profile.
-- A persisted session survives reload without the personal link.
-- Deactivation blocks an existing session through RLS; token rotation blocks old-link exchange while leaving already active sessions valid by design.
-- The browser bundle contains no service key, token hash, raw fixture token, or internal Auth-user address.
-
-### UI tests
-
-- Date navigation and the two-room 08:00–21:00 grid render correctly on narrow phone and desktop viewports.
-- Network/auth failures are not rendered as empty/free schedules.
-- Title autocomplete is free text and uses recent distinct values; there is no classes CRUD UI.
-- Recurrence date generation handles Monday-based weeks, multiple weekdays, year boundaries, 52 weeks, the 104-date cap, and daylight-saving dates because storage uses local date/hour rather than elapsed UTC recurrence arithmetic.
-- The date preview exactly matches the RPC payload.
-- Private notes are fetched only for the owner and never appear in another teacher's DOM or network response.
-- “Cancel future” appears only when a later active booking exists in the same batch, and both cancellation confirmations state their scope clearly.
-- Keyboard focus, labels, Escape/close behavior, error announcements, and touch targets are usable.
-- Manifest metadata is valid, no service worker is registered, and an installed/reloaded app requires current network data.
-
-### Release gates
-
-- Type checking, unit/component tests, database integration tests, production build, and end-to-end happy-path/conflict tests pass.
-- A secret scan of source, fixtures, logs, and built assets passes.
-- Manual smoke testing covers two teacher sessions, room and teacher conflicts, recurring atomicity, cancellation scopes, reload persistence, deactivation, and a messaging-app link preview.
-- The final change receives independent review with no blocking findings, or findings are fixed and re-reviewed.
-
-## 10. Fixed assumptions
-
-- Studio timezone is `Europe/Sofia`.
+- The timezone is `Europe/Sofia`.
 - There are exactly two rooms.
-- Bookable starts are whole hours from 08:00 through 21:00, and every booking lasts one hour.
-- Group modules and free trials are represented by booking titles; the app does not track attendance because module payment is handled offline.
-- Individual lessons are confirmed offline and then entered as bookings. The private note can identify the child for the teacher without introducing parent/child records.
-- Parents, enrollment, schedule-change subscriptions, availability, and booking requests are deferred until there is a demonstrated need; V2 does not pre-model them.
-- Each create action makes an independent batch. Matching titles do not merge batches.
-- Cancellation state is retained because it matters to internal billing.
-- Current rate application is intentionally retroactive and cancelled hours are nonbillable by default.
-- There is no production data to preserve, migrate, or backfill.
+- Starts are whole hours from 08:00 through 21:00 and every booking lasts one hour.
+- Group modules and free trials are distinguished by title; attendance and payment are handled offline.
+- Individual lessons are confirmed offline and may identify the child in `details`.
+- Every create action forms an independent batch with one fixed room and hour.
+- Cancellation history is retained for internal room billing.
+- The single current room rate applies retroactively; cancelled hours are nonbillable by default.
+- There is no production data to migrate or backfill.
