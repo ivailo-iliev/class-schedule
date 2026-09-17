@@ -41,6 +41,20 @@
 - Preserve recoverable history BEFORE destructive/risky changes.
 - NEVER commit credentials, tokens, .env, or secrets.
 
+## GitHub delivery contract
+- Remote code tasks use a worktree, the `github-pr-workflow` skill, and
+  `--completion-contract ivailo-iliev/class-schedule` at creation. Use
+  `local-only` only for intentionally unpublishable work.
+- A worker requests review only after making a coherent commit. The local
+  delivery bridge publishes that committed branch as a PR and records its URL
+  on the card.
+- A reviewer completes a PR task with `metadata.published_pr` set to that
+  exact URL. Hermes then verifies required GitHub checks at the PR head before
+  accepting completion; a green check on an older commit is not sufficient.
+- The bridge may request squash auto-merge only after this independent review
+  completion. A release is accepted only after the post-merge CI run on `main`
+  is green.
+
 ## Worktrees
 - Parallel workers MUST use git worktrees (dispatcher assigns worktree+branch
   per task inside a git repo). Never share a working tree between workers.

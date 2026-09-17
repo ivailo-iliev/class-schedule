@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:orchestration
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:pwa
+
+  integration:
+    name: integration
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: supabase/setup-cli@v3
+      - run: npm ci
+      - run: supabase start
+      - name: Export the local database URL
+        run: |
+          db_url="$(supabase status --output env | sed -n 's/^DB_URL=/SUPABASE_DB_URL=/p')"
+          test -n "$db_url"
+          printf '%s\n' "$db_url" >> "$GITHUB_ENV"
+      - run: npm run test:db
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e

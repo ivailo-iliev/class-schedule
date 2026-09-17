@@ -15,6 +15,7 @@ scripts/kanban-cron retry-quota
 scripts/kanban-cron tick
 scripts/kanban-cron pause status
 scripts/kanban-cron resume status
+python3 scripts/github-delivery-bridge.py
 ```
 
 `kanban-cron` resolves cron job IDs by name from the planner profile. Do not
@@ -31,7 +32,7 @@ on the default board; do not hardcode a SQLite path in a helper.
 
 ### `gaps` — every 10 minutes
 
-Script: `~/.hermes/scripts/kanban-gaps.py`
+Script: `~/.hermes/profiles/planner/scripts/kanban-gaps.py`
 
 This is the small gap-filler for behavior the Hermes Kanban dispatcher does
 not provide:
@@ -51,7 +52,7 @@ of an old failed attempt.
 
 ### `status` — every 10 minutes
 
-Script: `~/.hermes/scripts/board-digest.py`
+Script: `~/.hermes/profiles/planner/scripts/board-digest.py`
 
 This script compares the board with its previous digest and emits a report
 when tasks complete or statuses change. The cron job runs the planner agent
@@ -67,7 +68,7 @@ history` or run `scripts/kanban-cron status` and read the latest cron output.
 
 ### `retry-quota` — every 60 minutes
 
-Script: `~/.hermes/scripts/retry-quota.py`
+Script: `~/.hermes/profiles/planner/scripts/retry-quota.py`
 
 This script checks the openai-codex credential state. If Codex is still
 rate-limited, it does nothing. If the limit cleared, it requeues only tasks
@@ -173,10 +174,13 @@ The live dispatcher is `hermes-gateway.service`. Verify it with
 `hermes-resume.service` definition points at the live unit, but is intentionally
 disabled on hosts whose user manager does not provide `sleep.target`.
 
-Cron's `--script` resolves installed copies from `~/.hermes/scripts/`. The
-versioned sources are under `scripts/`; after changing one, install that exact
-copy into `~/.hermes/scripts/` and verify the hash. Profile-local copies are
-not used by these jobs.
+Planner cron validates and executes profile-local script copies from
+`~/.hermes/profiles/planner/scripts/`. The versioned sources are under
+`scripts/`; after changing one, install that exact copy there and keep the
+shared `~/.hermes/scripts/` copy synchronized for compatibility.
 
 Never put passwords, API tokens, private keys, or raw teacher access links in
 this document or in task comments.
+
+For the GitHub PR, CI, and merge lifecycle, see
+[`autonomous-delivery.md`](autonomous-delivery.md).

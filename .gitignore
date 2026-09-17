@@ -4,6 +4,7 @@ dist/
 build/
 coverage/
 .playwright/
+__pycache__/
 
 # Secrets and local configuration
 .env

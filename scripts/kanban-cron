@@ -6,6 +6,7 @@ Usage:
   scripts/kanban-cron status
   scripts/kanban-cron gaps
   scripts/kanban-cron retry-quota
+  scripts/kanban-cron github-delivery
   scripts/kanban-cron tick
   scripts/kanban-cron pause|resume <status|gaps|retry-quota>
 
@@ -22,6 +23,7 @@ NAMES = {
     "status": "status",
     "gaps": "gaps",
     "retry-quota": "retry-quota",
+    "github-delivery": "github-delivery",
 }
 
 
@@ -56,7 +58,7 @@ def main():
         return run(["list", "--all"])
     if command == "tick":
         return run(["tick"])
-    if command in {"status", "gaps", "retry-quota"}:
+    if command in {"status", "gaps", "retry-quota", "github-delivery"}:
         return run(["run", job_id(command)])
     if command in {"pause", "resume"}:
         if len(args) != 2:
