@@ -70,6 +70,22 @@ jobs:
         with:
           script: |
             const marker = `Commit: \`${context.sha}\``;
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'hermes-repair',
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'hermes-repair',
+                color: 'B60205',
+                description: 'Automated post-merge CI repairs for Hermes',
+              });
+            }
             const { data: existing } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
