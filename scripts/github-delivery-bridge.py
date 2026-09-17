@@ -44,6 +44,13 @@ class Task:
     completion_contract: str
 
 
+@dataclass(frozen=True)
+class RepairIssue:
+    number: int
+    title: str
+    url: str
+
+
 class BridgeError(RuntimeError):
     """A safe, actionable bridge failure; never include subprocess output."""
 
@@ -77,6 +84,11 @@ def publishable(task: Task, repository: str) -> bool:
         and _BRANCH.fullmatch(task.branch_name) is not None
         and contract_repository(task.completion_contract) == repository
     )
+
+
+def intakeable(issue: RepairIssue) -> bool:
+    return issue.number > 0 and issue.title.startswith("Hermes repair: CI failed for ") \
+        and issue.url.startswith("https://github.com/")
 
 
 def rows() -> list[Task]:
@@ -147,6 +159,17 @@ def gh_json(args: list[str]) -> dict | None:
     except json.JSONDecodeError:
         return None
     return value if isinstance(value, dict) else None
+
+
+def gh_list(args: list[str]) -> list[dict] | None:
+    result = command(["gh", *args])
+    if result.returncode != 0:
+        return None
+    try:
+        value = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, list) and all(isinstance(item, dict) for item in value) else None
 
 
 def find_pr(repository: str, branch: str) -> dict | None:
@@ -230,6 +253,47 @@ def enable_automerge(task: Task, repository: str, *, apply: bool) -> str | None:
     return add_comment(task, f"GitHub delivery: auto-merge requested for {url}", apply=True)
 
 
+def repair_issues(repository: str) -> list[RepairIssue]:
+    issues = gh_list([
+        "issue", "list", "--repo", repository, "--label", "hermes-repair", "--state", "open",
+        "--json", "number,title,url", "--limit", "100",
+    ])
+    if issues is None:
+        raise BridgeError("cannot read GitHub repair issues")
+    result: list[RepairIssue] = []
+    for issue in issues:
+        try:
+            candidate = RepairIssue(number=int(issue["number"]), title=str(issue["title"]), url=str(issue["url"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if intakeable(candidate):
+            result.append(candidate)
+    return result
+
+
+def intake_repair(issue: RepairIssue, repository: str, *, apply: bool) -> str:
+    key = f"github-repair:{repository}:{issue.number}"
+    if not apply:
+        return f"would create a Hermes repair task for GitHub issue #{issue.number}"
+    body = (
+        f"Automated post-merge CI repair from {issue.url}.\n\n"
+        "Inspect the linked GitHub Actions run, reproduce the failure, add a regression test, "
+        "and deliver the fix through the normal PR completion contract."
+    )
+    result = command([
+        "hermes", "kanban", *_board.cli_board_args(BOARD), "create", issue.title,
+        "--body", body,
+        "--assignee", "coder-budget",
+        "--workspace", "worktree",
+        "--completion-contract", repository,
+        "--skill", "github-pr-workflow",
+        "--idempotency-key", key,
+    ])
+    if result.returncode != 0:
+        raise BridgeError(f"could not create Hermes repair task for GitHub issue #{issue.number}")
+    return f"intaked GitHub repair issue #{issue.number}: {result.stdout.strip()}"
+
+
 def synchronize(*, apply: bool) -> Iterable[str]:
     if not github_available():
         yield "BLOCKED: GitHub authentication is unavailable; no delivery action was attempted."
@@ -250,6 +314,8 @@ def synchronize(*, apply: bool) -> Iterable[str]:
         merge_note = enable_automerge(task, repository, apply=apply)
         if merge_note:
             yield merge_note
+    for issue in repair_issues(repository):
+        yield intake_repair(issue, repository, apply=apply)
 
 
 def main(argv: list[str] | None = None) -> int:

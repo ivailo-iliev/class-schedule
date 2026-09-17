@@ -39,3 +39,13 @@ class GitHubDeliveryBridgeTests(unittest.TestCase):
         self.assertFalse(BRIDGE.publishable(task, "other/repo"))
         self.assertFalse(BRIDGE.publishable(task.__class__(**{**task.__dict__, "status": "done"}), "owner/repo"))
         self.assertFalse(BRIDGE.publishable(task.__class__(**{**task.__dict__, "branch_name": "../bad"}), "owner/repo"))
+
+    def test_only_expected_ci_issues_become_repair_tasks(self):
+        issue = BRIDGE.RepairIssue(
+            number=42,
+            title="Hermes repair: CI failed for abcdef012345",
+            url="https://github.com/owner/repo/issues/42",
+        )
+        self.assertTrue(BRIDGE.intakeable(issue))
+        self.assertFalse(BRIDGE.intakeable(issue.__class__(**{**issue.__dict__, "number": 0})))
+        self.assertFalse(BRIDGE.intakeable(issue.__class__(**{**issue.__dict__, "title": "Investigate CI"})))

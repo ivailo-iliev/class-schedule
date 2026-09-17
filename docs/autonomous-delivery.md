@@ -8,6 +8,7 @@ independent reviewer completion.
 ```text
 Hermes task → committed worktree branch → PR → CI → Hermes reviewer
           → exact-head acceptance → auto-merge → CI on main
+                                              ↘ failure issue → Hermes repair task
 ```
 
 ## One-time GitHub setup
@@ -89,3 +90,9 @@ retry loop: no branch is pushed, no PR is created, and no card is changed.
 build, and the PWA check. `integration` starts an ephemeral local Supabase
 stack, runs database tests, and exercises Playwright on Chromium and WebKit.
 Both run on pull requests and again after merge to `main`.
+
+When either post-merge job fails, GitHub creates one labeled `hermes-repair`
+issue per failing commit. The bridge converts that issue into an idempotent
+`coder-budget` worktree task with the same PR contract, so the repair follows
+the full implement → review → merge path instead of silently leaving `main`
+red.
