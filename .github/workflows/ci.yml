@@ -48,9 +48,12 @@ jobs:
       - run: supabase start
       - name: Export the local database URL
         run: |
-          db_url="$(supabase status --output env | sed -n 's/^DB_URL=/SUPABASE_DB_URL=/p')"
-          test -n "$db_url"
-          printf '%s\n' "$db_url" >> "$GITHUB_ENV"
+          raw_db_url="$(supabase status --output env | sed -n 's/^DB_URL=//p')"
+          test -n "$raw_db_url"
+          # The CLI may report a Docker-network hostname (for example, `base`).
+          # Tests run on the host runner, so always connect through the published port.
+          db_url="$(node --input-type=module -e 'const url = new URL(process.argv[1]); url.hostname = "127.0.0.1"; process.stdout.write(url.toString())' "$raw_db_url")"
+          printf 'SUPABASE_DB_URL=%s\n' "$db_url" >> "$GITHUB_ENV"
       - run: npm run test:db
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
