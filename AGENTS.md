@@ -6,27 +6,30 @@
 > This is the durable, strictly-followed orchestration contract.
 
 ## Profiles & routing (managed in ~/.hermes/config.yaml + kanban dispatcher)
-- planner        → GPT-6 Astra (Codex). Orchestration only: plan, decompose,
+- planner        → gpt-5.6-terra via openai-codex. Orchestration only: plan, decompose,
                    architect, escalate, final review. NEVER implements.
-- coder-budget   → openrouter/pareto-code, min_coding_score 0.25. Default
-                   implementation worker. Small tasks, ~30 turns.
-- coder-strong   → openrouter/pareto-code, min_coding_score 0.65. Hard tasks.
-- reviewer       → GPT-6 Astra (Codex). Independent review/verification.
+- coder-budget   → gpt-5.6-luna via openai-codex. Default implementation
+                   worker. Small tasks, normally 30–60 turns.
+- coder-strong   → gpt-5.6-terra via openai-codex. Hard tasks.
+- reviewer       → gpt-5.6-terra via openai-codex. Independent review/verification.
 
 ## Kanban = durable source of truth (not conversation memory)
 - Tasks, claims, runs, comments, events persist on the board across restarts.
-- Dispatcher runs inside the gateway (hermes-gateway-hy3-preview.service,
-  user systemd, linger=yes, Restart=always) and auto-recovers.
+- Dispatcher runs inside the gateway (hermes-gateway.service, user systemd,
+  linger=yes, Restart=always) and auto-recovers. A resume unit definition also
+  targets this service; it remains disabled unless the host provides a valid
+  sleep/resume target to the user manager.
 - orchestrator_profile = planner; default_assignee = coder-budget.
 
 ## Decomposition rules
 - Small, self-contained tasks a fresh worker finishes in one run.
-- Set goal_max_turns conservatively so cheap sessions are replaced, not bloated.
+- Split work likely to exceed 60 turns; set goal_max_turns conservatively so
+  cheap sessions are replaced, not bloated.
 - Use board auto-decompose for triage/parent tasks.
 
 ## Escalation
 - Default impl = coder-budget. After REPEATED SUBSTANTIVE failure, escalate to
-  coder-strong. Reserve frontier (GPT-6 Astra) for planning/escalation/review.
+  coder-strong. Reserve the higher-capacity Terra lane for planning/escalation/review.
 - After implementation, route to reviewer before acceptance.
 
 ## Git safety (mandatory)

@@ -25,21 +25,25 @@ cron jobs and is not used for this workflow.
 
 ## Active cron jobs
 
+The active board is resolved from `HERMES_KANBAN_BOARD`, then the Hermes
+`kanban/current` pointer, and finally `default`. The current project tasks live
+on the default board; do not hardcode a SQLite path in a helper.
+
 ### `gaps` — every 10 minutes
 
-Script: `~/.hermes/profiles/planner/scripts/kanban-gaps.py`
+Script: `~/.hermes/scripts/kanban-gaps.py`
 
 This is the small gap-filler for behavior the Hermes Kanban dispatcher does
 not provide:
 
-- specifies cards that enter `triage`, because the dispatcher does not specify
-  triage cards automatically;
 - detects consecutive task-level budget exhaustion while a task is currently
   blocked, then flags the task for planner review instead of retrying forever;
 - writes `.worktrees/status.md` as a compact local status file.
 
-It does not retry ordinary tasks, reassign workers, or requeue quota failures.
-The Hermes dispatcher already owns those operations.
+It does not decompose triage, retry ordinary tasks, or requeue quota failures.
+The Hermes dispatcher owns triage decomposition and ordinary dispatch; this
+helper only escalates a blocked coder-budget task to coder-strong after two
+consecutive explicit budget failures; the quota job owns quota requeue.
 
 The script deliberately ignores historical budget failures when a task is
 running or healthy. This prevents a repaired task from being blocked because
@@ -47,7 +51,7 @@ of an old failed attempt.
 
 ### `status` — every 10 minutes
 
-Script: `~/.hermes/profiles/planner/scripts/board-digest.py`
+Script: `~/.hermes/scripts/board-digest.py`
 
 This script compares the board with its previous digest and emits a report
 when tasks complete or statuses change. The cron job runs the planner agent
@@ -63,7 +67,7 @@ history` or run `scripts/kanban-cron status` and read the latest cron output.
 
 ### `retry-quota` — every 60 minutes
 
-Script: `~/.hermes/profiles/planner/scripts/retry-quota.py`
+Script: `~/.hermes/scripts/retry-quota.py`
 
 This script checks the openai-codex credential state. If Codex is still
 rate-limited, it does nothing. If the limit cleared, it requeues only tasks
@@ -71,6 +75,20 @@ whose latest failure is identified as a quota/rate-limit failure.
 
 It does not requeue tasks blocked by budget exhaustion, contradictions,
 missing credentials, or owner decisions. It runs without an LLM.
+
+## Acceptance and sizing guardrails
+
+Keep implementation goals small enough for one worker run. Split work that is
+likely to exceed 60 turns; use the strong lane only after repeated substantive
+budget failure, not as a first resort. The default implementation lane is
+coder-budget (30–60 turns), with coder-strong reserved for the deterministic
+escalation above.
+
+An implementation is not accepted merely because its worker run completed:
+the reviewer must inspect the committed branch and record an outcome on the
+task. A blocking finding requires a fix and a fresh review. The gateway's
+native review dispatch is the preferred path; final acceptance is the durable
+task status plus the review comment or event.
 
 ## Manual cron control
 
@@ -124,10 +142,9 @@ only remember the last digest and which local gap actions were already applied.
 
 ## Inactive scripts
 
-`/home/ivailo/class-scheduler/.worktrees/supervise.py` is not active. It was an
-earlier broad supervisor experiment and is intentionally not used because it
-duplicated Hermes dispatcher behavior for retries, quota handling, and status.
-Do not start it alongside the active jobs.
+`/home/ivailo/class-scheduler/.worktrees/supervise.py` and `monitor.py` are not
+active. They are earlier broad-supervisor experiments and must not be started
+alongside the gateway dispatcher or the cron helpers.
 
 ## Troubleshooting
 
@@ -150,9 +167,16 @@ hermes -p planner cron history
 hermes -p planner cron incidents
 ```
 
-Scripts resolve paths for the planner profile. Keep the installed copies in
-`~/.hermes/profiles/planner/scripts/`; changing only a copy in
-`~/.hermes/scripts/` does not change a planner-profile job.
+The live dispatcher is `hermes-gateway.service`. Verify it with
+`systemctl --user status hermes-gateway.service`; do not use the retired
+`hermes-gateway-hy3-preview.service` name. The checked-in
+`hermes-resume.service` definition points at the live unit, but is intentionally
+disabled on hosts whose user manager does not provide `sleep.target`.
+
+Cron's `--script` resolves installed copies from `~/.hermes/scripts/`. The
+versioned sources are under `scripts/`; after changing one, install that exact
+copy into `~/.hermes/scripts/` and verify the hash. Profile-local copies are
+not used by these jobs.
 
 Never put passwords, API tokens, private keys, or raw teacher access links in
 this document or in task comments.
