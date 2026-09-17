@@ -64,18 +64,18 @@ python3 scripts/github-delivery-bridge.py --apply
 The bridge is installed as a no-agent planner cron job every 10 minutes. It
 remains inert (with a clear local `BLOCKED` result) until GitHub authentication
 and branch protection are configured. To reinstall it after source changes,
-copy the two versioned Python files to both the planner profile and shared
+copy the three versioned Python files to both the planner profile and shared
 script directories:
 
 ```text
-cp scripts/kanban-board.py scripts/github-delivery-bridge.py ~/.hermes/scripts/
-cp scripts/kanban-board.py scripts/github-delivery-bridge.py ~/.hermes/profiles/planner/scripts/
+cp scripts/kanban-board.py scripts/github-delivery-bridge.py scripts/github-delivery-cron.py ~/.hermes/scripts/
+cp scripts/kanban-board.py scripts/github-delivery-bridge.py scripts/github-delivery-cron.py ~/.hermes/profiles/planner/scripts/
 ```
 
 ```text
 hermes -p planner cron create 'every 10m' \
   --name github-delivery \
-  --script github-delivery-bridge.py \
+  --script github-delivery-cron.py \
   --no-agent \
   --deliver local \
   --workdir /home/ivailo/class-scheduler
