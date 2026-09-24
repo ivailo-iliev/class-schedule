@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import pg from 'pg';
 import type { PoolClient } from 'pg';
 import { describe, expect, test } from 'vitest';
 import { db } from './helpers';
@@ -128,6 +129,16 @@ type Usage = { teacher_id: string; teacher: string; class_id: string; class: str
 type Cancellation = { teacher_id: string; teacher: string; class_id: string; class: string; room: string; cancelled_hours: number };
 type ExportRow = { id: string; teacher_id: string; class_id: string; room: string; local_start: string; local_cancelled: string | null };
 
+// The export query deliberately returns timestamp without time zone values:
+// `at time zone` has already projected them into Sofia wall-clock time. Keep
+// pg's Date conversion scoped to this query so those values remain raw text.
+const rawLocalTimestampTypes = {
+  getTypeParser(oid: number, format?: 'text' | 'binary') {
+    if (oid === 1114 && format === 'text') return (value: string) => value;
+    return pg.types.getTypeParser(oid, format);
+  },
+};
+
 const expectedSeptemberUsage: Usage[] = [
   [T1, C1, 'room_1', 2], [T1, C1, 'room_2', 1], [T1, C2, 'room_1', 1],
   [T2, C3, 'room_1', 1], [T2, C3, 'room_2', 1],
@@ -188,7 +199,11 @@ async function executeForZone(client: PoolClient, zone: string) {
     september: usage((await client.query(monthly, ['2026-09-01', '2026-10-01'])).rows),
     wide: usage((await client.query(monthly, ['2026-08-01', '2026-11-01'])).rows),
     cancelled: cancellations((await client.query(cancelled, ['2026-09-01', '2026-10-01'])).rows),
-    exported: exports((await client.query(exportSql, ['2026-09-01', '2026-10-01'])).rows),
+    exported: exports((await client.query({
+      text: exportSql,
+      values: ['2026-09-01', '2026-10-01'],
+      types: rawLocalTimestampTypes,
+    })).rows),
   };
 }
 
@@ -219,6 +234,8 @@ describe('documented operations reporting SQL', () => {
       expect(utc.exported.find((row) => row.id === U.start)?.local_start).toContain('2026-09-01');
       expect(utc.exported.find((row) => row.id === X.beforeStart)?.local_cancelled).toContain('2026-08-31');
       expect(utc.exported.find((row) => row.id === X.atEnd)?.local_cancelled).toContain('2026-10-01');
+      expect(utc.exported.find((row) => row.id === X.beforeStart)?.local_cancelled).toBe('2026-08-31 23:59:59.999999');
+      expect(utc.exported.find((row) => row.id === X.atEnd)?.local_cancelled).toBe('2026-10-01 00:00:00');
       expect(utc.september.reduce((sum, row) => sum + row.uncancelled_hours, 0)).toBe(6);
       expect(utc.exported.filter((row) => row.local_cancelled !== null).map((row) => row.id).sort())
         .toEqual([X.beforeStart, X.atEnd].sort());
