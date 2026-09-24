@@ -277,6 +277,57 @@ describe('authoritative booking pricing RPCs', () => {
     }
   });
 
+  test('rejects SQL-NULL and malformed occurrence payloads without creating a series', async () => {
+    await ensureGalyaClass();
+    await asAuthenticated(CLAIMS_G, async (client) => {
+      await expectRejected(client, () => client.query(
+        `select public.quote_booking($1, 'hall'::public.room, null::jsonb)`, [CLASS_G],
+      ), /invalid_occurrences/);
+      await expectRejected(client, () => client.query(
+        `select public.create_booking_series($1, 'hall'::public.room, 'Student', null::jsonb)`, [CLASS_G],
+      ), /invalid_occurrences/);
+      await expectRejected(client, () => quote(client, CLASS_G, [null]), /invalid_occurrences/);
+      await expectRejected(client, () => create(client, CLASS_G, [null]), /invalid_occurrences/);
+      const missingRange = [{ starts_at: '2026-10-29T09:00' }];
+      await expectRejected(client, () => quote(client, CLASS_G, missingRange), /invalid_occurrences/);
+      await expectRejected(client, () => create(client, CLASS_G, missingRange), /invalid_occurrences/);
+    });
+    const owner = await db();
+    try {
+      const { rows } = await owner.query(
+        `select count(*)::int as count from public.bookings
+         where class_id = $1 and starts_at = '2026-10-29T09:00'::timestamp`,
+        [CLASS_G],
+      );
+      expect(rows[0].count).toBe(0);
+    } finally {
+      owner.release();
+    }
+  });
+
+  test('rejects null cancellation scope without changing the booking', async () => {
+    await ensureGalyaClass();
+    let id: string;
+    await asAuthenticated(CLAIMS_G, async (client) => {
+      const created = await create(client, CLASS_G, [
+        { starts_at: '2026-10-30T09:00', ends_at: '2026-10-30T10:00' },
+      ]);
+      id = created.bookings[0].id;
+      await expectRejected(client, () => client.query(
+        'select public.cancel_booking($1, 1, null)', [id],
+      ), /invalid_cancel_scope/);
+    });
+    const owner = await db();
+    try {
+      const { rows } = await owner.query(
+        `select cancelled_at is not null as cancelled, version from public.bookings where id = $1`, [id],
+      );
+      expect(rows).toEqual([{ cancelled: false, version: 1 }]);
+    } finally {
+      owner.release();
+    }
+  });
+
   test('serializes simultaneous overlapping series so the losing transaction inserts no rows', async () => {
     await ensureGalyaClass();
     const pool = new pg.Pool({

@@ -328,13 +328,21 @@ declare
   seen_ranges tsrange[] := array[]::tsrange[];
   normalized_range tsrange;
 begin
-  if jsonb_typeof(p_occurrences) <> 'array'
-     or jsonb_array_length(p_occurrences) not between 1 and 104 then
+  if p_occurrences is null
+     or jsonb_typeof(p_occurrences) is distinct from 'array' then
+    raise sqlstate 'PT422' using message = 'invalid_occurrences';
+  end if;
+  if jsonb_array_length(p_occurrences) not between 1 and 104 then
     raise sqlstate 'PT422' using message = 'invalid_occurrences';
   end if;
   occurrence_index := 0;
   for item in select value from jsonb_array_elements(p_occurrences) as x(value) loop
     occurrence_index := occurrence_index + 1;
+    if jsonb_typeof(item) is distinct from 'object'
+       or jsonb_typeof(item -> 'starts_at') is distinct from 'string'
+       or jsonb_typeof(item -> 'ends_at') is distinct from 'string' then
+      raise sqlstate 'PT422' using message = 'invalid_occurrences';
+    end if;
     start_text := item ->> 'starts_at'; end_text := item ->> 'ends_at';
     if start_text !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:00)?$'
        or end_text !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:00)?$' then
@@ -557,7 +565,7 @@ declare booking_row public.bookings%rowtype; affected public.bookings%rowtype;
   cancelled jsonb := '[]'::jsonb; count_cancelled integer := 0;
 begin
   if private.actor_id() is null then raise insufficient_privilege using message = 'active_profile_required'; end if;
-  if p_scope not in ('one', 'future') then raise sqlstate 'PT422' using message = 'invalid_cancel_scope'; end if;
+  if p_scope is null or p_scope not in ('one', 'future') then raise sqlstate 'PT422' using message = 'invalid_cancel_scope'; end if;
   select * into booking_row from public.bookings where id = p_id for update;
   if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
   if not private.can_manage(booking_row.teacher_id) then raise insufficient_privilege using message = 'booking_forbidden'; end if;
