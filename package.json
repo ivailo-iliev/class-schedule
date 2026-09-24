@@ -11,7 +11,6 @@
     "test:unit": "vitest run --config vitest.config.ts",
     "test:db": "vitest run --config vitest.db.config.ts",
     "test:e2e": "npx playwright test",
-    "test:orchestration": "python3 -m unittest discover -s tests/scripts -p '*_test.py'",
     "test:pwa": "node scripts/verify-pwa.mjs",
     "check:public-build": "node scripts/assert-public-build.mjs",
     "auth:smoke": "node scripts/auth-smoke.mjs"
