@@ -24,7 +24,7 @@ function booking(): Booking {
     teacherId: teacher.id,
     className: 'Pilates',
     teacherName: 'Teacher A',
-    room: 'room_1',
+    room: 'hall',
     startsAt: '2026-09-15T15:00:00.000Z',
     hour: 18,
     cancelledAt: null,
@@ -41,7 +41,7 @@ function renderForm(
     <BookingForm
       date="2026-09-15"
       hour={18}
-      room="room_1"
+      room="hall"
       profile={teacher}
       loadClasses={vi.fn(async () => classes)}
       submitBooking={vi.fn(async () => [booking()])}
@@ -58,7 +58,7 @@ describe('BookingForm one-off flow', () => {
     expect(await screen.findByRole('combobox', { name: 'Class' })).toBeInTheDocument();
     expect(screen.getByLabelText('Booking date')).toHaveValue('2026-09-15');
     expect(screen.getByLabelText('Booking hour')).toHaveValue(18);
-    expect(screen.getByRole('combobox', { name: 'Room' })).toHaveValue('room_1');
+    expect(screen.getByRole('combobox', { name: 'Room' })).toHaveValue('hall');
   });
 
   test('offers only the current teacher active classes', async () => {
@@ -114,7 +114,7 @@ describe('BookingForm one-off flow', () => {
     expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-a');
     expect(screen.getByLabelText('Booking date')).toHaveValue('2026-09-15');
     expect(screen.getByLabelText('Booking hour')).toHaveValue(18);
-    expect(screen.getByRole('combobox', { name: 'Room' })).toHaveValue('room_1');
+    expect(screen.getByRole('combobox', { name: 'Room' })).toHaveValue('hall');
   });
 });
 
@@ -158,7 +158,7 @@ describe('BookingForm weekly flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
 
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
-    expect(submit).toHaveBeenCalledWith('class-a', 'room_1', '2026-09-15', 18, 2, 2);
+    expect(submit).toHaveBeenCalledWith('class-a', 'hall', '2026-09-15', 18, 2, 2);
     expect(await screen.findByRole('status')).toHaveTextContent('Created 2 weekly bookings.');
   });
 

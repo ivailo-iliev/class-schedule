@@ -36,8 +36,8 @@ export interface BookingFormProps {
 }
 
 const ROOMS: readonly { id: Room; label: string }[] = [
-  { id: 'room_1', label: 'Room 1' },
-  { id: 'room_2', label: 'Room 2' },
+  { id: 'hall', label: 'Зала' },
+  { id: 'room', label: 'Стая' },
 ];
 
 const WEEKDAYS: readonly { value: number; label: string }[] = [
