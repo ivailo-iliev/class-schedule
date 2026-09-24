@@ -140,6 +140,37 @@ describe('authoritative booking pricing RPCs', () => {
     }
   });
 
+  test('rejects fractional-second edit input without changing the booking', async () => {
+    await ensureGalyaClass();
+    let id: string;
+    await asAuthenticated(CLAIMS_G, async (client) => {
+      const created = await create(client, CLASS_G, [
+        { starts_at: '2026-10-12T09:00:00', ends_at: '2026-10-12T10:00:00' },
+      ]);
+      id = created.bookings[0].id;
+      await expectRejected(client, () => client.query(
+        `select public.edit_booking($1, 1, $2, 'hall'::public.room,
+          '2026-10-12T10:00:00.500'::timestamp,
+          '2026-10-12T11:00:00.500'::timestamp, 'Changed')`,
+        [id, CLASS_G],
+      ), /invalid_local_range/);
+    });
+    const owner = await db();
+    try {
+      const { rows } = await owner.query(
+        `select to_char(starts_at, 'YYYY-MM-DD"T"HH24:MI:SS') as starts_at,
+                to_char(ends_at, 'YYYY-MM-DD"T"HH24:MI:SS') as ends_at, version
+           from public.bookings where id = $1`,
+        [id],
+      );
+      expect(rows).toEqual([{
+        starts_at: '2026-10-12T09:00:00', ends_at: '2026-10-12T10:00:00', version: 1,
+      }]);
+    } finally {
+      owner.release();
+    }
+  });
+
   test('edits one occurrence with a versioned authoritative snapshot and cancels future by immutable index', async () => {
     await ensureGalyaClass();
     let created: any;

@@ -517,6 +517,15 @@ begin
   if p_student_details is not null and (p_student_details <> btrim(p_student_details) or char_length(p_student_details) > 1000) then
     raise sqlstate 'PT422' using message = 'invalid_student_details';
   end if;
+  if p_starts_at is null or p_ends_at is null
+     or not isfinite(p_starts_at) or not isfinite(p_ends_at)
+     or p_starts_at::date <> p_ends_at::date or p_ends_at <= p_starts_at
+     or extract(minute from p_starts_at) not in (0, 30)
+     or extract(minute from p_ends_at) not in (0, 30)
+     or extract(second from p_starts_at) <> 0
+     or extract(second from p_ends_at) <> 0 then
+    raise sqlstate 'PT422' using message = 'invalid_local_range';
+  end if;
   select * into occurrence from private.occurrence_rows(jsonb_build_array(jsonb_build_object(
     'starts_at', to_char(p_starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
     'ends_at', to_char(p_ends_at, 'YYYY-MM-DD"T"HH24:MI:SS')
