@@ -178,7 +178,7 @@ async function issuedAccessToken(page: import('@playwright/test').Page): Promise
 
 async function openPersonalLink(page: import('@playwright/test').Page, token: string) {
   await page.goto(`/access#${token}`);
-  await expect(page.getByRole('heading', { name: 'Daily schedule' })).toBeVisible();
+  await expect(page.getByRole('main', { name: 'Schedule' })).toBeVisible();
   await expect(page.getByText('Room 1')).toBeVisible();
   await expect(page.getByText('Room 2')).toBeVisible();
 }
@@ -248,7 +248,7 @@ test('teacher A keeps a native session and sees both occupied rooms', async ({ p
   }
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Daily schedule' })).toBeVisible();
+  await expect(page.getByRole('main', { name: 'Schedule' })).toBeVisible();
   await expect(page.getByText('Open your personal access link')).toHaveCount(0);
 
   const cookies = await context.cookies(appOrigin);
