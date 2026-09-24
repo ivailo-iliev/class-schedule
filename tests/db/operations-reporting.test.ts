@@ -165,10 +165,11 @@ function cancellations(rows: Record<string, unknown>[]): Cancellation[] {
 function local(value: unknown): string | null {
   if (value === null) return null;
   if (value instanceof Date) {
-    return new Intl.DateTimeFormat('sv-SE', {
-      timeZone: 'Europe/Sofia', year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-    }).format(value);
+    // pg parses timestamp without time zone as a Date using the process timezone.
+    // UTC getters preserve the wall-clock value returned by `at time zone`.
+    const pad = (part: number, width = 2) => String(part).padStart(width, '0');
+    return `${pad(value.getUTCFullYear(), 4)}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`
+      + ` ${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
   }
   return String(value).replace('T', ' ').replace('.000Z', '').replace('Z', '');
 }
