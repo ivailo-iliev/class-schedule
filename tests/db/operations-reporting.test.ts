@@ -166,10 +166,10 @@ function local(value: unknown): string | null {
   if (value === null) return null;
   if (value instanceof Date) {
     // pg parses timestamp without time zone as a Date using the process timezone.
-    // UTC getters preserve the wall-clock value returned by `at time zone`.
+    // Local getters recover the original wall-clock value in any process timezone.
     const pad = (part: number, width = 2) => String(part).padStart(width, '0');
-    return `${pad(value.getUTCFullYear(), 4)}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`
-      + ` ${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
+    return `${pad(value.getFullYear(), 4)}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+      + ` ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
   }
   return String(value).replace('T', ' ').replace('.000Z', '').replace('Z', '');
 }
