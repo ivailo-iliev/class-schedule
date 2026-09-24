@@ -321,17 +321,17 @@ $$;
 create function private.occurrence_rows(p_occurrences jsonb)
 returns table(occurrence_index integer, starts_at timestamp without time zone, ends_at timestamp without time zone)
 language plpgsql stable set search_path = '' as $$
-declare item jsonb; start_text text; end_text text;
+declare
+  item jsonb;
+  start_text text;
+  end_text text;
+  seen_ranges tsrange[] := array[]::tsrange[];
+  normalized_range tsrange;
 begin
   if jsonb_typeof(p_occurrences) <> 'array'
      or jsonb_array_length(p_occurrences) not between 1 and 104 then
     raise sqlstate 'PT422' using message = 'invalid_occurrences';
   end if;
-  if exists (
-    select 1 from jsonb_array_elements(p_occurrences) as x(value)
-    group by x.value ->> 'starts_at', x.value ->> 'ends_at'
-    having count(*) > 1
-  ) then raise sqlstate 'PT422' using message = 'duplicate_occurrence'; end if;
   occurrence_index := 0;
   for item in select value from jsonb_array_elements(p_occurrences) as x(value) loop
     occurrence_index := occurrence_index + 1;
@@ -347,6 +347,11 @@ begin
        or extract(minute from ends_at) not in (0, 30) then
       raise sqlstate 'PT422' using message = 'invalid_local_range';
     end if;
+    normalized_range := tsrange(starts_at, ends_at, '[)');
+    if normalized_range = any(seen_ranges) then
+      raise sqlstate 'PT422' using message = 'duplicate_occurrence';
+    end if;
+    seen_ranges := array_append(seen_ranges, normalized_range);
     return next;
   end loop;
 end;
@@ -448,6 +453,7 @@ begin
     result := result || jsonb_build_array(jsonb_build_object(
       'occurrence_index', occurrence.occurrence_index, 'starts_at', to_char(occurrence.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
       'ends_at', to_char(occurrence.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'duration_minutes', (extract(epoch from occurrence.ends_at - occurrence.starts_at) / 60)::integer,
       'amount', priced ->> 'amount', 'segments', priced -> 'segments',
       'conflicts', private.booking_conflicts(class_row.teacher_id, p_room, occurrence.starts_at, occurrence.ends_at)
     ));

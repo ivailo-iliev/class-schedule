@@ -71,6 +71,7 @@ describe('authoritative booking pricing RPCs', () => {
       ]);
       expect(result.total_amount).toBe('42.50');
       expect(result.occurrences[0].amount).toBe('42.50');
+      expect(result.occurrences[0].duration_minutes).toBe(120);
       expect(result.occurrences[0].segments).toHaveLength(4);
       expect(result.occurrences[0].segments.map((s: any) => s.subtotal))
         .toEqual(['5.00', '12.50', '12.50', '12.50']);
@@ -251,6 +252,29 @@ describe('authoritative booking pricing RPCs', () => {
       ]), /active_class_required/);
     });
     await ensureGalyaClass();
+  });
+
+  test('rejects equivalent normalized occurrence duplicates for both quote and creation', async () => {
+    await ensureGalyaClass();
+    const equivalentOccurrences = [
+      { starts_at: '2026-10-26T11:00', ends_at: '2026-10-26T12:00' },
+      { starts_at: '2026-10-26T11:00:00', ends_at: '2026-10-26T12:00:00' },
+    ];
+    await asAuthenticated(CLAIMS_G, async (client) => {
+      await expectRejected(client, () => quote(client, CLASS_G, equivalentOccurrences), /duplicate_occurrence/);
+      await expectRejected(client, () => create(client, CLASS_G, equivalentOccurrences), /duplicate_occurrence/);
+    });
+    const owner = await db();
+    try {
+      const { rows } = await owner.query(
+        `select count(*)::int as count from public.bookings
+         where class_id = $1 and starts_at = '2026-10-26T11:00'::timestamp`,
+        [CLASS_G],
+      );
+      expect(rows[0].count).toBe(0);
+    } finally {
+      owner.release();
+    }
   });
 
   test('serializes simultaneous overlapping series so the losing transaction inserts no rows', async () => {
