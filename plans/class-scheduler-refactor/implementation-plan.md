@@ -229,7 +229,7 @@ Database policy, grants, and safe RPC projections—not frontend filtering—for
 - Inactive profiles and sessions not bound to an active profile cannot read or mutate app data.
 - Schedule cells show other teachers' names and activity titles, as required, but never their student details or prices.
 
-Use a safe `get_day(local_date)` RPC for the shared schedule, an owner/admin booking-details RPC, and the quote/mutation/report RPCs described in this plan. `get_day` returns the complete safe schedule projection in one database request; the browser must not assemble it from separate booking, class, and profile reads. Keep `private.actor_id()`, `private.is_admin()`, and ownership helpers, simplified around active `auth_user_id` bindings.
+Use a safe `get_day(local_date)` RPC for the shared schedule, an owner/admin booking-details RPC, and the quote/mutation/report RPCs described in this plan. Keep `private.actor_id()`, `private.is_admin()`, and ownership helpers, simplified around active `auth_user_id` bindings.
 
 ## 8. Reports
 
@@ -262,10 +262,7 @@ The React report screen provides a month selector. Teachers see only their perso
 - Render a 30-minute grid covering the configured operating range and capable of showing every entry in the saved large-room programme, including 08:30 starts and multi-hour blocks.
 - Render a booking across all intervals it occupies and show teacher name plus activity title.
 - Distinguish load failure from an empty/free schedule; never present unknown availability as free.
-- Treat server data as the only authority for room availability. Do not cache the schedule in the CDN, service worker, browser storage, or an in-memory date cache.
-- Fetch `get_day` on initial schedule display, date change, explicit refresh, every return to a visible browser tab/window, and after any successful booking, edit, or cancellation. The visibility refresh is deliberate revalidation, not polling; do not apply an elapsed-time threshold or skip it because a previously loaded day exists.
-- While a fresh request is pending after a visibility return, existing cells may remain visible as read-only context but must not be offered as bookable availability. On a load failure, keep availability unknown and booking disabled until a fresh response succeeds.
-- Do not add realtime subscriptions or interval polling. With five to six teachers and infrequent changes, explicit fresh reads provide the required accuracy with predictable usage.
+- Refresh after mutation. Do not add realtime, polling, or an offline schedule cache.
 
 ### Booking form
 
@@ -300,7 +297,7 @@ The React report screen provides a month selector. Teachers see only their perso
 
 1. **Schema baseline:** replace the experimental migration with the revised profiles/classes/bookings/pricing model, local-time validation, overlap exclusions, access resolution, quote/create/edit/cancel/day/detail/report RPCs, grants, RLS, deterministic pricing seeds, and regenerated database types/fixtures.
 2. **Persistent access:** simplify the access function and session bootstrap; remove consume/cookie/version behavior and the profile, dynamic-manifest, and unused health paths plus their obsolete tests/configuration.
-3. **Schedule and booking UI:** adapt current calendar/API/types/components to local 30-minute start/end values, variable-height bookings, room names, recurrence series, private details, quoting, editing, and both cancellation scopes. Replace the current multi-read day load with one `get_day` RPC and remove any elapsed-time-throttled foreground refresh; revalidate on every visibility return without presenting the prior result as bookable availability.
+3. **Schedule and booking UI:** adapt current calendar/API/types/components to local 30-minute start/end values, variable-height bookings, room names, recurrence series, private details, quoting, editing, and both cancellation scopes.
 4. **Reports:** add teacher/admin monthly screens, secure report calls, totals, print styles, and CSV generation.
 5. **Static PWA and cleanup:** install the public manifest/icons, remove DST/UTC and obsolete function code/dependencies, update operations/release documentation, and verify built assets contain no secrets.
 6. **Independent review:** implement each task from committed state in its own worktree and route completed work to an independent reviewer before acceptance, following `AGENTS.md`.
@@ -343,7 +340,6 @@ The React report screen provides a month selector. Teachers see only their perso
 - Admin per-teacher totals sum to the combined cashbox total for the month.
 - Printed and CSV reports match the currently authorized filtered data and do not expose hidden fields.
 - Schedule, booking, details, and reports are usable on phone and desktop with keyboard navigation, labels, focus handling, and accessible error/status messages.
-- A schedule load uses one `get_day` RPC rather than separate booking/class/profile reads. The schedule revalidates on every visibility return, date change, manual refresh, and successful mutation; it has no CDN, service-worker, browser-storage, or in-memory availability cache, and stale cells are never bookable while revalidation is pending or has failed.
 - Static manifest/icons validate in standalone mode; no service worker or offline cache is registered.
 
 ### Quality gates
