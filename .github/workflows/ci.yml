@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -57,8 +58,46 @@ jobs:
           db_url="$(node --input-type=module -e 'const url = new URL(process.argv[1]); url.hostname = "127.0.0.1"; process.stdout.write(url.toString())' "$raw_db_url")"
           printf 'SUPABASE_DB_URL=%s\n' "$db_url" >> "$GITHUB_ENV"
       - run: npm run test:db
-      - run: npx playwright install --with-deps chromium webkit
-      - run: npm run test:e2e
+      - name: Decide whether this PR needs end-to-end tests
+        id: e2e-scope
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            if (context.eventName !== 'pull_request') return 'true';
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+            const e2eRelevant = [
+              /^src\//,
+              /^public\//,
+              /^netlify\//,
+              /^supabase\/functions\//,
+              /^tests\/(?:e2e|ui)\//,
+              /^tests\/unit\/(?:access|session)\.test\.ts$/,
+              /^scripts\/(?:auth-smoke|e2e-server)\.mjs$/,
+              /^(?:playwright|vite)\.config\.ts$/,
+              /^package(?:-lock)?\.json$/,
+              /^\.env\.example$/,
+            ];
+            const changed = files.map(({ filename }) => filename);
+            const runE2e = changed.some((filename) =>
+              e2eRelevant.some((pattern) => pattern.test(filename))
+            );
+            core.notice(
+              runE2e
+                ? 'Running Playwright: browser, auth, or E2E-relevant files changed.'
+                : 'Skipping Playwright: this pull request changes only non-browser DB/docs/CI files.'
+            );
+            return String(runE2e);
+      - if: steps.e2e-scope.outputs.result == 'true'
+        run: npx playwright install --with-deps chromium webkit
+      - if: steps.e2e-scope.outputs.result == 'true'
+        run: npm run test:e2e
 
   report-main-ci-failure:
     name: report post-merge failure
