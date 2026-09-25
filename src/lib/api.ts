@@ -1,8 +1,18 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import { daySlots, minutesOf } from './calendar';
 import { getSupabaseClient, clearSession, isSessionRevokedError } from './session';
-import type { Database, Tables, TablesInsert } from './database.types';
-import type { Booking, ClassItem, DaySchedule, Profile, Room } from './types';
+import type { Database, Json, Tables, TablesInsert } from './database.types';
+import type {
+  Booking,
+  BookingOccurrence,
+  BookingQuote,
+  ClassItem,
+  CreatedBooking,
+  CreatedBookingSeries,
+  DaySchedule,
+  Profile,
+  Room,
+} from './types';
 
 type SupabaseResult<T> = { data: T | null; error: PostgrestError | null };
 type DayPayload = { date: string; bookings: Array<{ id: string; room: Room; starts_at: string; ends_at: string; teacher_name: string; activity_title: string; can_manage: boolean }> };
@@ -46,7 +56,46 @@ export async function updateClass(id: string, changes: Partial<Pick<ClassItem, '
   return { id: row.id, teacherId: row.teacher_id, name: row.name, active: row.active };
 }
 
-// Mutation UX is intentionally deferred; these compatibility exports prevent stale callers from bypassing the authoritative RPC path.
-export async function scheduleBookings(_classId: string, _room: Room, _date: string, _hour: number, _occurrences = 1, _weekday?: number): Promise<Booking[]> { throw new Error('booking_mutation_ui_pending'); }
-export async function editBooking(_id: string, _version: number, _classId: string, _room: Room, _date: string, _hour: number): Promise<Booking> { throw new Error('booking_mutation_ui_pending'); }
-export async function cancelBooking(_id: string, _version: number): Promise<Booking> { throw new Error('booking_mutation_ui_pending'); }
+export async function quoteBooking(
+  classId: string,
+  room: Room,
+  occurrences: BookingOccurrence[],
+): Promise<BookingQuote> {
+  return fetchOr(() => client().rpc('quote_booking', {
+    p_class_id: classId,
+    p_room: room,
+    p_occurrences: occurrences as unknown as Json,
+  }) as unknown as PromiseLike<SupabaseResult<BookingQuote>>);
+}
+
+function totalFromCreated(bookings: CreatedBooking[]): string {
+  return bookings.reduce((total, booking) => total + Number(booking.amount ?? Number.NaN), 0)
+    .toFixed(2);
+}
+
+export async function createBookingSeries(
+  classId: string,
+  room: Room,
+  studentDetails: string | null,
+  occurrences: BookingOccurrence[],
+): Promise<CreatedBookingSeries> {
+  const result = await fetchOr(() => client().rpc('create_booking_series', {
+    p_class_id: classId,
+    p_room: room,
+    p_student_details: studentDetails as unknown as string,
+    p_occurrences: occurrences as unknown as Json,
+  }) as unknown as PromiseLike<SupabaseResult<CreatedBookingSeries>>);
+  return {
+    ...result,
+    total_amount: result.total_amount || totalFromCreated(result.bookings),
+  };
+}
+
+// Detail editing/cancellation is owned by the booking-details workstream. Keep
+// the narrow exports so older callers fail closed instead of bypassing RPCs.
+export async function editBooking(_id: string, _version: number, _classId: string, _room: Room, _date: string, _hour: number): Promise<Booking> {
+  throw new Error('booking_mutation_ui_pending');
+}
+export async function cancelBooking(_id: string, _version: number): Promise<Booking> {
+  throw new Error('booking_mutation_ui_pending');
+}

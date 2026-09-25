@@ -4,7 +4,7 @@ import { localDateOf, minutesOf } from '../lib/calendar';
 import type { Booking, DaySchedule, Room } from '../lib/types';
 
 const ROOMS: readonly { id: Room; label: string }[] = [{ id: 'hall', label: 'Зала' }, { id: 'room', label: 'Стая' }];
-type SlotSelection = { date: string; hour: number; room: Room };
+type SlotSelection = { date: string; startsAt: string; hour?: number; room: Room };
 type LoadSchedule = (date: string) => Promise<DaySchedule>;
 export interface ScheduleProps { initialDate?: string; loadSchedule?: LoadSchedule; onSelectSlot?: (selection: SlotSelection) => void; onSelectBooking?: (booking: Booking) => void; offline?: boolean; }
 export interface ScheduleHandle { refresh: () => Promise<DaySchedule | undefined>; }
@@ -54,7 +54,7 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
       {slots.flatMap((slot, index) => [<div className="schedule-grid__hour" role="rowheader" key={`${slot.startsAt}:time`} style={{ gridRow: index + 2 }}>{timeLabel(slot.startsAt)}</div>, ...ROOMS.map((room) => {
         const booking = bookingAt(room.id, slot.startsAt); const label = `${room.label} at ${timeLabel(slot.startsAt)}`;
         if (booking && bookingStarts(booking, slot.startsAt)) return <button type="button" className={`booking${booking.canEdit ? ' booking--editable' : ''}`} key={`${slot.startsAt}:${room.id}:booking`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: `${index + 2} / span ${spanFor(booking)}`, zIndex: 1 }} aria-label={`View details for ${booking.className} in ${label}`} onClick={() => onSelectBooking?.(booking)}><strong>{booking.className}</strong><span>{booking.teacherName}</span></button>;
-        return <div className="schedule-grid__cell" role="gridcell" key={`${slot.startsAt}:${room.id}`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: index + 2 }}>{!booking && (canBook ? <button type="button" className="empty-slot" aria-label={`Book ${label}`} onClick={() => onSelectSlot?.({ date: localDateOf(slot.startsAt), hour: Math.floor(minutesOf(slot.startsAt) / 60), room: room.id })}>+</button> : <div className="schedule-grid__unknown" aria-label={`${label} unavailable`}>Unavailable</div>)}</div>;
+        return <div className="schedule-grid__cell" role="gridcell" key={`${slot.startsAt}:${room.id}`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: index + 2 }}>{!booking && (canBook ? <button type="button" className="empty-slot" aria-label={`Book ${label}`} onClick={() => onSelectSlot?.({ date: localDateOf(slot.startsAt), startsAt: slot.startsAt, hour: Math.floor(minutesOf(slot.startsAt) / 60), room: room.id })}>+</button> : <div className="schedule-grid__unknown" aria-label={`${label} unavailable`}>Unavailable</div>)}</div>;
       })])}
     </section>}
   </main>;
