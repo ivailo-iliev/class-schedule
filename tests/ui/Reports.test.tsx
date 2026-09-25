@@ -76,26 +76,27 @@ describe('MonthlyReport', () => {
 
   test('teacher loads only personal report rows, cancelled totals, and print/export controls', async () => {
     render(<MonthlyReport profile={profile('teacher')} />);
-    expect(await screen.findByRole('heading', { name: 'Monthly report' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Месечен отчет' })).toBeInTheDocument();
     expect(api.getMyMonthReport).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/));
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
-    expect(screen.getByText('Price breakdown')).toBeInTheDocument();
+    expect(screen.getAllByText('90 мин.')).toHaveLength(2);
+    expect(screen.getByText('Разбивка на цената')).toBeInTheDocument();
     expect(screen.getByText('Activity a-cancelled')).toBeInTheDocument();
     expect(screen.queryByText('Teacher B')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Отменена').length).toBeGreaterThan(0);
     expect(screen.getAllByText('€10.00').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Export visible rows as CSV' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Printable monthly report' })).toHaveClass('report-print-area');
+    expect(screen.getByRole('button', { name: 'Експортирай видимите редове като CSV' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Месечен отчет за печат' })).toHaveClass('report-print-area');
   });
 
   test('admin fetches all teachers, filters server-returned rows, and exposes combined total', async () => {
     render(<MonthlyReport profile={profile('admin')} />);
-    expect(await screen.findByRole('heading', { name: 'Administrator report' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Администраторски отчет' })).toBeInTheDocument();
     expect(api.getAdminMonthReport).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), null);
     expect(screen.getByRole('heading', { name: 'Teacher A' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Teacher B' })).toBeInTheDocument();
     expect(screen.getAllByText('€20.00').length).toBeGreaterThan(0);
-    const filter = screen.getByRole('combobox', { name: 'Filter by teacher' });
+    const filter = screen.getByRole('combobox', { name: 'Филтрирай по учител' });
     fireEvent.change(filter, { target: { value: 'teacher-b' } });
     await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), 'teacher-b'));
     expect(screen.getByText('Activity b-active')).toBeInTheDocument();
@@ -112,33 +113,34 @@ describe('MonthlyReport', () => {
     const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
 
     render(<MonthlyReport profile={profile('admin')} />);
-    expect(await screen.findByRole('heading', { name: 'Administrator report' })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by teacher' }), { target: { value: 'teacher-a' } });
+    expect(await screen.findByRole('heading', { name: 'Администраторски отчет' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Филтрирай по учител' }), { target: { value: 'teacher-a' } });
     await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), 'teacher-a'));
 
-    const summary = screen.getByLabelText('Report totals');
-    const amountDueCard = within(summary).getByText('Amount due').closest('div');
-    expect(amountDueCard?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Amount due€10.00');
+    const summary = screen.getByLabelText('Обобщение на отчета');
+    const amountDueCard = within(summary).getByText('Дължима сума').closest('div');
+    expect(amountDueCard?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Дължима сума€10.00');
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
+    expect(screen.getAllByText('90 мин.')).toHaveLength(2);
     expect(screen.getByText('Activity a-cancelled')).toBeInTheDocument();
     expect(screen.queryByText('Activity b-active')).not.toBeInTheDocument();
     expect(screen.queryByText('Activity browser-only')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Export visible rows as CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Експортирай видимите редове като CSV' }));
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const csv = await (createObjectURL.mock.calls[0][0] as Blob).text();
     expect(anchorClick).toHaveBeenCalledTimes(1);
     expect(csv).toBe(reportRowsToCsv(teacherReport.rows));
     expect(csv).toContain('a-active');
     expect(csv).toContain('a-cancelled');
-    expect(csv).toContain('Cancelled');
+    expect(csv).toContain('Отменена');
     expect(csv).toContain('20.00');
     expect(csv).toContain('0.00');
     expect(csv).not.toContain('b-active');
     expect(csv).not.toContain('browser-only');
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:monthly-report');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Print report' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отпечатай отчета' }));
     expect(print).toHaveBeenCalledTimes(1);
   });
 

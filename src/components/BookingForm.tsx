@@ -65,13 +65,13 @@ const ROOMS: readonly { id: Room; label: string }[] = [
   { id: 'room', label: 'Стая' },
 ];
 const WEEKDAYS: readonly { value: number; label: string }[] = [
-  { value: 1, label: 'Monday' },
-  { value: 2, label: 'Tuesday' },
-  { value: 3, label: 'Wednesday' },
-  { value: 4, label: 'Thursday' },
-  { value: 5, label: 'Friday' },
-  { value: 6, label: 'Saturday' },
-  { value: 7, label: 'Sunday' },
+  { value: 1, label: 'Понеделник' },
+  { value: 2, label: 'Вторник' },
+  { value: 3, label: 'Сряда' },
+  { value: 4, label: 'Четвъртък' },
+  { value: 5, label: 'Петък' },
+  { value: 6, label: 'Събота' },
+  { value: 7, label: 'Неделя' },
 ];
 const MAX_OCCURRENCES = 104;
 const QUOTE_DEBOUNCE_MS = 300;
@@ -128,10 +128,10 @@ export function buildOccurrences(
   weeks: string,
 ): { occurrences: BookingOccurrence[]; error: string | null } {
   if (!validDate(date) || (mode === 'recurring' && !validDate(weekStart))) {
-    return { occurrences: [], error: 'Choose a valid local date.' };
+    return { occurrences: [], error: 'Изберете валидна дата.' };
   }
   if (!validTime(startTime) || !validTime(endTime) || minutes(endTime) <= minutes(startTime)) {
-    return { occurrences: [], error: 'Start and end must be different 30-minute times on the same day.' };
+    return { occurrences: [], error: 'Началният и крайният час трябва да са различни и да са в един и същи ден. Използвайте интервали от 30 минути.' };
   }
   if (mode === 'one-off') {
     return {
@@ -142,10 +142,10 @@ export function buildOccurrences(
   const countWeeks = Number(weeks);
   const selected = [...new Set(weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 7).sort((a, b) => a - b);
   if (!Number.isInteger(countWeeks) || countWeeks < 1 || countWeeks > 52 || selected.length === 0) {
-    return { occurrences: [], error: 'Choose at least one weekday and between 1 and 52 weeks.' };
+    return { occurrences: [], error: 'Изберете поне един ден от седмицата и период от 1 до 52 седмици.' };
   }
   const count = countWeeks * selected.length;
-  if (count > MAX_OCCURRENCES) return { occurrences: [], error: 'A recurrence can contain at most 104 occurrences.' };
+  if (count > MAX_OCCURRENCES) return { occurrences: [], error: 'Повтарящата се резервация може да съдържа най-много 104 занятия.' };
   const occurrences: BookingOccurrence[] = [];
   for (let week = 0; week < countWeeks; week += 1) {
     for (const day of selected) {
@@ -252,7 +252,7 @@ export default function BookingForm({
       setClassId((current) => items.some((item) => item.id === current)
         ? current : (items.some((item) => item.id === existingBooking?.classId) ? existingBooking!.classId : ''));
     };
-    void load().catch(() => { if (mounted) setError('Unable to load active classes. Please try again.'); })
+    void load().catch(() => { if (mounted) setError('Активните класове не могат да бъдат заредени. Опитайте отново.'); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [loadClasses, loadTeachers, profile?.role]);
@@ -290,7 +290,7 @@ export default function BookingForm({
       }).catch((reason) => {
         if (requestId.value !== currentRequest) return;
         setQuote(null);
-        setQuoteError(isConflict(reason) ? 'One or more occurrences conflict with the current schedule.' : 'Unable to get a server quote.');
+        setQuoteError(isConflict(reason) ? 'Едно или повече занятия съвпадат с друга резервация в графика.' : 'Не може да бъде получена ценова оферта.');
       }).finally(() => {
         if (requestId.value === currentRequest) setQuoteLoading(false);
       });
@@ -330,10 +330,10 @@ export default function BookingForm({
         onDone(updated, refreshed, failed);
       } catch (reason) {
         setError(/stale_booking|PT409|version/i.test(errorText(reason))
-          ? 'This booking changed elsewhere. Refresh the schedule and review it before trying again.'
+          ? 'Тази резервация е променена другаде. Обновете графика и я проверете, преди да опитате отново.'
           : /booking_forbidden|insufficient_privilege/i.test(errorText(reason))
-            ? 'You are not authorized to update this booking.'
-            : 'Unable to update this booking. Please try again.');
+            ? 'Нямате право да променяте тази резервация.'
+            : 'Резервацията не може да бъде променена. Опитайте отново.');
       }
       finally { setPending(false); }
       return;
@@ -353,10 +353,13 @@ export default function BookingForm({
         catch { failed = true; }
       }
       setRefreshFailed(failed);
-      setSuccess(`Created ${result.bookings.length} booking${result.bookings.length === 1 ? '' : 's'}. Total: ${money(total)}${failed ? ' Schedule refresh failed.' : ''}`);
+      const createdMessage = result.bookings.length === 1
+        ? 'Създадена е 1 резервация.'
+        : `Създадени са ${result.bookings.length} резервации.`;
+      setSuccess(`${createdMessage} Общо: ${money(total)}${failed ? ' Графикът не можа да бъде обновен.' : ''}`);
       onDone(undefined, refreshed, failed);
     } catch (reason) {
-      setError(isConflict(reason) ? 'This booking conflicts with the current schedule.' : 'Unable to create bookings. Please try again.');
+      setError(isConflict(reason) ? 'Тази резервация съвпада с друга в графика.' : 'Резервациите не могат да бъдат създадени. Опитайте отново.');
     } finally { setPending(false); }
   };
 
@@ -367,93 +370,93 @@ export default function BookingForm({
   return (
     <section className="booking-form" aria-labelledby="booking-form-title">
       <header>
-        <h2 id="booking-form-title">{editing ? 'Edit booking' : 'Book a room'}</h2>
-        <p>{editing ? 'Edit this booking instance only.' : 'Get a server quote before confirming your reservation.'}</p>
+        <h2 id="booking-form-title">{editing ? 'Промяна на резервация' : 'Резервиране на зала'}</h2>
+        <p>{editing ? 'Променяте само това занятие.' : 'Преди потвърждението ще получите ценова оферта от сървъра.'}</p>
       </header>
       {error && <p className="booking-form__message booking-form__message--error" role="alert">{error}</p>}
       {success && <p className="booking-form__message booking-form__message--success" role="status">{success}</p>}
-      {loading && <p role="status">Loading active classes…</p>}
-      {noClasses && <p className="booking-form__message" role="status">Create an active class before booking a room.</p>}
-      {offline && <p className="booking-form__message booking-form__message--offline" role="alert">You are offline. Booking changes are disabled until the connection is restored.</p>}
+      {loading && <p role="status">Активните класове се зареждат…</p>}
+      {noClasses && <p className="booking-form__message" role="status">Създайте активен клас, преди да резервирате зала.</p>}
+      {offline && <p className="booking-form__message booking-form__message--offline" role="alert">Няма връзка с интернет. Промените по резервациите са изключени до възстановяване на връзката.</p>}
       {!loading && !noClasses && (
         <form onSubmit={handleSubmit}>
           {editing && existingBooking && (
-            <dl className="booking-form__identity" aria-label="Booking identity">
-              <div><dt>Teacher</dt><dd>{existingBooking.teacherName}</dd></div>
-              <div><dt>Series</dt><dd>{editingSeriesLabel ?? 'Selected series occurrence'}</dd></div>
+            <dl className="booking-form__identity" aria-label="Информация за резервацията">
+              <div><dt>Учител</dt><dd>{existingBooking.teacherName}</dd></div>
+              <div><dt>Серия</dt><dd>{editingSeriesLabel ?? 'Избрано занятие от серията'}</dd></div>
             </dl>
           )}
           {profile?.role === 'admin' && !editing && (
             <>
-              <label htmlFor="booking-teacher">Teacher</label>
+              <label htmlFor="booking-teacher">Учител</label>
               <select id="booking-teacher" value={teacherId} onChange={(event) => setTeacherId(event.target.value)} disabled={pending || offline || editing}>
                 {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
               </select>
             </>
           )}
-          <label htmlFor="booking-class">Class</label>
+          <label htmlFor="booking-class">Клас</label>
           <select id="booking-class" value={classId} onChange={(event) => setClassId(event.target.value)} disabled={pending || offline}>
             {availableClasses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
           {!editing && (
             <>
               <fieldset className="booking-form__mode">
-                <legend>Reservation pattern</legend>
-                <label><input type="radio" name="booking-mode" value="one-off" checked={mode === 'one-off'} onChange={() => setMode('one-off')} disabled={pending || offline} /> One-off</label>
-                <label><input type="radio" name="booking-mode" value="recurring" checked={mode === 'recurring'} onChange={() => setMode('recurring')} disabled={pending || offline} /> Recurring</label>
+                <legend>Повтаряемост</legend>
+                <label><input type="radio" name="booking-mode" value="one-off" checked={mode === 'one-off'} onChange={() => setMode('one-off')} disabled={pending || offline} /> Еднократно</label>
+                <label><input type="radio" name="booking-mode" value="recurring" checked={mode === 'recurring'} onChange={() => setMode('recurring')} disabled={pending || offline} /> Повтарящо се</label>
               </fieldset>
-              <label htmlFor="booking-date">{mode === 'recurring' ? 'Start week (Monday)' : 'Booking date'}</label>
+              <label htmlFor="booking-date">{mode === 'recurring' ? 'Начална седмица (понеделник)' : 'Дата на резервацията'}</label>
               <input id="booking-date" type="date" value={mode === 'recurring' ? weekStart : date} onChange={(event) => { setDate(event.target.value); setWeekStart(mondayOf(event.target.value)); }} disabled={pending || offline} required />
               {mode === 'recurring' && (
                 <>
                   <fieldset className="booking-form__weekdays">
-                    <legend>Weekdays</legend>
+                    <legend>Дни от седмицата</legend>
                     {WEEKDAYS.map((day) => <label key={day.value}><input type="checkbox" checked={weekdays.includes(day.value)} onChange={() => toggleWeekday(day.value)} disabled={pending || offline} /> {day.label}</label>)}
                   </fieldset>
-                  <label htmlFor="booking-weeks">Number of weeks</label>
+                  <label htmlFor="booking-weeks">Брой седмици</label>
                   <input id="booking-weeks" type="number" min={1} max={52} step={1} value={weeks} onChange={(event) => setWeeks(event.target.value)} disabled={pending || offline} required />
                 </>
               )}
             </>
           )}
-          <label htmlFor="booking-start">Start time</label>
+          <label htmlFor="booking-start">Начален час</label>
           <input id="booking-start" type="time" step={1800} value={startTime} onChange={(event) => setStartTime(event.target.value)} disabled={pending || offline} required />
-          <label htmlFor="booking-end">End time</label>
+          <label htmlFor="booking-end">Краен час</label>
           <input id="booking-end" type="time" step={1800} value={endTime} onChange={(event) => setEndTime(event.target.value)} disabled={pending || offline} required />
-          <label htmlFor="booking-room">Room</label>
+          <label htmlFor="booking-room">Зала</label>
           <select id="booking-room" value={room} onChange={(event) => setRoom(event.target.value as Room)} disabled={pending || offline}>
             {ROOMS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
           {!editing && <>
-            <label htmlFor="booking-student-details">Private student details (optional)</label>
+            <label htmlFor="booking-student-details">Поверителни бележки за ученика (по избор)</label>
             <textarea id="booking-student-details" maxLength={1000} value={studentDetails} onChange={(event) => setStudentDetails(event.target.value)} disabled={pending || offline} />
           </>}
           {!editing && (
-            <section className="booking-form__quote" aria-live="polite" aria-label="Server quote">
-              <h3>Quote preview</h3>
-              {quoteLoading && <p role="status">Getting a server quote…</p>}
+            <section className="booking-form__quote" aria-live="polite" aria-label="Ценова оферта от сървъра">
+              <h3>Преглед на цената</h3>
+              {quoteLoading && <p role="status">Изчислява се ценова оферта…</p>}
               {!quoteLoading && quoteError && <p className="booking-form__message booking-form__message--error" role="alert">{quoteError}</p>}
               {!quoteLoading && !quoteError && generated.error && <p className="booking-form__message booking-form__message--error" role="alert">{generated.error}</p>}
               {!quoteLoading && !quoteError && !generated.error && quote && (
                 <>
-                  <p>{quote.occurrences.length} concrete occurrence{quote.occurrences.length === 1 ? '' : 's'}</p>
+                  <p>{quote.occurrences.length} {quote.occurrences.length === 1 ? 'конкретно занятие' : 'конкретни занятия'}</p>
                   <ul className="booking-form__occurrences">
                     {quote.occurrences.map((occurrence) => <li key={`${occurrence.occurrence_index}:${occurrence.starts_at}`}>
                       <strong>{occurrence.starts_at.slice(0, 10)} {displayTime(occurrence.starts_at)}–{displayTime(occurrence.ends_at)}</strong>
-                      <span>{occurrence.duration_minutes} minutes · {money(occurrence.amount)}</span>
-                      {occurrence.segments.length > 0 && <ul>{occurrence.segments.map((segment) => <li key={`${segment.starts_at}:${segment.ends_at}`}>{displayTime(segment.starts_at)}–{displayTime(segment.ends_at)} · {segment.label} · {money(segment.hourly_rate)}/h · {money(segment.subtotal)}</li>)}</ul>}
-                      {occurrence.conflicts.length > 0 && <span role="alert">Conflict on this occurrence.</span>}
+                      <span>{occurrence.duration_minutes} минути · {money(occurrence.amount)}</span>
+                      {occurrence.segments.length > 0 && <ul>{occurrence.segments.map((segment) => <li key={`${segment.starts_at}:${segment.ends_at}`}>{displayTime(segment.starts_at)}–{displayTime(segment.ends_at)} · {segment.label} · {money(segment.hourly_rate)}/ч · {money(segment.subtotal)}</li>)}</ul>}
+                      {occurrence.conflicts.length > 0 && <span role="alert">Това занятие съвпада с друга резервация.</span>}
                     </li>)}
                   </ul>
-                  <p className="booking-form__total"><strong>Total: {money(quote.total_amount)}</strong></p>
-                  {quoteInvalid && <p className="booking-form__message booking-form__message--error" role="alert">A complete, conflict-free server quote is required before confirmation.</p>}
+                  <p className="booking-form__total"><strong>Общо: {money(quote.total_amount)}</strong></p>
+                  {quoteInvalid && <p className="booking-form__message booking-form__message--error" role="alert">Преди потвърждение е необходима пълна ценова оферта без конфликти.</p>}
                 </>
               )}
             </section>
           )}
           <div className="booking-form__actions">
-            <button type="submit" disabled={confirmDisabled}>{pending ? 'Saving…' : editing ? 'Save booking' : 'Confirm booking'}</button>
-            <button type="button" onClick={() => onCancel ? onCancel() : onDone()} disabled={pending}>Cancel</button>
+            <button type="submit" disabled={confirmDisabled}>{pending ? 'Запазване…' : editing ? 'Запази промените' : 'Потвърди резервацията'}</button>
+            <button type="button" onClick={() => onCancel ? onCancel() : onDone()} disabled={pending}>Отказ</button>
           </div>
         </form>
       )}

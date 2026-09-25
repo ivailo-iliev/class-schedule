@@ -54,7 +54,7 @@ function localDate(instant: string): string {
 }
 
 function readableDate(instant: string): string {
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('bg-BG', {
     timeZone: 'Europe/Sofia', year: 'numeric', month: 'long', day: 'numeric',
   }).format(new Date(instant));
 }
@@ -62,7 +62,7 @@ function readableDate(instant: string): string {
 function timeLabel(instant: string | undefined, fallbackHour?: number): string {
   if (!instant) return `${String(fallbackHour ?? 0).padStart(2, '0')}:00`;
   if (instant.endsWith('Z')) {
-    return new Intl.DateTimeFormat('en-GB', {
+    return new Intl.DateTimeFormat('bg-BG', {
       timeZone: 'Europe/Sofia', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
     }).format(new Date(instant));
   }
@@ -82,11 +82,11 @@ function errorMessage(error: unknown): string {
 
 function mutationError(error: unknown): string {
   const message = errorMessage(error);
-  if (/booking_forbidden|insufficient_privilege/i.test(message)) return 'You are not authorized to change this booking.';
-  if (/stale_booking|PT409|version/i.test(message)) return 'This booking changed elsewhere. The schedule was refreshed; review it before trying again.';
-  if (/cancelled_booking_read_only/i.test(message)) return 'This booking is already cancelled and cannot be changed.';
-  if (/network|fetch|timeout|abort/i.test(message) || error instanceof TypeError) return 'We could not confirm the change. The schedule was refreshed; review it before trying again.';
-  return 'Unable to change this booking. Please try again.';
+  if (/booking_forbidden|insufficient_privilege/i.test(message)) return 'Нямате право да променяте тази резервация.';
+  if (/stale_booking|PT409|version/i.test(message)) return 'Тази резервация е променена другаде. Графикът е обновен — проверете го, преди да опитате отново.';
+  if (/cancelled_booking_read_only/i.test(message)) return 'Тази резервация вече е отменена и не може да бъде променяна.';
+  if (/network|fetch|timeout|abort/i.test(message) || error instanceof TypeError) return 'Промяната не можа да бъде потвърдена. Графикът е обновен — проверете го, преди да опитате отново.';
+  return 'Резервацията не може да бъде променена. Опитайте отново.';
 }
 
 function reconcileBooking(current: Booking, updated: Booking, schedule?: DaySchedule): Booking {
@@ -242,8 +242,8 @@ export default function BookingDetails({
       }
       setConfirming(false);
       setNotice(count === 0
-        ? 'This booking was already cancelled. The schedule was refreshed.'
-        : `${cancelScope === 'future' ? 'This booking and later bookings were cancelled.' : 'Booking cancelled.'}${refreshed.failed ? ' Schedule refresh failed.' : ''}`);
+        ? 'Тази резервация вече е била отменена. Графикът е обновен.'
+        : `${cancelScope === 'future' ? 'Това и следващите занятия от серията са отменени.' : 'Резервацията е отменена.'}${refreshed.failed ? ' Графикът не можа да бъде обновен.' : ''}`);
     } finally {
       setPending(false);
     }
@@ -278,7 +278,7 @@ export default function BookingDetails({
         startsAt={currentBooking.startsAt}
         room={currentBooking.room}
         existingBooking={currentBooking}
-        editingSeriesLabel={detail ? `${detail.seriesIndex + 1} of series ${detail.seriesId}` : undefined}
+        editingSeriesLabel={detail ? `Занятие ${detail.seriesIndex + 1} от серия ${detail.seriesId}` : undefined}
         profile={profile}
         loadClasses={loadClasses}
         editBooking={editBooking}
@@ -289,39 +289,39 @@ export default function BookingDetails({
           if (updated) setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed));
           setEditing(false);
           setNotice(refreshFailed
-            ? 'Booking updated, but the schedule could not be refreshed.'
-            : 'Booking updated.');
+            ? 'Резервацията е променена, но графикът не можа да бъде обновен.'
+            : 'Резервацията е променена.');
         }}
       />
     );
   }
 
   return (
-    <section className="booking-details" aria-label="Booking details" aria-labelledby="booking-details-title">
+    <section className="booking-details" aria-label="Подробности за резервацията" aria-labelledby="booking-details-title">
       <header className="booking-details__header">
-        <h2 id="booking-details-title">Booking details</h2>
-        <button type="button" onClick={onClose} aria-label="Close booking details">×</button>
+        <h2 id="booking-details-title">Подробности за резервацията</h2>
+        <button type="button" onClick={onClose} aria-label="Затвори подробностите за резервацията">×</button>
       </header>
 
-      {detailLoading && <p className="booking-details__message" role="status">Loading authorized booking details…</p>}
+      {detailLoading && <p className="booking-details__message" role="status">Зареждат се разрешените подробности за резервацията…</p>}
       {error && <p className="booking-details__message booking-details__message--error" role="alert">{error}</p>}
       {notice && <p className="booking-details__message booking-details__message--success" role="status">{notice}</p>}
 
       <dl className="booking-details__list">
-        <div><dt>Class</dt><dd>{currentBooking.className}</dd></div>
-        <div><dt>Teacher</dt><dd>{currentBooking.teacherName}</dd></div>
-        <div><dt>Date</dt><dd>{formattedDate}</dd></div>
-        <div><dt>Time</dt><dd>{formattedStart}–{formattedEnd}</dd></div>
-        <div><dt>Room</dt><dd>{formattedRoom}</dd></div>
-        <div><dt>Type</dt><dd>One booking instance</dd></div>
-        {detail && <div><dt>Series</dt><dd>{detail.seriesIndex + 1} of series {detail.seriesId}</dd></div>}
-        {detail && <div><dt>Student details</dt><dd>{detail.studentDetails || 'None provided'}</dd></div>}
-        {detail && <div><dt>Snapshot amount</dt><dd>{detail.amount === null ? 'Unavailable' : `${detail.currency} ${detail.amount}`}</dd></div>}
+        <div><dt>Клас</dt><dd>{currentBooking.className}</dd></div>
+        <div><dt>Учител</dt><dd>{currentBooking.teacherName}</dd></div>
+        <div><dt>Дата</dt><dd>{formattedDate}</dd></div>
+        <div><dt>Час</dt><dd>{formattedStart}–{formattedEnd}</dd></div>
+        <div><dt>Зала</dt><dd>{formattedRoom}</dd></div>
+        <div><dt>Тип</dt><dd>Едно занятие</dd></div>
+        {detail && <div><dt>Серия</dt><dd>Занятие {detail.seriesIndex + 1} от серия {detail.seriesId}</dd></div>}
+        {detail && <div><dt>Бележки за ученика</dt><dd>{detail.studentDetails || 'Няма добавени бележки'}</dd></div>}
+        {detail && <div><dt>Запазена сума</dt><dd>{detail.amount === null ? 'Не е налична' : `${detail.currency} ${detail.amount}`}</dd></div>}
       </dl>
 
       {detail && detail.segments.length > 0 && (
-        <section className="booking-details__snapshot" aria-label="Price breakdown">
-          <h3>Price breakdown</h3>
+        <section className="booking-details__snapshot" aria-label="Разбивка на цената">
+          <h3>Разбивка на цената</h3>
           <ul>{detail.segments.map((segment) => <li key={`${segment.starts_at}:${segment.ends_at}`}>
             {segment.label}: {segment.subtotal} ({segment.starts_at.slice(11, 16)}–{segment.ends_at.slice(11, 16)})
           </li>)}</ul>
@@ -330,42 +330,42 @@ export default function BookingDetails({
 
       {cancelled && (
         <p className="booking-details__history">
-          Cancelled on {readableDate(currentBooking.cancelledAt as string)}
-          {currentBooking.cancelledBy ? ` by ${currentBooking.cancelledBy}` : ''}.
+          Отменена на {readableDate(currentBooking.cancelledAt as string)}
+          {currentBooking.cancelledBy ? ` от ${currentBooking.cancelledBy}` : ''}.
         </p>
       )}
 
       {canManage && (
         <div className="booking-details__actions">
-          <button type="button" onClick={() => { setError(null); setNotice(null); setEditing(true); }} className="icon-button" disabled={pending} aria-label="Edit booking" title="Edit booking"><Icon name="pencil" /></button>
-          <button ref={cancelTriggerRef} type="button" onClick={() => { setCancelScope('one'); setError(null); setNotice(null); setConfirming(true); }} className="icon-button" disabled={pending} aria-label="Cancel booking" title="Cancel booking"><Icon name="trash" /></button>
+          <button type="button" onClick={() => { setError(null); setNotice(null); setEditing(true); }} className="icon-button" disabled={pending} aria-label="Промени резервацията" title="Промени резервацията"><Icon name="pencil" /></button>
+          <button ref={cancelTriggerRef} type="button" onClick={() => { setCancelScope('one'); setError(null); setNotice(null); setConfirming(true); }} className="icon-button" disabled={pending} aria-label="Отмени резервацията" title="Отмени резервацията"><Icon name="trash" /></button>
         </div>
       )}
 
       {offline && !cancelled && (
         <p className="booking-details__message booking-details__message--offline" role="alert">
-          You are offline. Editing and cancellation are disabled until the connection is restored.
+          Няма връзка с интернет. Промяната и отмяната са изключени до възстановяване на връзката.
         </p>
       )}
 
       {confirming && typeof document !== 'undefined' && createPortal(
         <div className="booking-details__confirm-backdrop">
           <div ref={confirmationRef} className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title" onKeyDown={handleConfirmationKeyDown}>
-          <h3 id="cancel-booking-title">Cancel this booking?</h3>
+          <h3 id="cancel-booking-title">Да отменим ли тази резервация?</h3>
           <p>
-            Cancel “{currentBooking.className}” on {formattedDate} at {formattedStart} in {formattedRoom}?
-            Choose exactly which active occurrences to cancel. Editing always affects this occurrence only.
+            Да отменим ли „{currentBooking.className}“ на {formattedDate} в {formattedStart} в {formattedRoom}?
+            Изберете кои активни занятия да бъдат отменени. Промяната засяга само това занятие.
           </p>
           <fieldset>
-            <legend>Cancellation scope</legend>
-            <label><input type="radio" name="cancel-scope" checked={cancelScope === 'one'} onChange={() => setCancelScope('one')} disabled={pending} /> Only this occurrence</label>
-            {hasFutureActive && <label><input type="radio" name="cancel-scope" checked={cancelScope === 'future'} onChange={() => setCancelScope('future')} disabled={pending} /> This and later occurrences</label>}
+            <legend>Обхват на отмяната</legend>
+            <label><input type="radio" name="cancel-scope" checked={cancelScope === 'one'} onChange={() => setCancelScope('one')} disabled={pending} /> Само това занятие</label>
+            {hasFutureActive && <label><input type="radio" name="cancel-scope" checked={cancelScope === 'future'} onChange={() => setCancelScope('future')} disabled={pending} /> Това и следващите занятия</label>}
           </fieldset>
           <div className="booking-details__actions">
             <button type="button" onClick={() => void handleCancel()} disabled={pending || offline}>
-              {pending ? 'Cancelling…' : 'Confirm cancellation'}
+              {pending ? 'Отменяне…' : 'Потвърди отмяната'}
             </button>
-            <button type="button" onClick={() => setConfirming(false)} disabled={pending}>Keep booking</button>
+            <button type="button" onClick={() => setConfirming(false)} disabled={pending}>Запази резервацията</button>
           </div>
           </div>
         </div>,

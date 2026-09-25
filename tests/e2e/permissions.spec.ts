@@ -78,7 +78,7 @@ async function issuedAccessToken(page: import('@playwright/test').Page): Promise
 
 async function openPersonalLink(page: import('@playwright/test').Page, token: string, day: string) {
   await page.goto(`/access#${token}`);
-  await expect(page.getByRole('main', { name: 'Schedule' })).toBeVisible();
+  await expect(page.getByRole('main', { name: 'График' })).toBeVisible();
   await page.locator('input[type="date"]').fill(day);
   await expect(page.getByText('Зала')).toBeVisible();
   await expect(page.getByText('Стая')).toBeVisible();
@@ -125,8 +125,8 @@ test('reuses a personal link in clean browsers, replaces a persisted session, an
   expect(new URL(page.url()).hash).toBe('');
 
   await page.reload();
-  await expect(page.getByRole('main', { name: 'Schedule' })).toBeVisible();
-  await expect(page.getByText('Open your personal access link')).toHaveCount(0);
+  await expect(page.getByRole('main', { name: 'График' })).toBeVisible();
+  await expect(page.getByText('Отворете личната си връзка за достъп')).toHaveCount(0);
 });
 
 test('rotating a personal link rejects its old fragment without ending an established native session', async ({ browser, page }, testInfo) => {

@@ -10,8 +10,8 @@ describe('static web manifest', () => {
   test('contains only public standalone app metadata and existing icons', () => {
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
     expect(manifest).toMatchObject({
-      name: 'Class Scheduler',
-      short_name: 'Class Scheduler',
+      name: 'График на класовете',
+      short_name: 'График',
       id: '/',
       start_url: '/',
       scope: '/',
