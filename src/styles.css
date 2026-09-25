@@ -359,6 +359,8 @@ select:focus-visible {
 }
 
 .booking {
+  display: flex;
+  min-height: 4rem;
   flex-direction: column;
   gap: 0.15rem;
   overflow-wrap: anywhere;
@@ -640,13 +642,113 @@ select:focus-visible {
 }
 
 .booking-form input,
-.booking-form select {
+.booking-form select,
+.booking-form textarea {
   width: 100%;
   min-height: 44px;
   padding: 0.55rem 0.65rem;
   border: 1px solid #9da9bc;
   border-radius: 0.4rem;
   background: #fff;
+}
+
+.booking-form textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.booking-form__identity {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.35rem;
+  padding: 0.65rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.4rem;
+  background: #f7faff;
+}
+
+.booking-form__identity div {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 0.5rem;
+}
+
+.booking-form__identity dt {
+  font-weight: 700;
+}
+
+.booking-form__identity dd {
+  margin: 0;
+}
+
+.booking-form__mode,
+.booking-form__weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0.35rem 0;
+  padding: 0.65rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.4rem;
+}
+
+.booking-form__mode legend,
+.booking-form__weekdays legend {
+  width: 100%;
+  padding: 0;
+  font-weight: 700;
+}
+
+.booking-form__mode label,
+.booking-form__weekdays label {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.booking-form__mode input,
+.booking-form__weekdays input {
+  width: 1.1rem;
+  min-height: 1.1rem;
+  margin: 0;
+}
+
+.booking-form__quote {
+  margin-top: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.5rem;
+  background: #f7faff;
+}
+
+.booking-form__quote h3,
+.booking-form__quote p {
+  margin: 0 0 0.55rem;
+}
+
+.booking-form__occurrences,
+.booking-form__occurrences ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.booking-form__occurrences > li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.booking-form__occurrences li {
+  color: #30425f;
+  font-size: 0.86rem;
+}
+
+.booking-form__total {
+  padding-top: 0.65rem;
+  border-top: 1px solid #d6e0ee;
+  font-size: 1.05rem;
 }
 
 .booking-form__checkbox {
@@ -791,11 +893,24 @@ select:focus-visible {
 }
 
 .booking-details__confirm {
-  margin-top: 1rem;
+  width: min(calc(100vw - 2rem), 32rem);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
   padding: 0.85rem;
   border: 1px solid #c28a25;
   border-radius: 0.4rem;
   background: #fff8e6;
+  box-shadow: 0 1rem 3rem rgb(23 32 51 / 30%);
+}
+
+.booking-details__confirm-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(23 32 51 / 45%);
 }
 
 .booking-details__confirm h3 {
@@ -818,10 +933,303 @@ select:focus-visible {
   color: #8c2020;
 }
 
+.booking-details__confirm fieldset {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0 0;
+  padding: 0.7rem;
+  border: 1px solid #e2c77d;
+  border-radius: 0.4rem;
+}
+
+.booking-details__confirm label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.booking-details__snapshot {
+  margin: 1rem 0;
+  padding: 0.8rem;
+  border: 1px solid #d7e1ef;
+  border-radius: 0.5rem;
+  background: #f7faff;
+}
+
+.booking-details__snapshot h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.booking-details__snapshot ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
 .booking-details__message--success {
   border: 1px solid #72a77d;
   background: #effaf1;
   color: #245a2c;
+}
+
+.report-shell {
+  width: min(100% - 2rem, 76rem);
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.report-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.report-header h1 {
+  margin: 0.25rem 0 0.5rem;
+  letter-spacing: -0.04em;
+}
+
+.report-intro {
+  max-width: 42rem;
+  margin: 0;
+  color: #52617a;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: min(100%, 19rem);
+}
+
+.report-actions label {
+  display: grid;
+  gap: 0.3rem;
+  color: #30425f;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.report-actions input,
+.report-actions select {
+  min-height: 2.75rem;
+  padding: 0 0.6rem;
+  border: 1px solid #c9d5e6;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: inherit;
+}
+
+.report-message {
+  margin: 1rem 0;
+  padding: 0.85rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.6rem;
+  background: #fff;
+}
+
+.report-message--error {
+  border-color: #c14c4c;
+  background: #fff0f0;
+  color: #8c2020;
+}
+
+.report-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.report-summary__card,
+.report-cashbox {
+  display: flex;
+  min-height: 5.25rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.7rem;
+  background: #fff;
+}
+
+.report-summary__card span,
+.report-cashbox span {
+  color: #5b6578;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.report-summary__card strong,
+.report-cashbox strong {
+  color: #132a54;
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-cashbox {
+  margin-bottom: 1rem;
+  border-color: #9ebaea;
+  background: #eef5ff;
+}
+
+.report-teacher {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 2px solid #d6e0ee;
+}
+
+.report-teacher__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.report-teacher__header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.report-teacher__header span {
+  color: #132a54;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.7rem;
+  background: #fff;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 58rem;
+}
+
+.report-table th,
+.report-table td {
+  padding: 0.7rem 0.6rem;
+  border-bottom: 1px solid #e4e8ef;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.86rem;
+}
+
+.report-table th {
+  background: #eef3fa;
+  color: #30425f;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.report-table td:nth-child(1),
+.report-table td:nth-child(2),
+.report-table td:nth-child(3),
+.report-table td:nth-child(7),
+.report-table td:nth-child(8) {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-table__cancelled td {
+  background: #fff8f8;
+  color: #6f4a4a;
+}
+
+.report-breakdown {
+  margin-top: 0.4rem;
+  color: #52617a;
+  font-size: 0.76rem;
+}
+
+.report-breakdown span {
+  color: #1765de;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.report-breakdown ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.report-empty {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px dashed #c9d5e6;
+  border-radius: 0.6rem;
+  color: #52617a;
+}
+
+.report-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+.report-footer-actions button {
+  min-height: 2.75rem;
+  padding: 0 0.9rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.5rem;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+}
+
+.report-footer-actions button:first-child {
+  border-color: #9da9bc;
+  background: #fff;
+  color: #172033;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media print {
+  @page { margin: 1.2cm; }
+  body { background: #fff; }
+  .app-bar,
+  .report-footer-actions,
+  .report-actions,
+  .report-message { display: none !important; }
+  .report-shell { width: 100%; margin: 0; padding: 0; }
+  .report-header { margin-bottom: 0.8rem; }
+  .report-table-wrap { overflow: visible; border-color: #333; }
+  .report-table { min-width: 0; font-size: 9pt; }
+  .report-table th,
+  .report-table td { padding: 0.35rem; font-size: 9pt; }
+  .report-breakdown { display: block !important; break-inside: avoid; }
+  .report-teacher { break-inside: avoid; }
+}
+
+@media (max-width: 640px) {
+  .report-shell { width: min(100% - 1rem, 76rem); }
+  .report-header { flex-direction: column; }
+  .report-actions { width: 100%; }
+  .report-summary { grid-template-columns: 1fr; }
 }
 
 .workspace-overlay {
@@ -890,6 +1298,24 @@ select:focus-visible {
 
   .teacher-identity {
     margin-left: 0.25rem;
+  }
+
+  .report-shell {
+    width: min(100% - 1rem, 76rem);
+    padding-top: 1rem;
+  }
+
+  .report-header {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .report-actions {
+    justify-content: flex-start;
+  }
+
+  .report-summary {
+    grid-template-columns: 1fr;
   }
 
   .schedule-shell {

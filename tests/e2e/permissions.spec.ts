@@ -1,8 +1,9 @@
+import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { request } from '@playwright/test';
-import { expect, test } from '@playwright/test';
+import { expect, request, test } from '@playwright/test';
+import pg from 'pg';
 import type { E2EState } from './global-setup';
 
 const statePath = resolve(dirname(new URL(import.meta.url).pathname), '../../test-results/e2e-state.json');
@@ -11,6 +12,37 @@ const appOrigin = 'http://localhost:4173';
 
 function setFor(project: string) {
   return state.sets[project] ?? state.sets.chromium!;
+}
+
+function localDbUrl(): string {
+  const output = execFileSync('supabase', ['status', '--output', 'env'], { cwd: resolve(dirname(new URL(import.meta.url).pathname), '../..'), encoding: 'utf8' });
+  const dbUrl = output.match(/^DB_URL=(.+)$/m)?.[1]?.replace(/^"|"$/g, '');
+  if (!dbUrl) throw new Error('local_db_url_missing');
+  return dbUrl;
+}
+
+async function deactivateProfile(profileId: string): Promise<void> {
+  const pool = new pg.Pool({ connectionString: localDbUrl() });
+  try {
+    await pool.query('update public.profiles set active = false where id = $1', [profileId]);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function issueReplacementAccessLink(profileId: string): Promise<string> {
+  const pool = new pg.Pool({ connectionString: localDbUrl() });
+  try {
+    const result = await pool.query<{ token: string }>(
+      'select private.issue_access_link($1) as token',
+      [profileId],
+    );
+    const token = result.rows[0]?.token;
+    if (typeof token !== 'string') throw new Error('replacement_access_link_missing');
+    return token;
+  } finally {
+    await pool.end();
+  }
 }
 
 function restHeaders(accessToken: string) {
@@ -29,138 +61,6 @@ function jwtWithWrongKey() {
   return `${header}.${payload}.${signature}`;
 }
 
-function sofiaSlot(date: string, hour: number): string {
-  return new Date(`${date}T${String(hour).padStart(2, '0')}:00:00+03:00`).toISOString();
-}
-
-type BookingSnapshot = {
-  id: string;
-  class_id: string;
-  room: string;
-  starts_at: string;
-  cancelled_at: string | null;
-  version: number;
-};
-
-async function bookingSnapshot(
-  api: import('@playwright/test').APIRequestContext,
-  accessToken: string,
-  bookingId: string,
-): Promise<BookingSnapshot> {
-  const response = await api.get(`/rest/v1/bookings?id=eq.${bookingId}&select=id,class_id,room,starts_at,cancelled_at,version`, {
-    headers: restHeaders(accessToken),
-  });
-  expect(response.status()).toBe(200);
-  const rows = await response.json() as BookingSnapshot[];
-  expect(rows).toHaveLength(1);
-  return rows[0]!;
-}
-
-async function expectDeniedMutation(response: import('@playwright/test').APIResponse): Promise<void> {
-  if (response.status() === 200) {
-    expect(await response.json()).toEqual([]);
-    return;
-  }
-  expect(response.status()).toBeGreaterThanOrEqual(400);
-}
-
-async function verifyTeacherBookingPermissions(
-  api: import('@playwright/test').APIRequestContext,
-  accessToken: string,
-  fixture: E2EState['sets'][string],
-): Promise<void> {
-  const bRows = await api.get(`/rest/v1/bookings?class_id=eq.${fixture.teacherB.classId}&select=id`, {
-    headers: restHeaders(accessToken),
-  });
-  expect(bRows.status()).toBe(200);
-  const bBookingId = (await bRows.json() as Array<{ id: string }>)[0]?.id;
-  expect(bBookingId).toBeTruthy();
-  const bBefore = await bookingSnapshot(api, accessToken, bBookingId!);
-
-  const crossInsert = await api.post('/rest/v1/bookings', {
-    headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
-    data: {
-      class_id: fixture.teacherB.classId,
-      room: 'room_1',
-      starts_at: sofiaSlot(fixture.nextDay, 15),
-    },
-  });
-  await expectDeniedMutation(crossInsert);
-
-  const crossEdit = await api.patch(`/rest/v1/bookings?id=eq.${bBookingId}`, {
-    headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
-    data: {
-      room: 'room_2',
-      starts_at: sofiaSlot(fixture.nextDay, 16),
-    },
-  });
-  await expectDeniedMutation(crossEdit);
-
-  const crossCancel = await api.patch(`/rest/v1/bookings?id=eq.${bBookingId}`, {
-    headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
-    data: { cancelled_at: sofiaSlot(fixture.nextDay, 17) },
-  });
-  await expectDeniedMutation(crossCancel);
-
-  const crossRpcEdit = await api.post('/rest/v1/rpc/edit_booking', {
-    headers: restHeaders(accessToken),
-    data: {
-      p_id: bBookingId,
-      p_expected_version: bBefore.version,
-      p_class_id: fixture.teacherB.classId,
-      p_room: 'room_2',
-      p_date: fixture.nextDay,
-      p_hour: 16,
-    },
-  });
-  await expectDeniedMutation(crossRpcEdit);
-
-  const crossRpcCancel = await api.post('/rest/v1/rpc/cancel_booking', {
-    headers: restHeaders(accessToken),
-    data: { p_id: bBookingId, p_expected_version: bBefore.version },
-  });
-  await expectDeniedMutation(crossRpcCancel);
-  expect(await bookingSnapshot(api, accessToken, bBookingId!)).toEqual(bBefore);
-
-  const ownInsert = await api.post('/rest/v1/bookings', {
-    headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
-    data: {
-      class_id: fixture.teacherA.classId,
-      room: 'room_1',
-      starts_at: sofiaSlot(fixture.nextDay, 13),
-    },
-  });
-  expect(ownInsert.status()).toBe(201);
-  const ownRows = await ownInsert.json() as Array<{ id: string }>;
-  expect(ownRows).toHaveLength(1);
-  const ownBookingId = ownRows[0]!.id;
-
-  const ownEdit = await api.post('/rest/v1/rpc/edit_booking', {
-    headers: restHeaders(accessToken),
-    data: {
-      p_id: ownBookingId,
-      p_expected_version: 1,
-      p_class_id: fixture.teacherA.classId,
-      p_room: 'room_2',
-      p_date: fixture.nextDay,
-      p_hour: 14,
-    },
-  });
-  expect(ownEdit.status()).toBe(200);
-
-  const ownCancel = await api.post('/rest/v1/rpc/cancel_booking', {
-    headers: restHeaders(accessToken),
-    data: { p_id: ownBookingId, p_expected_version: 2 },
-  });
-  expect(ownCancel.status()).toBe(200);
-  expect(await bookingSnapshot(api, accessToken, ownBookingId)).toMatchObject({
-    class_id: fixture.teacherA.classId,
-    room: 'room_2',
-    cancelled_at: expect.any(String),
-    version: 3,
-  });
-}
-
 async function issuedAccessToken(page: import('@playwright/test').Page): Promise<string> {
   return page.evaluate(() => {
     for (const value of Object.values(localStorage)) {
@@ -169,165 +69,173 @@ async function issuedAccessToken(page: import('@playwright/test').Page): Promise
         const parsed = JSON.parse(value) as { access_token?: unknown };
         if (typeof parsed.access_token === 'string') return parsed.access_token;
       } catch {
-        // Other local-storage entries are not Supabase sessions.
+        // Ignore unrelated local storage entries.
       }
     }
     throw new Error('persisted native session was not found');
   });
 }
 
-async function openPersonalLink(page: import('@playwright/test').Page, token: string) {
+async function openPersonalLink(page: import('@playwright/test').Page, token: string, day: string) {
   await page.goto(`/access#${token}`);
-  await expect(page.getByRole('heading', { name: 'Daily schedule' })).toBeVisible();
-  await expect(page.getByText('Room 1')).toBeVisible();
-  await expect(page.getByText('Room 2')).toBeVisible();
+  await expect(page.getByRole('main', { name: 'Schedule' })).toBeVisible();
+  await page.locator('input[type="date"]').fill(day);
+  await expect(page.getByText('Зала')).toBeVisible();
+  await expect(page.getByText('Стая')).toBeVisible();
+}
+
+async function expectDirectBookingsDenied(api: import('@playwright/test').APIRequestContext, token: string) {
+  const response = await api.get('/rest/v1/bookings?select=id,student_details,calculated_amount');
+  expect(response.status()).toBeGreaterThanOrEqual(400);
 }
 
 test.describe.configure({ mode: 'serial' });
 
-test('teacher A keeps a native session and sees both occupied rooms', async ({ page }, testInfo) => {
+test('reuses a personal link in clean browsers, replaces a persisted session, and restores without a fragment', async ({ browser, page }, testInfo) => {
   const fixture = setFor(testInfo.project.name);
-  await openPersonalLink(page, fixture.teacherA.token);
-  await page.locator('input[type="date"]').fill(fixture.day);
-  await expect(page.getByText(`${testInfo.project.name} B Class`)).toBeVisible();
+  let accessResponse: { cacheControl: string | null; setCookie: string | null; body: string } | undefined;
+  page.on('response', async (response) => {
+    if (response.url().endsWith('/api/access')) {
+      accessResponse = {
+        cacheControl: await response.headerValue('cache-control'),
+        setCookie: await response.headerValue('set-cookie'),
+        body: await response.text(),
+      };
+    }
+  });
+
+  await openPersonalLink(page, fixture.teacherA.token, fixture.day);
   await expect(page.getByText(`${testInfo.project.name} A Class`)).toBeVisible();
+  const teacherAToken = await issuedAccessToken(page);
+  expect(accessResponse).toMatchObject({ cacheControl: 'private, no-store', setCookie: null });
+  expect(accessResponse?.body).not.toContain(fixture.teacherA.token);
 
-  const accessToken = await issuedAccessToken(page);
-  const api = await request.newContext({ baseURL: state.apiUrl });
+  const cleanContext = await browser.newContext();
   try {
-    const schedule = await api.get('/rest/v1/bookings?select=id,room,classes(name,teacher_id)&order=starts_at', {
-      headers: restHeaders(accessToken),
-    });
-    expect(schedule.status()).toBe(200);
-    const rows = await schedule.json() as Array<{ room: string; classes: { name: string } }>;
-    expect(rows.some((row) => row.room === 'room_1' && row.classes.name === `${testInfo.project.name} A Class`)).toBe(true);
-    expect(rows.some((row) => row.room === 'room_2' && row.classes.name === `${testInfo.project.name} B Class`)).toBe(true);
-
-    const wildcard = await api.get('/rest/v1/profiles?select=*', { headers: restHeaders(accessToken) });
-    expect(wildcard.status()).not.toBe(200);
-
-    const forbidden = await api.patch(`/rest/v1/classes?id=eq.${fixture.teacherB.classId}`, {
-      headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
-      data: { name: 'forbidden teacher edit' },
-    });
-    expect(forbidden.status()).toBe(200);
-    expect(await forbidden.json()).toEqual([]);
-
-    const rpc = await api.post('/rest/v1/rpc/schedule_bookings', {
-      headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
-      data: {
-        p_class_id: fixture.teacherA.classId,
-        p_room: 'room_1',
-        p_first_date: fixture.nextDay,
-        p_hour: 12,
-        p_occurrences: 1,
-      },
-    });
-    expect(rpc.status()).toBe(200);
-    expect((await rpc.json() as unknown[])).toHaveLength(1);
-
-    const conflict = await api.post('/rest/v1/rpc/schedule_bookings', {
-      headers: restHeaders(accessToken),
-      data: {
-        p_class_id: fixture.teacherA.classId,
-        p_room: 'room_1',
-        p_first_date: fixture.nextDay,
-        p_hour: 12,
-        p_occurrences: 1,
-      },
-    });
-    expect(conflict.status()).toBe(409);
+    const cleanPage = await cleanContext.newPage();
+    await openPersonalLink(cleanPage, fixture.teacherA.token, fixture.day);
+    expect(await issuedAccessToken(cleanPage)).toBeTruthy();
   } finally {
-    await api.dispose();
+    await cleanContext.close();
   }
+
+  await openPersonalLink(page, fixture.teacherB.token, fixture.day);
+  await expect(page.getByText(`${testInfo.project.name} B Class`)).toBeVisible();
+  expect(await issuedAccessToken(page)).not.toBe(teacherAToken);
+  expect(new URL(page.url()).hash).toBe('');
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Daily schedule' })).toBeVisible();
+  await expect(page.getByRole('main', { name: 'Schedule' })).toBeVisible();
   await expect(page.getByText('Open your personal access link')).toHaveCount(0);
+});
 
-  const manifest = await page.request.get('/manifest.webmanifest');
-  expect(manifest.status()).toBe(200);
-  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
-  await expect(manifest).toBeOK();
-  await expect(manifest).toHaveHeader('content-type', /manifest\+json/);
+test('rotating a personal link rejects its old fragment without ending an established native session', async ({ browser, page }, testInfo) => {
+  const fixture = setFor(testInfo.project.name);
+  await openPersonalLink(page, fixture.teacherB.token, fixture.day);
+  const establishedSession = await issuedAccessToken(page);
+  const replacementToken = await issueReplacementAccessLink(fixture.teacherB.id);
 
-  const writeApi = await request.newContext({ baseURL: state.apiUrl });
+  const oldLink = await page.request.post('/api/access', {
+    headers: { origin: appOrigin, 'content-type': 'application/json' },
+    data: { token: fixture.teacherB.token },
+  });
+  expect(oldLink.status()).toBe(401);
+
+  const cleanContext = await browser.newContext();
   try {
-    await verifyTeacherBookingPermissions(writeApi, accessToken, fixture);
+    const cleanPage = await cleanContext.newPage();
+    await openPersonalLink(cleanPage, replacementToken, fixture.day);
+    expect(await issuedAccessToken(cleanPage)).toBeTruthy();
   } finally {
-    await writeApi.dispose();
+    await cleanContext.close();
+  }
+
+  const establishedApi = await request.newContext({ baseURL: state.apiUrl, extraHTTPHeaders: restHeaders(establishedSession) });
+  try {
+    const day = await establishedApi.post('/rest/v1/rpc/get_day', { data: { p_date: fixture.day } });
+    expect(day.status()).toBe(200);
+  } finally {
+    await establishedApi.dispose();
   }
 });
 
-test('teacher B can read A but cannot change A', async ({ page }, testInfo) => {
+test('enforces safe RPC projections, RLS ownership, and base-table denial', async ({ page }, testInfo) => {
   const fixture = setFor(testInfo.project.name);
-  await openPersonalLink(page, fixture.teacherB.token);
-  await page.locator('input[type="date"]').fill(fixture.day);
-  await expect(page.getByText(`${testInfo.project.name} A Class`)).toBeVisible();
-
-  const accessToken = await issuedAccessToken(page);
-  const api = await request.newContext({ baseURL: state.apiUrl });
+  await openPersonalLink(page, fixture.teacherA.token, fixture.day);
+  const teacherToken = await issuedAccessToken(page);
+  const api = await request.newContext({ baseURL: state.apiUrl, extraHTTPHeaders: restHeaders(teacherToken) });
   try {
-    const forbidden = await api.patch(`/rest/v1/classes?id=eq.${fixture.teacherA.classId}`, {
-      headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
-      data: { name: 'cross-teacher edit' },
+    const day = await api.post('/rest/v1/rpc/get_day', { data: { p_date: fixture.day } });
+    expect(day.status()).toBe(200);
+    const schedule = await day.json() as { bookings: Array<Record<string, unknown>> };
+    const visible = schedule.bookings.find((booking) => booking.id === fixture.bookingBId)!;
+    expect(visible).toMatchObject({ room: 'room', activity_title: `${testInfo.project.name} B Class`, can_manage: false });
+    expect(JSON.stringify(schedule)).not.toMatch(/private detail|student_details|calculated_amount|price_breakdown|amount/i);
+
+    await expectDirectBookingsDenied(api, teacherToken);
+
+    const forbiddenDetails = await api.post('/rest/v1/rpc/get_booking_details', { data: { p_id: fixture.bookingBId } });
+    expect(forbiddenDetails.status()).toBeGreaterThanOrEqual(400);
+
+    const forbiddenEdit = await api.post('/rest/v1/rpc/edit_booking', {
+      data: {
+        p_id: fixture.bookingBId,
+        p_expected_version: 1,
+        p_class_id: fixture.teacherB.classId,
+        p_room: 'room',
+        p_starts_at: `${fixture.day}T10:00:00`,
+        p_ends_at: `${fixture.day}T10:30:00`,
+        p_student_details: 'forbidden',
+      },
     });
-    expect(forbidden.status()).toBe(200);
-    expect(await forbidden.json()).toEqual([]);
+    expect(forbiddenEdit.status()).toBeGreaterThanOrEqual(400);
   } finally {
     await api.dispose();
   }
-});
 
-test('admin can edit another teacher through the real RLS boundary', async ({ page }, testInfo) => {
-  const fixture = setFor(testInfo.project.name);
-  await openPersonalLink(page, fixture.admin.token);
-  const accessToken = await issuedAccessToken(page);
-  const api = await request.newContext({ baseURL: state.apiUrl });
-  const replacement = `${testInfo.project.name} B Class (admin check)`;
+  const adminContext = await page.context().browser()!.newContext();
   try {
-    const update = await api.patch(`/rest/v1/classes?id=eq.${fixture.teacherB.classId}`, {
-      headers: { ...restHeaders(accessToken), prefer: 'return=representation' },
-      data: { name: replacement },
-    });
-    expect(update.status()).toBe(200);
-    expect((await update.json() as Array<{ name: string }>)[0]?.name).toBe(replacement);
-
-    const restore = await api.patch(`/rest/v1/classes?id=eq.${fixture.teacherB.classId}`, {
-      headers: { ...restHeaders(accessToken), prefer: 'return=minimal' },
-      data: { name: `${testInfo.project.name} B Class` },
-    });
-    expect(restore.status()).toBe(204);
+    const adminPage = await adminContext.newPage();
+    await openPersonalLink(adminPage, fixture.admin.token, fixture.day);
+    const adminToken = await issuedAccessToken(adminPage);
+    const adminApi = await request.newContext({ baseURL: state.apiUrl, extraHTTPHeaders: restHeaders(adminToken) });
+    try {
+      const details = await adminApi.post('/rest/v1/rpc/get_booking_details', { data: { p_id: fixture.bookingAId } });
+      expect(details.status()).toBe(200);
+      expect(await details.json()).toMatchObject({ id: fixture.bookingAId, student_details: 'A private detail', amount: '10.00', can_manage: true });
+      await expectDirectBookingsDenied(adminApi, adminToken);
+    } finally {
+      await adminApi.dispose();
+    }
   } finally {
-    await api.dispose();
+    await adminContext.close();
   }
 });
 
-test('the access function and Supabase gateway reject invalid credentials', async ({ request: api }) => {
-  const malformed = await api.post('/api/access', {
+test('rejects malformed credentials and deactivation blocks an established native session on its next RPC', async ({ page }, testInfo) => {
+  const fixture = setFor(testInfo.project.name);
+  const malformed = await page.request.post('/api/access', {
     headers: { origin: appOrigin, 'content-type': 'application/json' },
     data: { token: 'not-a-token' },
   });
   expect(malformed.status()).toBe(400);
-
-  const unknown = await api.post('/api/access', {
+  const unknown = await page.request.post('/api/access', {
     headers: { origin: appOrigin, 'content-type': 'application/json' },
     data: { token: 'f'.repeat(64) },
   });
   expect(unknown.status()).toBe(401);
 
-  const direct = await request.newContext({ baseURL: state.apiUrl });
+  await openPersonalLink(page, fixture.teacherA.token, fixture.day);
+  const token = await issuedAccessToken(page);
+  const api = await request.newContext({ baseURL: state.apiUrl, extraHTTPHeaders: restHeaders(token) });
   try {
-    for (const token of [
-      'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJub25lIn0.',
-      jwtWithWrongKey(),
-    ]) {
-      const denied = await direct.get('/rest/v1/bookings?select=id', {
-        headers: restHeaders(token),
-      });
-      expect(denied.status()).toBe(401);
-    }
+    const direct = await api.get('/rest/v1/bookings?select=id', { headers: restHeaders(jwtWithWrongKey()) });
+    expect(direct.status()).toBe(401);
+
+    await deactivateProfile(fixture.teacherA.id);
+    const blocked = await api.post('/rest/v1/rpc/get_day', { data: { p_date: fixture.day } });
+    expect(blocked.status()).toBeGreaterThanOrEqual(400);
   } finally {
-    await direct.dispose();
+    await api.dispose();
   }
 });

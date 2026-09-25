@@ -11,43 +11,64 @@ export type Database = {
     Tables: {
       bookings: {
         Row: {
-          active_slot: string | null
+          calculated_amount: number
           cancelled_at: string | null
           cancelled_by: string | null
           class_id: string
           created_at: string
           created_by: string | null
+          currency: string
+          ends_at: string
           id: string
+          price_breakdown: Json
           room: Database["public"]["Enums"]["room"]
+          series_id: string
+          series_index: number
           starts_at: string
+          student_details: string | null
+          teacher_id: string
           updated_at: string
           updated_by: string | null
           version: number
         }
         Insert: {
-          active_slot?: string | null
+          calculated_amount?: number
           cancelled_at?: string | null
           cancelled_by?: string | null
           class_id: string
           created_at?: string
           created_by?: string | null
+          currency?: string
+          ends_at: string
           id?: string
+          price_breakdown?: Json
           room: Database["public"]["Enums"]["room"]
+          series_id?: string
+          series_index?: number
           starts_at: string
+          student_details?: string | null
+          teacher_id: string
           updated_at?: string
           updated_by?: string | null
           version?: number
         }
         Update: {
-          active_slot?: string | null
+          calculated_amount?: number
           cancelled_at?: string | null
           cancelled_by?: string | null
           class_id?: string
           created_at?: string
           created_by?: string | null
+          currency?: string
+          ends_at?: string
           id?: string
+          price_breakdown?: Json
           room?: Database["public"]["Enums"]["room"]
+          series_id?: string
+          series_index?: number
           starts_at?: string
+          student_details?: string | null
+          teacher_id?: string
           updated_at?: string
           updated_by?: string | null
           version?: number
@@ -70,6 +91,13 @@ export type Database = {
           {
             foreignKeyName: "bookings_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_teacher_id_fkey"
+            columns: ["teacher_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -141,11 +169,9 @@ export type Database = {
       profiles: {
         Row: {
           access_token_hash: string | null
-          access_token_used_at: string | null
-          auth_user_id: string | null
           active: boolean
+          auth_user_id: string | null
           created_at: string
-          credential_version: number
           id: string
           name: string
           role: Database["public"]["Enums"]["app_role"]
@@ -153,11 +179,9 @@ export type Database = {
         }
         Insert: {
           access_token_hash?: string | null
-          access_token_used_at?: string | null
-          auth_user_id?: string | null
           active?: boolean
+          auth_user_id?: string | null
           created_at?: string
-          credential_version?: number
           id?: string
           name: string
           role?: Database["public"]["Enums"]["app_role"]
@@ -165,11 +189,9 @@ export type Database = {
         }
         Update: {
           access_token_hash?: string | null
-          access_token_used_at?: string | null
-          auth_user_id?: string | null
           active?: boolean
+          auth_user_id?: string | null
           created_at?: string
-          credential_version?: number
           id?: string
           name?: string
           role?: Database["public"]["Enums"]["app_role"]
@@ -183,145 +205,61 @@ export type Database = {
     }
     Functions: {
       cancel_booking: {
-        Args: { p_expected_version: number; p_id: string }
-        Returns: {
-          active_slot: string | null
-          cancelled_at: string | null
-          cancelled_by: string | null
-          class_id: string
-          created_at: string
-          created_by: string | null
-          id: string
-          room: Database["public"]["Enums"]["room"]
-          starts_at: string
-          updated_at: string
-          updated_by: string | null
-          version: number
+        Args: { p_expected_version: number; p_id: string; p_scope: string }
+        Returns: Json
+      }
+      create_booking_series: {
+        Args: {
+          p_class_id: string
+          p_occurrences: Json
+          p_room: Database["public"]["Enums"]["room"]
+          p_student_details: string
         }
-        SetofOptions: {
-          from: "*"
-          to: "bookings"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: Json
       }
       edit_booking: {
         Args: {
           p_class_id: string
-          p_date: string
+          p_ends_at: string
           p_expected_version: number
-          p_hour: number
           p_id: string
           p_room: Database["public"]["Enums"]["room"]
+          p_starts_at: string
+          p_student_details: string
         }
-        Returns: {
-          active_slot: string | null
-          cancelled_at: string | null
-          cancelled_by: string | null
-          class_id: string
-          created_at: string
-          created_by: string | null
-          id: string
-          room: Database["public"]["Enums"]["room"]
-          starts_at: string
-          updated_at: string
-          updated_by: string | null
-          version: number
-        }
-        SetofOptions: {
-          from: "*"
-          to: "bookings"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: Json
       }
-      consume_access: {
-        Args: { p_token_hash: string }
-        Returns: {
-          auth_user_id: string | null
-          id: string
-          name: string
-          role: Database["public"]["Enums"]["app_role"]
-        }[]
+      get_admin_month_report: {
+        Args: { p_month: string; p_teacher_id?: string | null }
+        Returns: Json
       }
+      get_booking_details: { Args: { p_id: string }; Returns: Json }
       get_day: { Args: { p_date: string }; Returns: Json }
+      get_my_month_report: {
+        Args: { p_month: string }
+        Returns: Json
+      }
+      quote_booking: {
+        Args: {
+          p_class_id: string
+          p_occurrences: Json
+          p_room: Database["public"]["Enums"]["room"]
+        }
+        Returns: Json
+      }
       resolve_access: {
         Args: { p_token_hash: string }
         Returns: {
-          auth_user_id: string | null
+          auth_user_id: string
           id: string
           name: string
           role: Database["public"]["Enums"]["app_role"]
         }[]
-      }
-      schedule_bookings: {
-        Args: {
-          p_class_id: string
-          p_first_date: string
-          p_hour: number
-          p_occurrences?: number
-          p_room: Database["public"]["Enums"]["room"]
-          p_weekday?: number
-        }
-        Returns: {
-          active_slot: string | null
-          cancelled_at: string | null
-          cancelled_by: string | null
-          class_id: string
-          created_at: string
-          created_by: string | null
-          id: string
-          room: Database["public"]["Enums"]["room"]
-          starts_at: string
-          updated_at: string
-          updated_by: string | null
-          version: number
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "bookings"
-          isOneToOne: false
-          isSetofReturn: true
-        }
       }
     }
     Enums: {
       app_role: "admin" | "teacher"
-      room: "room_1" | "room_2"
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-  private: {
-    Tables: {
-      room_rate: {
-        Row: {
-          currency: string
-          room_hour_rate: number
-          singleton: boolean
-        }
-        Insert: {
-          currency: string
-          room_hour_rate: number
-          singleton?: boolean
-        }
-        Update: {
-          currency?: string
-          room_hour_rate?: number
-          singleton?: boolean
-        }
-        Relationships: []
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
+      room: "hall" | "room"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -450,7 +388,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "teacher"],
-      room: ["room_1", "room_2"],
+      room: ["hall", "room"],
     },
   },
 } as const

@@ -6,8 +6,9 @@ import BookingDetails from './components/BookingDetails';
 import BookingForm from './components/BookingForm';
 import Classes from './components/Classes';
 import Schedule, { type ScheduleHandle } from './components/Schedule';
+import MonthlyReport from './components/MonthlyReport';
 
-type SlotSelection = { date: string; hour: number; room: Room };
+type SlotSelection = { date: string; startsAt: string; hour?: number; room: Room };
 
 interface WorkspacePanelProps {
   label: string;
@@ -68,11 +69,10 @@ export default function App() {
   );
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<SlotSelection | null>(null);
-  const [activeView, setActiveView] = useState<'schedule' | 'classes'>('schedule');
+  const [activeView, setActiveView] = useState<'schedule' | 'classes' | 'report'>('schedule');
   const [profile, setProfile] = useState<Profile | null>(() => getProfile());
   const scheduleRef = useRef<ScheduleHandle>(null);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
-  const bootstrapStarted = useRef(false);
   const offline = !useOnlineStatus();
 
   useEffect(() => {
@@ -95,16 +95,29 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (bootstrapStarted.current) return;
-    bootstrapStarted.current = true;
-    bootstrapNativeSession().then((session) => {
-      if (!session) return;
-      const nextProfile = getProfile();
-      setProfile(nextProfile);
-      setState('connected');
-    }).catch(() => {
-      setState('unavailable');
-    });
+    let mounted = true;
+    const restore = () => {
+      if (window.location.hash.length > 1) setState('loading');
+      bootstrapNativeSession().then((session) => {
+        if (!mounted) return;
+        if (!session) {
+          setProfile(null);
+          setState('unavailable');
+          return;
+        }
+        const nextProfile = getProfile();
+        setProfile(nextProfile);
+        setState('connected');
+      }).catch(() => {
+        if (mounted) setState('unavailable');
+      });
+    };
+    restore();
+    window.addEventListener('hashchange', restore);
+    return () => {
+      mounted = false;
+      window.removeEventListener('hashchange', restore);
+    };
   }, []);
 
   const refreshSchedule = useCallback((): Promise<DaySchedule | undefined> => {
@@ -154,7 +167,7 @@ export default function App() {
             <span className="brand-mark" aria-hidden="true">C</span>
             <span>Class Scheduler</span>
           </div>
-          <nav className="workspace-nav" aria-label="Teacher workspace">
+          <nav className="workspace-nav" aria-label={profile?.role === 'admin' ? 'Administrator workspace' : 'Teacher workspace'}>
             <button
               type="button"
               className={activeView === 'schedule' ? 'workspace-nav__item workspace-nav__item--active' : 'workspace-nav__item'}
@@ -170,6 +183,14 @@ export default function App() {
               onClick={() => setActiveView('classes')}
             >
               My classes
+            </button>
+            <button
+              type="button"
+              className={activeView === 'report' ? 'workspace-nav__item workspace-nav__item--active' : 'workspace-nav__item'}
+              aria-current={activeView === 'report' ? 'page' : undefined}
+              onClick={() => setActiveView('report')}
+            >
+              {profile?.role === 'admin' ? 'Administrator report' : 'Monthly report'}
             </button>
           </nav>
           <div className="teacher-identity">
@@ -192,19 +213,20 @@ export default function App() {
           }}
           offline={offline}
         />
-      ) : <Classes profile={profile} />}
+      ) : activeView === 'classes' ? <Classes profile={profile} /> : <MonthlyReport profile={profile!} />}
 
       {selectedSlot && (
         <WorkspacePanel label="Book a room" onClose={closeSlotPanel}>
           <BookingForm
             date={selectedSlot.date}
+            startsAt={selectedSlot.startsAt}
             hour={selectedSlot.hour}
             room={selectedSlot.room}
             offline={offline}
             onRefresh={refreshSchedule}
+            onCancel={closeSlotPanel}
             onDone={() => {
-              closeSlotPanel();
-              void refreshSchedule().catch(() => undefined);
+              // BookingForm already awaited this exact refresh before onDone.
             }}
           />
           <button className="workspace-panel__close" type="button" onClick={closeSlotPanel} aria-label="Close booking form">×</button>

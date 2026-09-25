@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { handleAccessRequest, isAccessToken } from '../../netlify/lib/access.mjs';
 
 const token = 'a'.repeat(64);
@@ -20,26 +20,21 @@ function response(body: unknown, status = 200) {
 type Call = { url: string; init: RequestInit };
 const createdAuthUserId = '33333333-3333-3333-3333-333333333333';
 
-function fetchStub(options: { profile?: typeof profile | null; consumed?: boolean } = {}) {
+function fetchStub(options: { profile?: typeof profile | null } = {}) {
   const calls: Call[] = [];
-  let consumed = options.consumed ?? false;
   const fetchImpl = async (url: string, init: RequestInit = {}) => {
     calls.push({ url, init });
-    if (url.endsWith('/rpc/resolve_access')) return response(options.profile === null || consumed ? [] : [options.profile ?? profile]);
-    if (url.endsWith('/auth/v1/admin/users')) {
-      return response({ id: createdAuthUserId });
-    }
+    if (url.endsWith('/rpc/resolve_access')) return response(options.profile === null ? [] : [options.profile ?? profile]);
+    if (url.endsWith('/auth/v1/admin/users')) return response({ id: createdAuthUserId });
     if (url.includes('/rest/v1/profiles?id=')) return response([]);
-    if (url.endsWith('/auth/v1/admin/generate_link')) {
-      return response({ hashed_token: 'native-one-time-token' });
-    }
+    if (url.endsWith('/auth/v1/admin/generate_link')) return response({ hashed_token: 'native-one-time-token' });
     if (url.endsWith('/auth/v1/verify')) {
-      return response({ access_token: 'native-access', refresh_token: 'native-refresh', expires_in: 3600, user: { id: (options.profile ?? profile).auth_user_id ?? createdAuthUserId } });
-    }
-    if (url.endsWith('/rpc/consume_access')) {
-      if (consumed) return response([]);
-      consumed = true;
-      return response([options.profile ?? profile]);
+      return response({
+        access_token: 'native-access',
+        refresh_token: 'native-refresh',
+        expires_in: 3600,
+        user: { id: (options.profile ?? profile).auth_user_id ?? createdAuthUserId },
+      });
     }
     throw new Error(`unexpected URL ${url}`);
   };
@@ -70,21 +65,23 @@ describe('native access exchange', () => {
     expect(isAccessToken(`${token}!`)).toBe(false);
   });
 
-  test('exchanges once for a native Supabase session and consumes the token', async () => {
+  test('returns a cache-proof native session without consuming or returning the personal link', async () => {
     const { calls, fetchImpl } = fetchStub();
+    const log = vi.spyOn(console, 'log');
     const result = await handleAccessRequest(request({ token }), { env, fetchImpl });
 
     expect(result.status).toBe(200);
     expect(JSON.parse(result.body)).toMatchObject({
       access_token: 'native-access',
       refresh_token: 'native-refresh',
-      profile: { id: profile.id, name: profile.name, role: profile.role },
     });
+    expect(result.body).not.toContain(token);
     expect(result.headers['cache-control']).toBe('private, no-store');
     expect(result.headers['set-cookie']).toBeUndefined();
+    expect(log).not.toHaveBeenCalled();
 
     const rpc = calls.filter(call => call.url.includes('/rpc/'));
-    expect(rpc.map(call => call.url.split('/').at(-1))).toEqual(['resolve_access', 'consume_access']);
+    expect(rpc.map(call => call.url.split('/').at(-1))).toEqual(['resolve_access']);
     expect(JSON.parse(rpc[0]!.init.body as string)).toEqual({
       p_token_hash: createHash('sha256').update(token).digest('hex'),
     });
@@ -93,7 +90,7 @@ describe('native access exchange', () => {
     expect(verify.init.headers).toMatchObject({ apikey: 'function-publishable-key', Authorization: 'Bearer function-publishable-key' });
   });
 
-  test('creates and links the native auth user for a legacy profile on first exchange', async () => {
+  test('creates and links the hidden native user only when the profile is not yet bound', async () => {
     const legacyProfile = { ...profile, auth_user_id: null };
     const { calls, fetchImpl } = fetchStub({ profile: legacyProfile });
     const result = await handleAccessRequest(request({ token }), { env, fetchImpl });
@@ -108,14 +105,15 @@ describe('native access exchange', () => {
     expect(JSON.parse(patch.init.body as string)).toEqual({ auth_user_id: createdAuthUserId });
   });
 
-  test('does not issue a second session after the database consumes the token', async () => {
+  test('reuses the same personal link for two clean native-session exchanges', async () => {
     const state = fetchStub();
     const first = await handleAccessRequest(request({ token }), { env, fetchImpl: state.fetchImpl });
     const second = await handleAccessRequest(request({ token }), { env, fetchImpl: state.fetchImpl });
 
     expect(first.status).toBe(200);
-    expect(second.status).toBe(401);
-    expect(state.calls.filter(call => call.url.endsWith('/auth/v1/verify'))).toHaveLength(1);
+    expect(second.status).toBe(200);
+    expect(state.calls.filter(call => call.url.endsWith('/auth/v1/verify'))).toHaveLength(2);
+    expect(state.calls.filter(call => call.url.endsWith('/rpc/resolve_access'))).toHaveLength(2);
   });
 
   test('rejects wrong origin and malformed requests without calling Supabase', async () => {
@@ -132,7 +130,7 @@ describe('native access exchange', () => {
   });
 
   test('rejects the 61st request from one IP in a 60-second window', async () => {
-    const { fetchImpl } = fetchStub({ consumed: true });
+    const { fetchImpl } = fetchStub({ profile: null });
     const results = await Promise.all(
       Array.from({ length: 61 }, () => handleAccessRequest({
         ...request({ token }),
@@ -143,13 +141,5 @@ describe('native access exchange', () => {
     expect(results.slice(0, 60).every(result => result.status === 401)).toBe(true);
     expect(results[60]?.status).toBe(429);
     expect(JSON.parse(results[60]!.body)).toEqual({ error: 'rate_limited' });
-  });
-
-  test('rejects when consume loses the single-use race', async () => {
-    const { calls, fetchImpl } = fetchStub({ consumed: true });
-    const result = await handleAccessRequest(request({ token }), { env, fetchImpl });
-
-    expect(result.status).toBe(401);
-    expect(calls.some(call => call.url.endsWith('/auth/v1/verify'))).toBe(false);
   });
 });
