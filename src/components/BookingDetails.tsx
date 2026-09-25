@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   cancelBooking as cancelBookingApi,
   editBooking as editBookingApi,
@@ -103,6 +104,12 @@ function isCancellationResult(value: CancellationResult | Booking): value is Can
   return 'cancelledCount' in value && 'bookings' in value;
 }
 
+function focusableElements(container: HTMLElement): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )];
+}
+
 export default function BookingDetails({
   booking,
   onClose,
@@ -125,6 +132,33 @@ export default function BookingDetails({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const cancelTriggerRef = useRef<HTMLButtonElement>(null);
+  const confirmationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!confirming) return undefined;
+
+    const confirmation = confirmationRef.current;
+    const parentDialog = cancelTriggerRef.current?.closest('[role="dialog"]') as HTMLElement | null;
+    const previousAriaHidden = parentDialog ? parentDialog.getAttribute('aria-hidden') : null;
+    const previousInert = parentDialog?.hasAttribute('inert') ?? false;
+    if (parentDialog) {
+      parentDialog.setAttribute('aria-hidden', 'true');
+      parentDialog.setAttribute('inert', '');
+      (parentDialog as HTMLElement & { inert?: boolean }).inert = true;
+    }
+    confirmation?.querySelector<HTMLElement>('button:not([disabled])')?.focus();
+
+    return () => {
+      if (parentDialog) {
+        if (previousAriaHidden === null) parentDialog.removeAttribute('aria-hidden');
+        else parentDialog.setAttribute('aria-hidden', previousAriaHidden);
+        if (!previousInert) parentDialog.removeAttribute('inert');
+        (parentDialog as HTMLElement & { inert?: boolean }).inert = previousInert;
+      }
+      cancelTriggerRef.current?.focus();
+    };
+  }, [confirming]);
 
   useEffect(() => {
     setCurrentBooking(booking);
@@ -191,6 +225,28 @@ export default function BookingDetails({
         : `${cancelScope === 'future' ? 'This booking and later bookings were cancelled.' : 'Booking cancelled.'}${refreshed.failed ? ' Schedule refresh failed.' : ''}`);
     } finally {
       setPending(false);
+    }
+  };
+
+  const handleConfirmationKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (!pending) setConfirming(false);
+      return;
+    }
+    if (event.key !== 'Tab' || !confirmationRef.current) return;
+    const focusable = focusableElements(confirmationRef.current);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!first || !last) {
+      event.preventDefault();
+    } else if (event.shiftKey && (document.activeElement === first || document.activeElement === confirmationRef.current)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
     }
   };
 
@@ -262,7 +318,7 @@ export default function BookingDetails({
           <button type="button" onClick={() => { setError(null); setNotice(null); setEditing(true); }} disabled={pending}>
             Edit booking
           </button>
-          <button type="button" onClick={() => { setCancelScope('one'); setError(null); setNotice(null); setConfirming(true); }} disabled={pending}>
+          <button ref={cancelTriggerRef} type="button" onClick={() => { setCancelScope('one'); setError(null); setNotice(null); setConfirming(true); }} disabled={pending}>
             Cancel booking
           </button>
         </div>
@@ -274,8 +330,8 @@ export default function BookingDetails({
         </p>
       )}
 
-      {confirming && (
-        <div className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
+      {confirming && typeof document !== 'undefined' && createPortal(
+        <div ref={confirmationRef} className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title" onKeyDown={handleConfirmationKeyDown}>
           <h3 id="cancel-booking-title">Cancel this booking?</h3>
           <p>
             Cancel “{currentBooking.className}” on {formattedDate} at {formattedStart} in {formattedRoom}?
@@ -292,7 +348,8 @@ export default function BookingDetails({
             </button>
             <button type="button" onClick={() => setConfirming(false)} disabled={pending}>Keep booking</button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

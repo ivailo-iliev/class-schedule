@@ -168,6 +168,65 @@ describe('BookingDetails', () => {
     expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
   });
 
+  test('focuses and contains keyboard input in the cancellation confirmation', () => {
+    renderDetails();
+    const trigger = screen.getByRole('button', { name: 'Cancel booking' });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Cancel this booking?' });
+    const confirm = screen.getByRole('button', { name: 'Confirm cancellation' });
+    const keep = screen.getByRole('button', { name: 'Keep booking' });
+    const first = screen.getByLabelText('Only this occurrence');
+
+    expect(document.activeElement).toBe(confirm);
+    keep.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+    first.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(keep);
+  });
+
+  test('Escape dismisses only the confirmation and restores focus to its trigger', () => {
+    const { onClose } = renderDetails();
+    const trigger = screen.getByRole('button', { name: 'Cancel booking' });
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Cancel this booking?' }), { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Cancel this booking?' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Booking details' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test('makes the parent dialog unavailable while cancellation is open', () => {
+    const onClose = vi.fn();
+    const onRefresh = vi.fn(async () => undefined);
+    const parentKeyDown = vi.fn((event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === 'Escape') onClose();
+    });
+    render(
+      <div role="dialog" aria-label="Booking details panel" onKeyDown={parentKeyDown}>
+        <BookingDetails booking={booking()} profile={teacher} onClose={onClose} onRefresh={onRefresh} />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+    const parent = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Booking details panel"]');
+    expect(parent).not.toBeNull();
+    if (!parent) throw new Error('parent dialog missing');
+    expect(parent).toHaveAttribute('aria-hidden', 'true');
+    expect(parent).toHaveAttribute('inert');
+
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Cancel this booking?' }), { key: 'Escape' });
+    expect(parentKeyDown).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(parent).not.toHaveAttribute('aria-hidden');
+    expect(parent).not.toHaveAttribute('inert');
+  });
+
   test('keeps an owned booking readable but disables writes offline', () => {
     const editBooking = vi.fn();
     const cancelBooking = vi.fn();
