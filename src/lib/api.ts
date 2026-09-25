@@ -44,6 +44,10 @@ type BookingDetailPayload = {
   has_future_active?: boolean;
 };
 
+type MutationBookingPayload = Pick<BookingDetailPayload,
+  'id' | 'class_id' | 'teacher_id' | 'room' | 'starts_at' | 'ends_at' |
+  'cancelled_at' | 'cancelled_by' | 'version'>;
+
 function client() { return getSupabaseClient(); }
 async function fetchOr<T>(operation: () => PromiseLike<SupabaseResult<T>>): Promise<T> {
   const result = await operation();
@@ -79,6 +83,24 @@ function mapBookingDetail(row: BookingDetailPayload): BookingDetail {
     amount: row.amount,
     segments: Array.isArray(row.segments) ? row.segments : [],
     hasFutureActive: row.has_future_active === true,
+  };
+}
+
+function mapMutationBooking(row: MutationBookingPayload): Booking {
+  return {
+    id: row.id,
+    classId: row.class_id,
+    teacherId: row.teacher_id,
+    className: '',
+    teacherName: '',
+    room: row.room,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    hour: Math.floor(minutesOf(row.starts_at) / 60),
+    cancelledAt: row.cancelled_at,
+    cancelledBy: row.cancelled_by,
+    version: row.version,
+    canEdit: row.cancelled_at === null,
   };
 }
 
@@ -156,7 +178,7 @@ export async function editBooking(
   startsAt: string,
   endsAt: string,
   studentDetails: string | null,
-): Promise<BookingDetail> {
+): Promise<Booking> {
   const result = await fetchOr(() => client().rpc('edit_booking', {
     p_id: id,
     p_expected_version: expectedVersion,
@@ -165,8 +187,8 @@ export async function editBooking(
     p_starts_at: startsAt,
     p_ends_at: endsAt,
     p_student_details: studentDetails as unknown as string,
-  }) as unknown as PromiseLike<SupabaseResult<BookingDetailPayload>>);
-  return mapBookingDetail(result);
+  }) as unknown as PromiseLike<SupabaseResult<MutationBookingPayload>>);
+  return mapMutationBooking(result);
 }
 
 export async function cancelBooking(
@@ -178,9 +200,9 @@ export async function cancelBooking(
     p_id: id,
     p_expected_version: expectedVersion,
     p_scope: scope,
-  }) as unknown as PromiseLike<SupabaseResult<{ bookings: BookingDetailPayload[]; cancelled_count: number }>>);
+  }) as unknown as PromiseLike<SupabaseResult<{ bookings: MutationBookingPayload[]; cancelled_count: number }>>);
   return {
-    bookings: (result.bookings ?? []).map(mapBookingDetail),
+    bookings: (result.bookings ?? []).map(mapMutationBooking),
     cancelledCount: result.cancelled_count,
   };
 }

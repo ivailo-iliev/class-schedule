@@ -90,13 +90,17 @@ function mutationError(error: unknown): string {
 
 function reconcileBooking(current: Booking, updated: Booking, schedule?: DaySchedule): Booking {
   const persisted = schedule?.bookings.find((candidate) => candidate.id === updated.id);
-  const candidate = persisted ?? updated;
+  // Mutation RPCs intentionally return only the safe booking projection. Keep
+  // every returned identity/version/position field authoritative and use the
+  // schedule response only to restore display labels.
   return {
     ...current,
-    ...candidate,
-    className: candidate.className || current.className,
-    teacherName: candidate.teacherName || current.teacherName,
-    teacherId: candidate.teacherId || current.teacherId,
+    ...updated,
+    className: persisted?.className || current.className,
+    teacherName: persisted?.teacherName || current.teacherName,
+    classId: updated.classId || current.classId,
+    teacherId: updated.teacherId || current.teacherId,
+    version: updated.version ?? current.version,
   };
 }
 
@@ -218,7 +222,23 @@ export default function BookingDetails({
       const count = isCancellationResult(result) ? result.cancelledCount : (result.cancelledAt ? 1 : 0);
       const updated = isCancellationResult(result) ? result.bookings[0] : result;
       const refreshed = await refreshSchedule();
-      if (updated) setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed.schedule));
+      if (count === 0) {
+        // An empty mutation result is the idempotent "already cancelled"
+        // outcome. Hide controls immediately, then reload the private
+        // projection for the retained cancellation history; never invent a
+        // timestamp from the empty response.
+        setCurrentBooking((current) => ({ ...current, canEdit: false }));
+        try {
+          const authoritative = await loadDetails(currentBooking.id);
+          setDetail(authoritative);
+          setCurrentBooking({ ...authoritative, canEdit: false });
+        } catch {
+          // The schedule has already been refreshed. Keep the booking
+          // inactive even if the private reload is unavailable.
+        }
+      } else if (updated) {
+        setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed.schedule));
+      }
       setConfirming(false);
       setNotice(count === 0
         ? 'This booking was already cancelled. The schedule was refreshed.'
@@ -332,7 +352,8 @@ export default function BookingDetails({
       )}
 
       {confirming && typeof document !== 'undefined' && createPortal(
-        <div ref={confirmationRef} className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title" onKeyDown={handleConfirmationKeyDown}>
+        <div className="booking-details__confirm-backdrop">
+          <div ref={confirmationRef} className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title" onKeyDown={handleConfirmationKeyDown}>
           <h3 id="cancel-booking-title">Cancel this booking?</h3>
           <p>
             Cancel “{currentBooking.className}” on {formattedDate} at {formattedStart} in {formattedRoom}?
@@ -348,6 +369,7 @@ export default function BookingDetails({
               {pending ? 'Cancelling…' : 'Confirm cancellation'}
             </button>
             <button type="button" onClick={() => setConfirming(false)} disabled={pending}>Keep booking</button>
+          </div>
           </div>
         </div>,
         document.body,

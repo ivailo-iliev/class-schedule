@@ -299,13 +299,20 @@ describe('BookingDetails', () => {
   test('reports an idempotent cancellation after refreshing the schedule', async () => {
     const cancelBooking = vi.fn(async () => ({ bookings: [], cancelledCount: 0 }));
     const onRefresh = vi.fn(async () => undefined);
-    renderDetails({ cancelBooking, onRefresh });
+    const loadDetails = vi.fn()
+      .mockResolvedValueOnce(detail({ version: 4 }))
+      .mockResolvedValueOnce(detail({ cancelledAt: '2026-09-15T12:00:00.000Z', canEdit: false, version: 4 }));
+    renderDetails({ cancelBooking, onRefresh, loadDetails });
 
+    await screen.findByText('Private student note');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent(/already cancelled/i);
-    expect(cancelBooking).toHaveBeenCalledWith('booking-1', 3, 'one');
+    expect(cancelBooking).toHaveBeenCalledWith('booking-1', 4, 'one');
     expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(loadDetails).toHaveBeenCalledWith('booking-1');
+    expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
   });
 });

@@ -36,7 +36,7 @@ export interface BookingDetail extends Booking {
 
 export type CancelScope = 'one' | 'future';
 export interface CancellationResult {
-  bookings: BookingDetail[];
+  bookings: Booking[];
   cancelledCount: number;
 }
 

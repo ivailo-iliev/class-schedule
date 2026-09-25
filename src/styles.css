@@ -893,11 +893,24 @@ select:focus-visible {
 }
 
 .booking-details__confirm {
-  margin-top: 1rem;
+  width: min(calc(100vw - 2rem), 32rem);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
   padding: 0.85rem;
   border: 1px solid #c28a25;
   border-radius: 0.4rem;
   background: #fff8e6;
+  box-shadow: 0 1rem 3rem rgb(23 32 51 / 30%);
+}
+
+.booking-details__confirm-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(23 32 51 / 45%);
 }
 
 .booking-details__confirm h3 {

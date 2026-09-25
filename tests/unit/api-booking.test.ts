@@ -80,8 +80,10 @@ describe('booking RPC client contracts', () => {
       segments: [], cancelled_at: null, cancelled_by: null, version: 5, can_manage: true, has_future_active: false,
     }, error: null });
 
-    await expect(editBooking('booking-1', 4, 'class-1', 'room', '2026-11-02T10:00:00', '2026-11-02T11:00:00', null))
-      .resolves.toMatchObject({ startsAt: '2026-11-02T10:00:00', version: 5 });
+    const mutationResult = await editBooking('booking-1', 4, 'class-1', 'room', '2026-11-02T10:00:00', '2026-11-02T11:00:00', null);
+    expect(mutationResult).toMatchObject({ startsAt: '2026-11-02T10:00:00', classId: 'class-1', teacherId: 'teacher-1', version: 5 });
+    expect(mutationResult).not.toHaveProperty('amount');
+    expect(mutationResult).not.toHaveProperty('studentDetails');
     expect(rpc).toHaveBeenCalledWith('edit_booking', {
       p_id: 'booking-1', p_expected_version: 4, p_class_id: 'class-1', p_room: 'room',
       p_starts_at: '2026-11-02T10:00:00', p_ends_at: '2026-11-02T11:00:00', p_student_details: null,
@@ -95,5 +97,21 @@ describe('booking RPC client contracts', () => {
     expect(rpc).toHaveBeenCalledWith('cancel_booking', {
       p_id: 'booking-1', p_expected_version: 4, p_scope: 'future',
     });
+  });
+
+  test('maps cancellation mutations to the safe booking shape', async () => {
+    rpc.mockResolvedValueOnce({ data: {
+      bookings: [{
+        id: 'booking-1', class_id: 'class-1', teacher_id: 'teacher-1', room: 'hall',
+        starts_at: '2026-11-02T08:30:00', ends_at: '2026-11-02T09:30:00',
+        cancelled_at: '2026-11-01T12:00:00Z', cancelled_by: 'teacher-1', version: 5,
+        student_details: 'private', amount: '10.00', price_breakdown: [],
+      }], cancelled_count: 1,
+    }, error: null });
+
+    const result = await cancelBooking('booking-1', 4, 'one');
+    expect(result.bookings[0]).toMatchObject({ classId: 'class-1', teacherId: 'teacher-1', version: 5 });
+    expect(result.bookings[0]).not.toHaveProperty('studentDetails');
+    expect(result.bookings[0]).not.toHaveProperty('amount');
   });
 });
