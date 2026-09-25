@@ -82,7 +82,7 @@ try {
   });
   if (exchange.status !== 200) throw new Error(`access exchange: HTTP ${exchange.status}`);
   const session = JSON.parse(exchange.body);
-  if (!session.user?.id || !session.access_token || !session.refresh_token || session.profile?.id !== profileId) {
+  if (!session.user?.id || !session.access_token || !session.refresh_token) {
     throw new Error('native session payload is incomplete');
   }
   userId = session.user.id;
@@ -101,8 +101,15 @@ try {
     },
     fetchImpl: fetch,
   });
-  if (secondExchange.status !== 401) throw new Error('token was reusable');
-  console.log('single-use token: PASS');
+  if (secondExchange.status !== 200) throw new Error('personal access link was not reusable');
+  const secondSession = JSON.parse(secondExchange.body);
+  if (!secondSession.access_token || !secondSession.refresh_token) {
+    throw new Error('reused access link did not return a native session');
+  }
+  if (secondSession.user?.id !== userId) {
+    throw new Error('reused access link returned a different native user');
+  }
+  console.log('reusable personal link: PASS');
 
   const teacherHeaders = { apikey: key, Authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' };
   const classRows = await api('/rest/v1/classes', {

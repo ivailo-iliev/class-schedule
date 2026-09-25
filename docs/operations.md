@@ -15,9 +15,11 @@ Supabase CLI against the target project (local or hosted).
 
 `netlify.toml` is the deployment source of truth. Netlify builds with Node 24
 using `npm run build`, publishes `dist`, and loads functions from
-`netlify/functions`. The access function owns `/api/access` and appears before
-the final `/*` SPA fallback so its errors cannot become an HTML 200 response.
-Its Netlify rate limit is 60 requests per IP/domain per 60 seconds.
+`netlify/functions`. The access function owns `/api/access`; the manifest is a
+public static `dist/manifest.webmanifest` asset. Both the access route and API
+404 fallback appear before the final `/*` SPA fallback so function errors
+cannot become an HTML 200 response. The access function uses a Netlify rate
+limit of 60 requests per IP/domain per 60 seconds.
 
 Configure environment variables in Netlify's site settings, not in this
 repository:
@@ -34,10 +36,9 @@ repository:
   any production write access into a preview context.
 
 There are no signing-key, JWKS, or custom-JWT variables in this native-session
-design. Frontend builds never run Supabase migrations. Before accepting a
-deployment, inspect the generated `dist` with `npm run check:public-build` and
-verify the production response headers include CSP, `Referrer-Policy:
-no-referrer`, and `X-Content-Type-Options: nosniff`.
+design. Frontend builds never run Supabase migrations. Before accepting a deployment, inspect the generated `dist` with `npm run
+check:public-build` and verify the production response headers include CSP,
+`Referrer-Policy: no-referrer`, and `X-Content-Type-Options: nosniff`.
 
 ## Default timezone
 
