@@ -229,8 +229,16 @@ export type Database = {
         }
         Returns: Json
       }
+      get_admin_month_report: {
+        Args: { p_month: string; p_teacher_id?: string | null }
+        Returns: Json
+      }
       get_booking_details: { Args: { p_id: string }; Returns: Json }
       get_day: { Args: { p_date: string }; Returns: Json }
+      get_my_month_report: {
+        Args: { p_month: string }
+        Returns: Json
+      }
       quote_booking: {
         Args: {
           p_class_id: string

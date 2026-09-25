@@ -13,6 +13,10 @@ import type {
   CreatedBooking,
   CreatedBookingSeries,
   DaySchedule,
+  AdminMonthReport,
+  AdminTeacherMonthReport,
+  MonthReportRow,
+  MyMonthReport,
   Profile,
   Room,
 } from './types';
@@ -47,6 +51,41 @@ type BookingDetailPayload = {
 type MutationBookingPayload = Pick<BookingDetailPayload,
   'id' | 'class_id' | 'teacher_id' | 'room' | 'starts_at' | 'ends_at' |
   'cancelled_at' | 'cancelled_by' | 'version'>;
+
+type MonthReportRowPayload = {
+  id: string;
+  teacher_id: string;
+  teacher_name: string;
+  class_id: string;
+  activity_title: string;
+  booking_date: string;
+  starts_at: string;
+  ends_at: string;
+  duration_minutes: number;
+  room: Room;
+  currency: string;
+  calculated_amount: string;
+  price_breakdown: MonthReportRow['priceBreakdown'];
+  cancelled_at: string | null;
+  cancelled: boolean;
+  effective_amount_due: string;
+};
+type MyMonthReportPayload = {
+  month: string;
+  teacher_id: string;
+  teacher_name: string;
+  reservation_count: number;
+  cancelled_count: number;
+  total_due: string;
+  rows: MonthReportRowPayload[];
+};
+type AdminTeacherMonthReportPayload = Omit<MyMonthReportPayload, 'month'>;
+type AdminMonthReportPayload = {
+  month: string;
+  teacher_id: string | null;
+  teachers: AdminTeacherMonthReportPayload[];
+  cashbox_total: string;
+};
 
 function client() { return getSupabaseClient(); }
 async function fetchOr<T>(operation: () => PromiseLike<SupabaseResult<T>>): Promise<T> {
@@ -101,6 +140,27 @@ function mapMutationBooking(row: MutationBookingPayload): Booking {
     cancelledBy: row.cancelled_by,
     version: row.version,
     canEdit: row.cancelled_at === null,
+  };
+}
+
+function mapMonthReportRow(row: MonthReportRowPayload): MonthReportRow {
+  return {
+    id: row.id,
+    teacherId: row.teacher_id,
+    teacherName: row.teacher_name,
+    classId: row.class_id,
+    activityTitle: row.activity_title,
+    bookingDate: row.booking_date,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    durationMinutes: row.duration_minutes,
+    room: row.room,
+    currency: row.currency,
+    calculatedAmount: row.calculated_amount,
+    priceBreakdown: Array.isArray(row.price_breakdown) ? row.price_breakdown : [],
+    cancelledAt: row.cancelled_at,
+    cancelled: row.cancelled,
+    effectiveAmountDue: row.effective_amount_due,
   };
 }
 
@@ -204,5 +264,41 @@ export async function cancelBooking(
   return {
     bookings: (result.bookings ?? []).map(mapMutationBooking),
     cancelledCount: result.cancelled_count,
+  };
+}
+
+export async function getMyMonthReport(month: string): Promise<MyMonthReport> {
+  const result = await fetchOr(() => client().rpc('get_my_month_report', {
+    p_month: month,
+  }) as unknown as PromiseLike<SupabaseResult<MyMonthReportPayload>>);
+  return {
+    month: result.month,
+    teacherId: result.teacher_id,
+    teacherName: result.teacher_name,
+    reservationCount: result.reservation_count,
+    cancelledCount: result.cancelled_count,
+    totalDue: result.total_due,
+    rows: result.rows.map(mapMonthReportRow),
+  };
+}
+
+export async function getAdminMonthReport(month: string, teacherId: string | null = null): Promise<AdminMonthReport> {
+  const result = await fetchOr(() => client().rpc('get_admin_month_report', {
+    p_month: month,
+    p_teacher_id: teacherId,
+  }) as unknown as PromiseLike<SupabaseResult<AdminMonthReportPayload>>);
+  const teachers: AdminTeacherMonthReport[] = result.teachers.map((teacher) => ({
+    teacherId: teacher.teacher_id,
+    teacherName: teacher.teacher_name,
+    reservationCount: teacher.reservation_count,
+    cancelledCount: teacher.cancelled_count,
+    totalDue: teacher.total_due,
+    rows: teacher.rows.map(mapMonthReportRow),
+  }));
+  return {
+    month: result.month,
+    teacherId: result.teacher_id,
+    teachers,
+    cashboxTotal: result.cashbox_total,
   };
 }

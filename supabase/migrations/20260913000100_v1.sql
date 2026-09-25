@@ -679,3 +679,152 @@ $$;
 
 revoke all on function public.get_day(date), public.get_booking_details(uuid) from public, anon;
 grant execute on function public.get_day(date), public.get_booking_details(uuid) to authenticated;
+
+-- A4: authorized monthly report projections. These reports derive totals only
+-- from immutable booking snapshots; they do not represent payments or a
+-- balance/ledger.
+create function private.month_report_row(
+  p_booking public.bookings, p_activity_title text, p_teacher_name text
+) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object(
+    'id', p_booking.id,
+    'teacher_id', p_booking.teacher_id,
+    'teacher_name', p_teacher_name,
+    'class_id', p_booking.class_id,
+    'activity_title', p_activity_title,
+    'booking_date', to_char(p_booking.starts_at::date, 'YYYY-MM-DD'),
+    'starts_at', to_char(p_booking.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'ends_at', to_char(p_booking.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'duration_minutes', (extract(epoch from p_booking.ends_at - p_booking.starts_at) / 60)::integer,
+    'room', p_booking.room,
+    'currency', p_booking.currency,
+    'calculated_amount', to_char(p_booking.calculated_amount, 'FM9999999990.00'),
+    'price_breakdown', p_booking.price_breakdown,
+    'cancelled_at', p_booking.cancelled_at,
+    'cancelled', p_booking.cancelled_at is not null,
+    'effective_amount_due', to_char(
+      case when p_booking.cancelled_at is null then p_booking.calculated_amount else 0 end,
+      'FM9999999990.00'
+    )
+  )
+$$;
+
+create function private.month_report_summary(
+  p_month_start date, p_teacher_id uuid default null
+) returns table(
+  teacher_id uuid,
+  teacher_name text,
+  reservation_count bigint,
+  cancelled_count bigint,
+  total_due numeric,
+  rows jsonb
+)
+language sql stable security definer set search_path = '' as $$
+  select p.id,
+    p.name,
+    count(b.id)::bigint,
+    count(b.id) filter (where b.cancelled_at is not null)::bigint,
+    coalesce(sum(case when b.cancelled_at is null then b.calculated_amount else 0 end), 0)::numeric,
+    coalesce(jsonb_agg(
+      private.month_report_row(b, c.name, p.name)
+      order by b.starts_at, b.id
+    ) filter (where b.id is not null), '[]'::jsonb)
+  from public.profiles p
+  left join public.bookings b
+    on b.teacher_id = p.id
+   and b.starts_at >= p_month_start::timestamp
+   and b.starts_at < (p_month_start + interval '1 month')::timestamp
+  left join public.classes c on c.id = b.class_id
+  where p.role = 'teacher'
+    and (p_teacher_id is null or p.id = p_teacher_id)
+  group by p.id, p.name
+$$;
+
+create function public.get_my_month_report(p_month date) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  actor uuid := private.actor_id();
+  month_start date;
+  teacher_name text;
+  reservation_count bigint;
+  cancelled_count bigint;
+  total_due numeric;
+  report_rows jsonb;
+begin
+  if actor is null then
+    raise insufficient_privilege using message = 'active_profile_required';
+  end if;
+  if p_month is null or not isfinite(p_month) then
+    raise sqlstate 'PT422' using message = 'invalid_month';
+  end if;
+  month_start := date_trunc('month', p_month::timestamp)::date;
+  select s.teacher_name, s.reservation_count, s.cancelled_count, s.total_due, s.rows
+    into teacher_name, reservation_count, cancelled_count, total_due, report_rows
+  from private.month_report_summary(month_start, actor) s;
+  if not found then
+    select p.name into teacher_name from public.profiles p where p.id = actor;
+    reservation_count := 0;
+    cancelled_count := 0;
+    total_due := 0;
+    report_rows := '[]'::jsonb;
+  end if;
+  return jsonb_build_object(
+    'month', to_char(month_start, 'YYYY-MM'),
+    'teacher_id', actor,
+    'teacher_name', teacher_name,
+    'reservation_count', reservation_count,
+    'cancelled_count', cancelled_count,
+    'total_due', to_char(total_due, 'FM9999999990.00'),
+    'rows', report_rows
+  );
+end;
+$$;
+
+create function public.get_admin_month_report(p_month date, p_teacher_id uuid default null) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  month_start date;
+  teacher_reports jsonb;
+  cashbox numeric;
+begin
+  if private.actor_id() is null or not private.is_admin() then
+    raise insufficient_privilege using message = 'admin_required';
+  end if;
+  if p_month is null or not isfinite(p_month) then
+    raise sqlstate 'PT422' using message = 'invalid_month';
+  end if;
+  month_start := date_trunc('month', p_month::timestamp)::date;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'teacher_id', s.teacher_id,
+      'teacher_name', s.teacher_name,
+      'reservation_count', s.reservation_count,
+      'cancelled_count', s.cancelled_count,
+      'total_due', to_char(s.total_due, 'FM9999999990.00'),
+      'rows', s.rows
+    ) order by s.teacher_name, s.teacher_id), '[]'::jsonb)
+    into teacher_reports
+  from private.month_report_summary(month_start, p_teacher_id) s;
+
+  select coalesce(sum(b.calculated_amount), 0)::numeric into cashbox
+  from public.bookings b
+  where b.cancelled_at is null
+    and b.starts_at >= month_start::timestamp
+    and b.starts_at < (month_start + interval '1 month')::timestamp;
+
+  return jsonb_build_object(
+    'month', to_char(month_start, 'YYYY-MM'),
+    'teacher_id', p_teacher_id,
+    'teachers', teacher_reports,
+    'cashbox_total', to_char(cashbox, 'FM9999999990.00')
+  );
+end;
+$$;
+
+revoke all on function private.month_report_row(public.bookings, text, text),
+  private.month_report_summary(date, uuid) from public, anon, authenticated;
+revoke all on function public.get_my_month_report(date),
+  public.get_admin_month_report(date, uuid) from public, anon, authenticated;
+grant execute on function public.get_my_month_report(date),
+  public.get_admin_month_report(date, uuid) to authenticated;

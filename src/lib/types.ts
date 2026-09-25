@@ -90,6 +90,51 @@ export interface CreatedBookingSeries {
   total_amount: string;
 }
 
+export interface MonthReportRow {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  classId: string;
+  activityTitle: string;
+  bookingDate: string;
+  startsAt: string;
+  endsAt: string;
+  durationMinutes: number;
+  room: Room;
+  currency: string;
+  calculatedAmount: string;
+  priceBreakdown: PriceSegment[];
+  cancelledAt: string | null;
+  cancelled: boolean;
+  effectiveAmountDue: string;
+}
+
+export interface MyMonthReport {
+  month: string;
+  teacherId: string;
+  teacherName: string;
+  reservationCount: number;
+  cancelledCount: number;
+  totalDue: string;
+  rows: MonthReportRow[];
+}
+
+export interface AdminTeacherMonthReport {
+  teacherId: string;
+  teacherName: string;
+  reservationCount: number;
+  cancelledCount: number;
+  totalDue: string;
+  rows: MonthReportRow[];
+}
+
+export interface AdminMonthReport {
+  month: string;
+  teacherId: string | null;
+  teachers: AdminTeacherMonthReport[];
+  cashboxTotal: string;
+}
+
 export interface NativeSessionResponse {
   access_token: string; refresh_token: string; expires_in?: number; expires_at?: number;
   user?: Session['user']; profile: Profile;
