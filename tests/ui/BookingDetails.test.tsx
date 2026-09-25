@@ -63,16 +63,16 @@ describe('BookingDetails', () => {
   test('shows another teacher booking as readonly', () => {
     renderDetails({ booking: booking({ canEdit: false, teacherId: 'teacher-b', teacherName: 'Teacher B' }) });
 
-    expect(screen.getByRole('region', { name: 'Booking details' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Close booking details' })).toHaveTextContent('×');
+    expect(screen.getByRole('region', { name: 'Подробности за резервацията' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Затвори подробностите за резервацията' })).toHaveTextContent('×');
     expect(screen.getByText('Pilates')).toBeInTheDocument();
     expect(screen.getByText('Teacher B')).toBeInTheDocument();
-    expect(screen.getByText('One booking instance')).toBeInTheDocument();
+    expect(screen.getByText('Едно занятие')).toBeInTheDocument();
     expect(screen.queryByText('Read-only')).not.toBeInTheDocument();
     expect(screen.queryByText('Version')).not.toBeInTheDocument();
     expect(screen.queryByText('Status')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Промени резервацията' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отмени резервацията' })).not.toBeInTheDocument();
   });
 
   test('allows an owner to edit one instance with its expected version', async () => {
@@ -80,19 +80,19 @@ describe('BookingDetails', () => {
     const onRefresh = vi.fn(async () => undefined);
     renderDetails({ editBooking, onRefresh });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
-    expect(await screen.findByRole('heading', { name: 'Edit booking' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
+    expect(await screen.findByRole('heading', { name: 'Промяна на резервация' })).toBeInTheDocument();
     expect(screen.getByText('Teacher A')).toBeInTheDocument();
-    expect(screen.getByText('Selected series occurrence')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-a');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Room' }), { target: { value: 'room' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
+    expect(screen.getByText('Избрано занятие от серията')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Клас' })).toHaveValue('class-a');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Зала' }), { target: { value: 'room' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
       'booking-1', 3, 'class-a', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
     ));
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole('status')).toHaveTextContent('Booking updated.');
+    expect(await screen.findByRole('status')).toHaveTextContent('Резервацията е променена.');
   });
 
   test('allows an admin to edit a booking owned by another teacher', async () => {
@@ -104,11 +104,11 @@ describe('BookingDetails', () => {
       loadClasses: vi.fn(async () => [{ ...classes[0], teacherId: 'teacher-b' }]),
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
-    expect(await screen.findByRole('heading', { name: 'Edit booking' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
+    expect(await screen.findByRole('heading', { name: 'Промяна на резервация' })).toBeInTheDocument();
     expect(screen.getByText('Teacher B')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-a');
-    fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
+    expect(screen.getByRole('combobox', { name: 'Клас' })).toHaveValue('class-a');
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
       'booking-1', 3, 'class-a', 'hall', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
@@ -141,18 +141,18 @@ describe('BookingDetails', () => {
       loadClasses: vi.fn(async () => [...classes, { id: 'class-b', teacherId: 'teacher-a', name: 'New class', active: true }]),
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Class' }), { target: { value: 'class-b' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Room' }), { target: { value: 'room' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Клас' }), { target: { value: 'class-b' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Зала' }), { target: { value: 'room' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }));
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
       'booking-1', 3, 'class-b', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
     ));
     expect(await screen.findByText('Reconciled class')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
-    expect(await screen.findByRole('combobox', { name: 'Class' })).toHaveValue('class-b');
-    fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
+    expect(await screen.findByRole('combobox', { name: 'Клас' })).toHaveValue('class-b');
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }));
     await waitFor(() => expect(editBooking).toHaveBeenLastCalledWith(
       'booking-1', 9, 'class-b', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
     ));
@@ -163,18 +163,18 @@ describe('BookingDetails', () => {
     const onRefresh = vi.fn(async () => undefined);
     renderDetails({ cancelBooking, onRefresh });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отмени резервацията' }));
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('Pilates');
-    expect(dialog).toHaveTextContent('September 15, 2026');
+    expect(dialog).toHaveTextContent('15 септември 2026 г.');
     expect(dialog).toHaveTextContent('18:00');
     expect(dialog).toHaveTextContent('Зала');
-    expect(screen.queryByLabelText('This and later occurrences')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Това и следващите занятия')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди отмяната' }));
     await waitFor(() => expect(cancelBooking).toHaveBeenCalledWith('booking-1', 3, 'one'));
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole('status')).toHaveTextContent('Booking cancelled.');
+    expect(await screen.findByRole('status')).toHaveTextContent('Резервацията е отменена.');
   });
 
   test('refreshes after stale or conflicting writes and keeps the detail actionable', async () => {
@@ -184,12 +184,12 @@ describe('BookingDetails', () => {
     });
     renderDetails({ cancelBooking, onRefresh });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отмени резервацията' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди отмяната' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/changed|refresh/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/променена|обновен/i);
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: 'Edit booking' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Промени резервацията' })).toBeInTheDocument();
   });
 
   test('reconciles an unknown cancellation outcome before asking for a retry', async () => {
@@ -197,13 +197,13 @@ describe('BookingDetails', () => {
     const cancelBooking = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
     renderDetails({ cancelBooking, onRefresh });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отмени резервацията' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди отмяната' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not confirm/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/не можа да бъде потвърдена/i);
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
     expect(cancelBooking).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Cancel booking' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отмени резервацията' })).toBeInTheDocument();
   });
 
   test('renders cancelled history without edit or cancellation controls', () => {
@@ -211,22 +211,22 @@ describe('BookingDetails', () => {
       booking: booking({ cancelledAt: '2026-09-15T12:00:00.000Z', canEdit: false }),
     });
 
-    expect(screen.getByText('One booking instance')).toBeInTheDocument();
-    expect(screen.getByText(/Cancelled on September 15, 2026/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
+    expect(screen.getByText('Едно занятие')).toBeInTheDocument();
+    expect(screen.getByText(/Отменена на 15 септември 2026 г./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Промени резервацията' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отмени резервацията' })).not.toBeInTheDocument();
   });
 
   test('focuses and contains keyboard input in the cancellation confirmation', () => {
     renderDetails();
-    const trigger = screen.getByRole('button', { name: 'Cancel booking' });
+    const trigger = screen.getByRole('button', { name: 'Отмени резервацията' });
 
     trigger.focus();
     fireEvent.click(trigger);
-    const dialog = screen.getByRole('dialog', { name: 'Cancel this booking?' });
-    const confirm = screen.getByRole('button', { name: 'Confirm cancellation' });
-    const keep = screen.getByRole('button', { name: 'Keep booking' });
-    const first = screen.getByLabelText('Only this occurrence');
+    const dialog = screen.getByRole('dialog', { name: 'Да отменим ли тази резервация?' });
+    const confirm = screen.getByRole('button', { name: 'Потвърди отмяната' });
+    const keep = screen.getByRole('button', { name: 'Запази резервацията' });
+    const first = screen.getByLabelText('Само това занятие');
 
     expect(document.activeElement).toBe(confirm);
     keep.focus();
@@ -239,13 +239,13 @@ describe('BookingDetails', () => {
 
   test('Escape dismisses only the confirmation and restores focus to its trigger', () => {
     const { onClose } = renderDetails();
-    const trigger = screen.getByRole('button', { name: 'Cancel booking' });
+    const trigger = screen.getByRole('button', { name: 'Отмени резервацията' });
 
     fireEvent.click(trigger);
-    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Cancel this booking?' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Да отменим ли тази резервация?' }), { key: 'Escape' });
 
-    expect(screen.queryByRole('dialog', { name: 'Cancel this booking?' })).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Booking details' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Да отменим ли тази резервация?' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Подробности за резервацията' })).toBeInTheDocument();
     expect(document.activeElement).toBe(trigger);
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -257,19 +257,19 @@ describe('BookingDetails', () => {
       if (event.key === 'Escape') onClose();
     });
     render(
-      <div role="dialog" aria-label="Booking details panel" onKeyDown={parentKeyDown}>
+      <div role="dialog" aria-label="Панел с подробности за резервацията" onKeyDown={parentKeyDown}>
         <BookingDetails booking={booking()} profile={teacher} onClose={onClose} onRefresh={onRefresh} />
       </div>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    const parent = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Booking details panel"]');
+    fireEvent.click(screen.getByRole('button', { name: 'Отмени резервацията' }));
+    const parent = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Панел с подробности за резервацията"]');
     expect(parent).not.toBeNull();
     if (!parent) throw new Error('parent dialog missing');
     expect(parent).toHaveAttribute('aria-hidden', 'true');
     expect(parent).toHaveAttribute('inert');
 
-    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Cancel this booking?' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Да отменим ли тази резервация?' }), { key: 'Escape' });
     expect(parentKeyDown).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     expect(parent).not.toHaveAttribute('aria-hidden');
@@ -281,12 +281,12 @@ describe('BookingDetails', () => {
     const cancelBooking = vi.fn();
     renderDetails({ offline: true, editBooking, cancelBooking });
 
-    expect(screen.getByText('One booking instance')).toBeInTheDocument();
+    expect(screen.getByText('Едно занятие')).toBeInTheDocument();
     expect(screen.queryByText('Version')).not.toBeInTheDocument();
     expect(screen.queryByText('Status')).not.toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent(/editing and cancellation are disabled/i);
-    expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/промяната и отмяната са изключени/i);
+    expect(screen.queryByRole('button', { name: 'Промени резервацията' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отмени резервацията' })).not.toBeInTheDocument();
     expect(editBooking).not.toHaveBeenCalled();
     expect(cancelBooking).not.toHaveBeenCalled();
   });
@@ -303,13 +303,13 @@ describe('BookingDetails', () => {
     expect(await screen.findByText('Private student note')).toBeInTheDocument();
     expect(screen.getByText('EUR 12.00')).toBeInTheDocument();
     expect(loadDetails).toHaveBeenCalledWith('booking-1');
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    const future = screen.getByLabelText('This and later occurrences');
+    fireEvent.click(screen.getByRole('button', { name: 'Отмени резервацията' }));
+    const future = screen.getByLabelText('Това и следващите занятия');
     expect(future).toBeInTheDocument();
     fireEvent.click(future);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди отмяната' }));
     await waitFor(() => expect(cancelBooking).toHaveBeenCalledWith('booking-1', 4, 'future'));
-    expect(await screen.findByRole('status')).toHaveTextContent(/later bookings were cancelled/i);
+    expect(await screen.findByRole('status')).toHaveTextContent(/следващите занятия от серията са отменени/i);
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
   });
 
@@ -318,12 +318,12 @@ describe('BookingDetails', () => {
     renderDetails({ booking: booking({ version: 0 }), loadDetails });
 
     expect(await screen.findByText('Private student note')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
 
-    expect(await screen.findByRole('heading', { name: 'Edit booking' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Промяна на резервация' })).toBeInTheDocument();
     expect(screen.getByText('Teacher A')).toBeInTheDocument();
-    expect(screen.getByText('2 of series series-1')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-a');
+    expect(screen.getByText('Занятие 2 от серия series-1')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Клас' })).toHaveValue('class-a');
     expect(screen.queryByRole('combobox', { name: 'Teacher' })).not.toBeInTheDocument();
   });
 
@@ -336,7 +336,7 @@ describe('BookingDetails', () => {
 
     expect(loadDetails).not.toHaveBeenCalled();
     expect(screen.queryByText('Private student note')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Snapshot amount/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Запазена сума/)).not.toBeInTheDocument();
   });
 
   test('reports an idempotent cancellation after refreshing the schedule', async () => {
@@ -348,14 +348,14 @@ describe('BookingDetails', () => {
     renderDetails({ cancelBooking, onRefresh, loadDetails });
 
     await screen.findByText('Private student note');
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отмени резервацията' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди отмяната' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(/already cancelled/i);
+    expect(await screen.findByRole('status')).toHaveTextContent(/вече е била отменена/i);
     expect(cancelBooking).toHaveBeenCalledWith('booking-1', 4, 'one');
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(loadDetails).toHaveBeenCalledWith('booking-1');
-    expect(screen.queryByRole('button', { name: 'Edit booking' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Промени резервацията' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отмени резервацията' })).not.toBeInTheDocument();
   });
 });

@@ -145,17 +145,17 @@ export default function App() {
   };
 
   if (state === 'loading') {
-    return <main className="access-screen"><section className="access-card"><p className="eyebrow">Class Scheduler</p><h1>Preparing your workspace</h1><p>Connecting…</p></section></main>;
+    return <main className="access-screen"><section className="access-card"><p className="eyebrow">График на класовете</p><h1>Подготвя се работното пространство</h1><p>Свързване…</p></section></main>;
   }
   if (state === 'unavailable') {
     return (
       <main className="access-screen">
         <section className="access-card">
-          <p className="eyebrow">Class Scheduler</p>
-          <h1>Your teacher workspace</h1>
+          <p className="eyebrow">График на класовете</p>
+          <h1>Работно пространство за учители</h1>
           <p>{offline
-            ? 'You are offline. Reconnect before opening your personal access link.'
-            : 'Open your personal access link'}</p>
+            ? 'Няма връзка с интернет. Свържете се отново, преди да отворите личната си връзка за достъп.'
+            : 'Отворете личната си връзка за достъп'}</p>
         </section>
       </main>
     );
@@ -164,14 +164,14 @@ export default function App() {
     <div className="app-shell">
       <header className="app-bar">
         <div className="app-bar__inner">
-          <nav className="workspace-nav" aria-label={profile?.role === 'admin' ? 'Administrator workspace' : 'Teacher workspace'}>
+          <nav className="workspace-nav" aria-label={profile?.role === 'admin' ? 'Работно пространство на администратора' : 'Работно пространство на учителя'}>
             <button
               type="button"
               className={activeView === 'schedule' ? 'workspace-nav__item workspace-nav__item--active' : 'workspace-nav__item'}
               aria-current={activeView === 'schedule' ? 'page' : undefined}
               onClick={() => setActiveView('schedule')}
             >
-              Schedule
+              График
             </button>
             <button
               type="button"
@@ -179,7 +179,7 @@ export default function App() {
               aria-current={activeView === 'classes' ? 'page' : undefined}
               onClick={() => setActiveView('classes')}
             >
-              My classes
+              Моите класове
             </button>
             <button
               type="button"
@@ -187,12 +187,12 @@ export default function App() {
               aria-current={activeView === 'report' ? 'page' : undefined}
               onClick={() => setActiveView('report')}
             >
-              {profile?.role === 'admin' ? 'Administrator report' : 'Monthly report'}
+              {profile?.role === 'admin' ? 'Администраторски отчет' : 'Месечен отчет'}
             </button>
           </nav>
           <div className="teacher-identity">
             <span className="teacher-identity__dot" aria-hidden="true" />
-            <span>{profile?.name || 'Teacher'}</span>
+            <span>{profile?.name || 'Учител'}</span>
           </div>
         </div>
       </header>
@@ -213,7 +213,7 @@ export default function App() {
       ) : activeView === 'classes' ? <Classes profile={profile} /> : <MonthlyReport profile={profile!} />}
 
       {selectedSlot && (
-        <WorkspacePanel label="Book a room" onClose={closeSlotPanel}>
+        <WorkspacePanel label="Резервиране на зала" onClose={closeSlotPanel}>
           <BookingForm
             date={selectedSlot.date}
             startsAt={selectedSlot.startsAt}
@@ -226,11 +226,11 @@ export default function App() {
               // BookingForm already awaited this exact refresh before onDone.
             }}
           />
-          <button className="workspace-panel__close" type="button" onClick={closeSlotPanel} aria-label="Close booking form">×</button>
+          <button className="workspace-panel__close" type="button" onClick={closeSlotPanel} aria-label="Затвори формуляра за резервация">×</button>
         </WorkspacePanel>
       )}
       {selectedBooking && (
-        <WorkspacePanel label="Booking details" onClose={closeBookingPanel}>
+        <WorkspacePanel label="Подробности за резервацията" onClose={closeBookingPanel}>
           <BookingDetails
             booking={selectedBooking}
             onClose={closeBookingPanel}

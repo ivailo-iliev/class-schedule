@@ -82,19 +82,20 @@ describe('BookingForm server-quoted creation', () => {
     await waitFor(() => expect(quoteBooking).toHaveBeenCalledWith('class-a', 'hall', [
       { starts_at: '2026-09-14T08:30:00', ends_at: '2026-09-14T09:00:00' },
     ]));
-    expect(await screen.findByText('Total: €10.00')).toBeInTheDocument();
+    expect(await screen.findByText('Общо: €10.00')).toBeInTheDocument();
     expect(screen.getByText(/Standard/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Confirm booking' })).toBeEnabled();
+    expect(screen.getByText(/Standard.*\/ч/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Потвърди резервацията' })).toBeEnabled();
   });
 
   test('materializes recurrence preview and creates exactly the previewed occurrences', async () => {
     const { createBookingSeries, onRefresh } = renderForm();
-    await screen.findByText('Total: €10.00');
-    fireEvent.click(screen.getByRole('radio', { name: 'Recurring' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Tuesday' }));
-    fireEvent.change(screen.getByLabelText('Number of weeks'), { target: { value: '2' } });
-    await waitFor(() => expect(screen.getByText('4 concrete occurrences')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }));
+    await screen.findByText('Общо: €10.00');
+    fireEvent.click(screen.getByRole('radio', { name: 'Повтарящо се' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Вторник' }));
+    fireEvent.change(screen.getByLabelText('Брой седмици'), { target: { value: '2' } });
+    await waitFor(() => expect(screen.getByText('4 конкретни занятия')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди резервацията' }));
 
     await waitFor(() => expect(createBookingSeries).toHaveBeenCalledTimes(1));
     const occurrences = createBookingSeries.mock.calls[0]![3];
@@ -106,7 +107,7 @@ describe('BookingForm server-quoted creation', () => {
     ]);
     expect(createBookingSeries.mock.calls[0]!.slice(0, 3)).toEqual(['class-a', 'hall', null]);
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole('status')).toHaveTextContent('Total: €40.00');
+    expect(await screen.findByRole('status')).toHaveTextContent('Общо: €40.00');
   });
 
   test('blocks confirmation for conflicts and missing quote amounts', async () => {
@@ -115,18 +116,18 @@ describe('BookingForm server-quoted creation', () => {
       occurrences: quoteFor(occurrences, [true]).occurrences.map((item) => ({ ...item, amount: null })),
     }));
     const { createBookingSeries } = renderForm({ quoteBooking });
-    expect(await screen.findByText('A complete, conflict-free server quote is required before confirmation.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Confirm booking' })).toBeDisabled();
+    expect(await screen.findByText('Преди потвърждение е необходима пълна ценова оферта без конфликти.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Потвърди резервацията' })).toBeDisabled();
     expect(createBookingSeries).not.toHaveBeenCalled();
   });
 
   test('limits an administrator to the selected teacher active classes', async () => {
     const admin: Profile = { id: 'admin-1', name: 'Admin', role: 'admin' };
     renderForm({ profile: admin, loadTeachers: vi.fn(async () => [teacher, teacherB]) });
-    expect(await screen.findByRole('combobox', { name: 'Teacher' })).toHaveValue('teacher-a');
+    expect(await screen.findByRole('combobox', { name: 'Учител' })).toHaveValue('teacher-a');
     expect(screen.getByRole('option', { name: 'Pilates' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Yoga' })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Teacher' }), { target: { value: 'teacher-b' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Учител' }), { target: { value: 'teacher-b' } });
     await waitFor(() => expect(screen.getByRole('option', { name: 'Yoga' })).toBeInTheDocument());
     expect(screen.queryByRole('option', { name: 'Pilates' })).not.toBeInTheDocument();
   });

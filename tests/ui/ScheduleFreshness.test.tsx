@@ -46,9 +46,9 @@ describe('accuracy-first schedule refresh', () => {
     expect(screen.getByText('09:00')).toBeInTheDocument();
     expect(screen.queryByText('08:00')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Йога/ })).toHaveStyle({ gridRow: '2 / span 3' });
-    expect(screen.queryByRole('button', { name: /Book Зала at 08:30/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Book Зала at 09:00/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Book Зала at 09:30/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Резервирай Зала в 08:30/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Резервирай Зала в 09:00/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Резервирай Зала в 09:30/ })).not.toBeInTheDocument();
   });
 
   test('revalidates every visibility return without throttling and keeps empty cells non-bookable while pending', async () => {
@@ -66,9 +66,9 @@ describe('accuracy-first schedule refresh', () => {
     fireEvent(document, new Event('visibilitychange'));
 
     await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
-    expect(screen.queryByRole('button', { name: /Book Стая at 10:00/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Резервирай Стая в 10:00/ })).not.toBeInTheDocument();
     resolveRefresh(scheduleFor());
-    expect(await screen.findByRole('button', { name: 'Book Стая at 10:00' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Резервирай Стая в 10:00' })).toBeEnabled();
   });
 
   test('keeps availability unknown and disabled after a failed refresh', async () => {
@@ -77,9 +77,9 @@ describe('accuracy-first schedule refresh', () => {
       .mockRejectedValueOnce(new Error('offline'));
     render(<Schedule initialDate="2026-11-02" loadSchedule={loader} />);
     await screen.findByText('Йога');
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Обнови графика' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/out of date/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/не е актуален/i);
     expect(screen.queryByRole('button', { name: /Book / })).not.toBeInTheDocument();
   });
 
@@ -87,9 +87,9 @@ describe('accuracy-first schedule refresh', () => {
     const loader = vi.fn(async (date: string) => scheduleFor(date));
     render(<Schedule initialDate="2026-11-02" loadSchedule={loader} />);
     await screen.findByText('Йога');
-    fireEvent.click(screen.getByRole('button', { name: 'Next day' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Следващ ден' }));
     await waitFor(() => expect(loader).toHaveBeenCalledWith('2026-11-03'));
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Обнови графика' }));
     await waitFor(() => expect(loader).toHaveBeenCalledTimes(3));
   });
 });

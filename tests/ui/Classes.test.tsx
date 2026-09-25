@@ -46,7 +46,7 @@ describe('Classes screen', () => {
 
     expect(await screen.findByText('Pilates')).toBeInTheDocument();
     expect(screen.queryByText('Teacher B class')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Rename Pilates' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Преименувай Pilates' })).toBeEnabled();
   });
 
   test('creates and renames a class with a trimmed valid name', async () => {
@@ -55,15 +55,15 @@ describe('Classes screen', () => {
       classItem({ id, ...changes }));
     renderClasses(teacher, [], { createClass: create, updateClass: update });
 
-    await screen.findByText(/no classes yet/i);
-    fireEvent.change(screen.getByLabelText('Class name'), { target: { value: '  Dance  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add class' }));
+    await screen.findByText(/Все още нямате класове/i);
+    fireEvent.change(screen.getByLabelText('Име на класа'), { target: { value: '  Dance  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави клас' }));
     await waitFor(() => expect(create).toHaveBeenCalledWith('Dance', undefined));
     expect(await screen.findByText('Dance')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rename Dance' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Rename Dance' }), { target: { value: '  Modern Dance ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Преименувай Dance' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Преименувай Dance' }), { target: { value: '  Modern Dance ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith('class-new', { name: 'Modern Dance' }));
     expect(await screen.findByText('Modern Dance')).toBeInTheDocument();
   });
@@ -71,16 +71,16 @@ describe('Classes screen', () => {
   test('validates whitespace-only and overlong names before saving', async () => {
     const create = vi.fn(async (name: string) => classItem({ name }));
     renderClasses(teacher, [], { createClass: create });
-    await screen.findByText(/no classes yet/i);
+    await screen.findByText(/Все още нямате класове/i);
 
-    fireEvent.change(screen.getByLabelText('Class name'), { target: { value: '   ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add class' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Enter a class name.');
+    fireEvent.change(screen.getByLabelText('Име на класа'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави клас' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Въведете име на клас.');
     expect(create).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText('Class name'), { target: { value: 'x'.repeat(101) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add class' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('100 characters or fewer');
+    fireEvent.change(screen.getByLabelText('Име на класа'), { target: { value: 'x'.repeat(101) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави клас' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('до 100 знака');
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -90,14 +90,14 @@ describe('Classes screen', () => {
     renderClasses(teacher, [classItem()], { updateClass: update });
     await screen.findByText('Pilates');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Archive Pilates' }));
-    expect(screen.getByRole('dialog')).toHaveTextContent('Already scheduled bookings for this class will remain');
+    fireEvent.click(screen.getByRole('button', { name: 'Архивирай Pilates' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Вече планираните резервации за този клас ще останат');
     expect(update).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Archive class' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Архивирай класа' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith('class-1', { active: false }));
-    expect(await screen.findByText('Archived')).toBeInTheDocument();
+    expect(await screen.findByText('Архивиран')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reactivate Pilates' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Възстанови Pilates' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith('class-1', { active: true }));
   });
 
@@ -105,16 +105,16 @@ describe('Classes screen', () => {
     const create = vi.fn(async (name: string, teacherId?: string) => classItem({ name, teacherId }));
     const renderedAdmin = renderClasses(admin, [classItem()], { teachers: [teacher, teacherB], createClass: create });
 
-    expect(await screen.findByRole('combobox', { name: 'Class owner' })).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Отговорен учител' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Teacher A' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Teacher B' })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Class owner' }), { target: { value: teacherB.id } });
-    fireEvent.change(screen.getByLabelText('Class name'), { target: { value: 'Stretching' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add class' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Отговорен учител' }), { target: { value: teacherB.id } });
+    fireEvent.change(screen.getByLabelText('Име на класа'), { target: { value: 'Stretching' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави клас' }));
     await waitFor(() => expect(create).toHaveBeenCalledWith('Stretching', teacherB.id));
 
     renderedAdmin.unmount();
     renderClasses(teacher, [classItem()], { teachers: [teacher, teacherB] });
-    expect(screen.queryByRole('combobox', { name: 'Class owner' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Отговорен учител' })).not.toBeInTheDocument();
   });
 });

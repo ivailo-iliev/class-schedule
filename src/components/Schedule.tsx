@@ -41,22 +41,22 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   const bookingStarts = (booking: Booking, startsAt: string) => booking.startsAt === startsAt;
   const spanFor = (booking: Booking) => Math.max(1, (minutesOf(booking.endsAt) - minutesOf(booking.startsAt)) / 30);
   const canBook = availabilityFresh && !loading && !error && !offline;
-  return <main className="schedule-shell" aria-label="Schedule">
-    <p className="visually-hidden">Connected</p>
-    <header className="schedule-date-bar"><div className="date-controls" aria-label="Schedule date controls">
-      <button type="button" onClick={() => selectDate(shiftDate(date, -1))} aria-label="Previous day" title="Previous day"><Icon name="chevronLeft" /></button>
-      <label><span className="visually-hidden">Schedule date</span><input type="date" value={date} onChange={(event) => selectDate(event.target.value)} /></label>
-      <button type="button" onClick={() => selectDate(shiftDate(date, 1))} aria-label="Next day" title="Next day"><Icon name="chevronRight" /></button>
-      <button type="button" onClick={() => void load(date).catch(() => undefined)} aria-label="Refresh schedule" title="Refresh schedule"><Icon name="refresh" /></button>
+  return <main className="schedule-shell" aria-label="График">
+    <p className="visually-hidden">Свързано</p>
+    <header className="schedule-date-bar"><div className="date-controls" aria-label="Управление на датата в графика">
+      <button type="button" onClick={() => selectDate(shiftDate(date, -1))} aria-label="Предишен ден" title="Предишен ден"><Icon name="chevronLeft" /></button>
+      <label><span className="visually-hidden">Дата в графика</span><input type="date" value={date} onChange={(event) => selectDate(event.target.value)} /></label>
+      <button type="button" onClick={() => selectDate(shiftDate(date, 1))} aria-label="Следващ ден" title="Следващ ден"><Icon name="chevronRight" /></button>
+      <button type="button" onClick={() => void load(date).catch(() => undefined)} aria-label="Обнови графика" title="Обнови графика"><Icon name="refresh" /></button>
     </div><p className="selected-date">{displayDate(date)}</p></header>
-    {Boolean(error) && <p className="schedule-message schedule-message--inline" role="alert"><strong>Schedule may be out of date.</strong> Availability is read-only until refreshed.</p>}
-    {loading && !schedule && <p className="schedule-loading" role="status">Loading schedule…</p>}
-    {schedule && <section className="schedule-grid" role="grid" aria-label={`Schedule for ${displayDate(date)}`} style={{ gridTemplateRows: `44px repeat(${slots.length}, 3rem)` }}>
+    {Boolean(error) && <p className="schedule-message schedule-message--inline" role="alert"><strong>Графикът може да не е актуален.</strong> Свободните часове ще се показват само за преглед, докато графикът не бъде обновен.</p>}
+    {loading && !schedule && <p className="schedule-loading" role="status">Графикът се зарежда…</p>}
+    {schedule && <section className="schedule-grid" role="grid" aria-label={`График за ${displayDate(date)}`} style={{ gridTemplateRows: `44px repeat(${slots.length}, 3rem)` }}>
       <div className="schedule-grid__corner" aria-hidden="true">Час</div>{ROOMS.map((room) => <h2 className="schedule-grid__header" key={room.id}>{room.label}</h2>)}
       {slots.flatMap((slot, index) => [<div className="schedule-grid__hour" role="rowheader" key={`${slot.startsAt}:time`} style={{ gridRow: index + 2 }}>{timeLabel(slot.startsAt)}</div>, ...ROOMS.map((room) => {
-        const booking = bookingAt(room.id, slot.startsAt); const label = `${room.label} at ${timeLabel(slot.startsAt)}`;
-        if (booking && bookingStarts(booking, slot.startsAt)) return <button type="button" className={`booking${booking.canEdit ? ' booking--editable' : ''}`} key={`${slot.startsAt}:${room.id}:booking`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: `${index + 2} / span ${spanFor(booking)}`, zIndex: 1, '--class-hue': classHue(booking.classId) } as React.CSSProperties} aria-label={`View details for ${booking.className} in ${label}`} onClick={() => onSelectBooking?.(booking)}><strong>{booking.className}</strong><span>{booking.teacherName}</span></button>;
-        return <div className="schedule-grid__cell" role="gridcell" key={`${slot.startsAt}:${room.id}`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: index + 2 }}>{!booking && (canBook ? <button type="button" className="empty-slot" aria-label={`Book ${label}`} onClick={() => onSelectSlot?.({ date: localDateOf(slot.startsAt), startsAt: slot.startsAt, hour: Math.floor(minutesOf(slot.startsAt) / 60), room: room.id })}><Icon name="plus" /></button> : <div className="schedule-grid__unknown" aria-label={`${label} unavailable`}>Unavailable</div>)}</div>;
+        const booking = bookingAt(room.id, slot.startsAt); const label = `${room.label} в ${timeLabel(slot.startsAt)}`;
+        if (booking && bookingStarts(booking, slot.startsAt)) return <button type="button" className={`booking${booking.canEdit ? ' booking--editable' : ''}`} key={`${slot.startsAt}:${room.id}:booking`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: `${index + 2} / span ${spanFor(booking)}`, zIndex: 1, '--class-hue': classHue(booking.classId) } as React.CSSProperties} aria-label={`Подробности за ${booking.className} — ${label}`} onClick={() => onSelectBooking?.(booking)}><strong>{booking.className}</strong><span>{booking.teacherName}</span></button>;
+        return <div className="schedule-grid__cell" role="gridcell" key={`${slot.startsAt}:${room.id}`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: index + 2 }}>{!booking && (canBook ? <button type="button" className="empty-slot" aria-label={`Резервирай ${label}`} onClick={() => onSelectSlot?.({ date: localDateOf(slot.startsAt), startsAt: slot.startsAt, hour: Math.floor(minutesOf(slot.startsAt) / 60), room: room.id })}><Icon name="plus" /></button> : <div className="schedule-grid__unknown" aria-label={`${label} — недостъпно`}>Недостъпно</div>)}</div>;
       })])}
     </section>}
   </main>;

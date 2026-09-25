@@ -9,18 +9,18 @@ const localDateTime = (value: string): string => value.replace('T', ' ').slice(0
 
 export function reportRowsToCsv(rows: MonthReportRow[]): string {
   const header = [
-    'Date', 'Start', 'End', 'Duration (minutes)', 'Room', 'Teacher', 'Activity',
-    'Status', 'Snapshot amount', 'Price breakdown', 'Effective amount due', 'Cancellation',
+    'Дата', 'Начало', 'Край', 'Продължителност (минути)', 'Зала', 'Учител', 'Дейност',
+    'Статус', 'Запазена цена', 'Разбивка на цената', 'Дължима сума', 'Дата на отмяна',
   ];
   const lines = rows.map((row) => [
     row.bookingDate,
     localDateTime(row.startsAt),
     localDateTime(row.endsAt),
     row.durationMinutes,
-    row.room === 'hall' ? 'Hall' : 'Room',
+    row.room === 'hall' ? 'Зала' : 'Стая',
     row.teacherName,
     row.activityTitle,
-    row.cancelled ? 'Cancelled' : 'Active',
+    row.cancelled ? 'Отменена' : 'Активна',
     row.calculatedAmount,
     JSON.stringify(row.priceBreakdown),
     row.effectiveAmountDue,
