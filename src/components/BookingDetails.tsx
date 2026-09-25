@@ -18,6 +18,7 @@ import type {
   Room,
 } from '../lib/types';
 import BookingForm from './BookingForm';
+import Icon from './Icon';
 
 type ClassLoader = () => Promise<ClassItem[]>;
 type DetailLoader = (id: string) => Promise<BookingDetail>;
@@ -336,12 +337,8 @@ export default function BookingDetails({
 
       {canManage && (
         <div className="booking-details__actions">
-          <button type="button" onClick={() => { setError(null); setNotice(null); setEditing(true); }} disabled={pending}>
-            Edit booking
-          </button>
-          <button ref={cancelTriggerRef} type="button" onClick={() => { setCancelScope('one'); setError(null); setNotice(null); setConfirming(true); }} disabled={pending}>
-            Cancel booking
-          </button>
+          <button type="button" onClick={() => { setError(null); setNotice(null); setEditing(true); }} className="icon-button" disabled={pending} aria-label="Edit booking" title="Edit booking"><Icon name="pencil" /></button>
+          <button ref={cancelTriggerRef} type="button" onClick={() => { setCancelScope('one'); setError(null); setNotice(null); setConfirming(true); }} className="icon-button" disabled={pending} aria-label="Cancel booking" title="Cancel booking"><Icon name="trash" /></button>
         </div>
       )}
 

@@ -99,28 +99,6 @@ select:focus-visible {
   margin: 0 auto;
 }
 
-.brand-lockup {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0.6rem;
-  color: #fff;
-  font-size: 1rem;
-  font-weight: 760;
-  letter-spacing: -0.02em;
-}
-
-.brand-mark {
-  display: grid;
-  width: 1.9rem;
-  height: 1.9rem;
-  place-items: center;
-  border-radius: 0.65rem;
-  background: linear-gradient(145deg, #5ea1ff, #1e67e4);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 28%);
-  font-size: 0.92rem;
-}
-
 .workspace-nav {
   display: flex;
   align-self: stretch;
@@ -169,7 +147,7 @@ select:focus-visible {
   width: 100%;
   max-width: 76rem;
   margin: 0 auto;
-  padding: 1.5rem 1rem 3rem;
+  padding: 1rem 1rem 3rem;
   overflow-x: clip;
 }
 
@@ -177,59 +155,75 @@ select:focus-visible {
   position: sticky;
   top: 4.25rem;
   z-index: 5;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.25rem 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 0.25rem 0 1rem;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0 0.85rem;
   background: rgb(241 245 251 / 96%);
   backdrop-filter: blur(10px);
 }
 
-.selected-date {
-  margin: 0.15rem 0 0;
-  color: #62708a;
-  font-size: 0.82rem;
-}
-
 .date-controls {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.8rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(26 60 108 / 6%);
+}
+
+.date-controls label {
+  display: flex;
 }
 
 .date-controls button,
 .date-controls input {
   min-width: 44px;
   min-height: 44px;
-  border: 1px solid #c9d5e6;
+  border: 0;
   border-radius: 0.6rem;
-  background: #fff;
-  color: inherit;
+  background: transparent;
+  color: #2b3d5d;
 }
 
 .date-controls button {
-  padding: 0 0.65rem;
-  font-weight: 700;
-  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: background 150ms ease, color 150ms ease;
 }
 
 .date-controls button:hover {
-  border-color: #9ebaea;
   background: #eff5ff;
-  transform: translateY(-1px);
+  color: #1556bf;
+}
+
+.date-controls button:last-child {
+  margin-left: 0.2rem;
+  box-shadow: -1px 0 0 #e6ecf4;
+  border-radius: 0 0.6rem 0.6rem 0;
 }
 
 .date-controls input {
-  width: 9.2rem;
-  padding: 0 0.35rem;
+  width: 9.6rem;
+  padding: 0 0.5rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.date-controls input:hover {
+  background: #f4f7fc;
 }
 
 .selected-date {
-  grid-column: 1 / -1;
-  font-weight: 650;
-  margin-top: 0.15rem;
+  margin: 0;
+  color: #2b3d5d;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: capitalize;
 }
 
 .schedule-loading,
@@ -258,9 +252,10 @@ select:focus-visible {
 }
 
 .schedule-message--inline {
-  margin: 0.5rem 0;
-  border-color: #c28a25;
+  margin: 0 0 0.75rem;
+  border-color: #e2c77d;
   background: #fff8e6;
+  font-size: 0.88rem;
 }
 
 .schedule-message--inline strong {
@@ -269,13 +264,13 @@ select:focus-visible {
 
 .schedule-grid {
   display: grid;
-  grid-template-columns: minmax(3.2rem, auto) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 3.6rem minmax(0, 1fr) minmax(0, 1fr);
   width: 100%;
-  border-top: 1px solid #d6e0ee;
-  border-left: 1px solid #d6e0ee;
+  border-top: 1px solid #e3e9f2;
+  border-left: 1px solid #e3e9f2;
   border-radius: 0.9rem;
   overflow: hidden;
-  background: #d6e0ee;
+  background: #fff;
   box-shadow: 0 1rem 2.5rem rgb(26 60 108 / 8%);
 }
 
@@ -284,53 +279,57 @@ select:focus-visible {
 .schedule-grid__hour,
 .schedule-grid__cell {
   min-width: 0;
-  border-right: 1px solid #d6e0ee;
-  border-bottom: 1px solid #d6e0ee;
+  border-right: 1px solid #e3e9f2;
+  border-bottom: 1px solid #edf1f7;
 }
 
 .schedule-grid__corner,
 .schedule-grid__header {
+  display: flex;
   min-height: 44px;
+  align-items: center;
+  justify-content: center;
   margin: 0;
   padding: 0.6rem 0.3rem;
-  background: #eaf1fb;
+  border-bottom-color: #dde5f0;
+  background: #f7f9fd;
   color: #2b3d5d;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .schedule-grid__corner {
-  text-align: right;
-}
-
-.schedule-grid__row {
-  display: contents;
+  justify-content: flex-end;
+  padding-right: 0.55rem;
+  color: #8190a8;
 }
 
 .schedule-grid__hour {
   display: flex;
-  min-height: 4rem;
-  align-items: center;
+  min-height: 3rem;
+  align-items: flex-start;
   justify-content: flex-end;
-  padding: 0.25rem;
-  background: #f7f9fd;
-  color: #5c6b84;
-  font-size: 0.78rem;
+  padding: 0.4rem 0.55rem 0 0.25rem;
+  background: #fbfcfe;
+  color: #6b7a92;
+  font-size: 0.75rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .schedule-grid__cell {
-  min-height: 4rem;
+  min-height: 3rem;
   background: #fff;
 }
 
 .schedule-grid__cell > button,
-.schedule-grid__cell > .booking,
 .schedule-grid__cell > .schedule-grid__unknown {
   display: flex;
   width: 100%;
-  min-height: 4rem;
+  height: 100%;
+  min-height: 3rem;
   align-items: center;
   justify-content: center;
   padding: 0.4rem;
@@ -339,60 +338,121 @@ select:focus-visible {
   text-align: center;
 }
 
+.schedule-grid button:focus-visible {
+  outline-offset: -3px;
+}
+
 .empty-slot {
-  background: #fff;
-  color: #286edb;
-  font-size: 1.35rem;
+  background: transparent;
+  color: #58749d;
   transition: background 140ms ease, color 140ms ease;
 }
 
 .empty-slot:hover,
 .empty-slot:focus-visible {
-  background: #e7f0ff;
-  color: #1556bf;
+  background: #eef4ff;
+  color: #1f63d6;
 }
 
-.schedule-grid__cell > button:disabled {
-  background: #e3e7ee;
-  color: #69758a;
-  font-size: 0.7rem;
+.schedule-grid__unknown {
+  background: repeating-linear-gradient(135deg, #f5f7fa 0 6px, #eef1f6 6px 12px);
+  color: #6d788b;
+  font-size: 0.68rem;
+  line-height: 1.1;
 }
 
+/* Class colour comes from --class-hue (set per booking in Schedule.tsx). */
 .booking {
+  --class-hue: 250;
   display: flex;
-  min-height: 4rem;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 0.15rem;
+  margin: 2px 3px;
+  padding: 0.45rem 0.6rem;
+  overflow: hidden;
+  border: 1px solid oklch(0.84 0.07 var(--class-hue));
+  border-radius: 0.55rem;
+  background: oklch(0.95 0.04 var(--class-hue));
+  box-shadow: 0 1px 2px oklch(0.4 0.06 var(--class-hue) / 12%);
+  color: oklch(0.33 0.09 var(--class-hue));
+  font-size: 0.78rem;
+  line-height: 1.2;
+  text-align: left;
   overflow-wrap: anywhere;
-  background: #d9eafe;
-  color: #123b75;
-  font-size: 0.76rem;
-  line-height: 1.15;
+  cursor: default;
 }
 
 .booking strong {
   max-width: 100%;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
 .booking span {
-  color: #38577f;
+  color: oklch(0.45 0.07 var(--class-hue));
 }
 
 .booking--editable {
   cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
 }
 
 .booking--editable:hover,
 .booking--editable:focus-visible {
-  background: #c5ddff;
+  border-color: oklch(0.72 0.1 var(--class-hue));
+  background: oklch(0.91 0.06 var(--class-hue));
 }
 
-.schedule-grid__unknown {
-  background: #f0f2f6;
-  color: #68748a;
-  font-size: 0.68rem;
-  line-height: 1.1;
+.icon {
+  display: block;
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.icon-button {
+  display: grid;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: #4a5b78;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: #eff5ff;
+  color: #1556bf;
+}
+
+.icon-button:disabled {
+  opacity: 0.45;
+}
+
+.icon-button--primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.icon-button--primary:hover:not(:disabled) {
+  border-color: #1d4fd0;
+  background: #1d4fd0;
+  color: #fff;
+}
+
+.icon-button--danger:hover:not(:disabled) {
+  background: #fff0f0;
+  color: #b42323;
 }
 
 .visually-hidden {
@@ -412,161 +472,182 @@ select:focus-visible {
     padding-inline: 0.25rem;
   }
 
-  .schedule-date-bar {
-    grid-template-columns: 1fr;
-  }
-
   .date-controls {
-    justify-content: stretch;
+    width: 100%;
   }
 
   .date-controls label,
-  .date-controls input,
-  .date-controls button {
+  .date-controls input {
     flex: 1 1 0;
   }
 
-  .schedule-grid__cell > button,
-  .schedule-grid__cell > .booking,
-  .schedule-grid__cell > .schedule-grid__unknown {
-    padding-inline: 0.15rem;
-    font-size: 0.68rem;
+  .schedule-grid {
+    grid-template-columns: 3rem minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .booking {
+    padding: 0.35rem 0.4rem;
+    font-size: 0.7rem;
   }
 }
 
 .classes-shell {
   width: 100%;
-  max-width: 54rem;
+  max-width: 46rem;
   margin: 0 auto;
-  padding: 2rem 1rem 3rem;
-}
-
-.classes-header h1,
-.classes-panel h2 {
-  margin: 0;
-}
-
-.classes-header p {
-  margin: 0.35rem 0 1rem;
-  color: #5b6578;
+  padding: 1.5rem 1rem 3rem;
 }
 
 .classes-header h1 {
-  font-size: clamp(1.5rem, 4vw, 2rem);
-  letter-spacing: -0.04em;
+  margin: 0;
+  font-size: clamp(1.4rem, 4vw, 1.75rem);
+  letter-spacing: -0.035em;
+}
+
+.classes-header p {
+  margin: 0.25rem 0 1rem;
+  color: #5b6578;
+  font-size: 0.9rem;
 }
 
 .classes-panel {
-  margin-top: 1rem;
-  padding: 1rem;
+  overflow: hidden;
   border: 1px solid #d6e0ee;
   border-radius: 0.85rem;
   background: #fff;
+  box-shadow: 0 1rem 2.5rem rgb(26 60 108 / 6%);
 }
 
-.classes-panel form {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-
-.classes-panel input,
-.classes-panel select,
-.class-rename-form input {
-  min-height: 44px;
-  width: 100%;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid #9da9bc;
-  border-radius: 0.4rem;
-  background: #fff;
-}
-
-.classes-panel form > button,
-.class-row__actions button,
-.class-rename-form button,
-.classes-confirm button {
-  min-height: 44px;
-  padding: 0 0.8rem;
-  border: 1px solid #2563eb;
-  border-radius: 0.4rem;
-  background: #2563eb;
-  color: #fff;
-}
-
-.classes-help {
+.classes-panel h2 {
   margin: 0;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid #e3e9f2;
+  background: #f7f9fd;
+  color: #2b3d5d;
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.classes-panel > p {
+  margin: 0;
+  padding: 1rem;
   color: #5b6578;
-  font-size: 0.8rem;
+}
+
+.class-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-bottom: 1px solid #e3e9f2;
+}
+
+.class-add input,
+.class-add select,
+.class-rename-form input {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0.7rem;
+  border: 1px solid #c9d5e6;
+  border-radius: 0.6rem;
+  background: #fff;
+  color: inherit;
+}
+
+.class-add input {
+  flex: 1 1 10rem;
+}
+
+.class-add select {
+  flex: 0 1 12rem;
+}
+
+.class-add input::placeholder {
+  color: #8190a8;
 }
 
 .class-list {
-  display: grid;
-  gap: 0.5rem;
+  margin: 0;
   padding: 0;
-  margin: 0.75rem 0 0;
   list-style: none;
 }
 
 .class-row {
   display: flex;
   min-width: 0;
+  min-height: 3.5rem;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.65rem;
-  border: 1px solid #d0d8e5;
-  border-radius: 0.4rem;
+  padding: 0.25rem 0.5rem 0.25rem 1rem;
+  border-bottom: 1px solid #edf1f7;
 }
 
-.class-row--archived {
-  background: #f3f5f8;
-  color: #5b6578;
+.class-row:last-child {
+  border-bottom: 0;
+}
+
+.class-row:hover {
+  background: #fafcff;
+}
+
+.class-row--archived,
+.class-row--archived:hover {
+  background: #f7f8fa;
+  color: #6b7485;
 }
 
 .class-row__content {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.6rem;
   min-width: 0;
-  gap: 0.15rem;
 }
 
 .class-row__content strong {
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .class-status,
 .class-owner {
-  color: #5b6578;
-  font-size: 0.8rem;
+  color: #6b7485;
+  font-size: 0.78rem;
 }
 
-.class-row__actions,
+.class-status {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #e9edf3;
+  font-weight: 650;
+}
+
+.class-row__actions {
+  display: flex;
+  flex: none;
+  gap: 0.1rem;
+}
+
 .class-rename-form {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.35rem;
-}
-
-.class-row__actions button:last-child,
-.class-rename-form button:last-child,
-.classes-confirm button:last-child {
-  border-color: #9da9bc;
-  background: #fff;
-  color: #172033;
-}
-
-.class-rename-form {
   flex: 1;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
 .class-rename-form input {
-  flex: 1 1 12rem;
+  flex: 1 1 auto;
 }
 
 .classes-message {
-  margin: 0.75rem 0;
+  margin: 0 0 0.75rem;
   padding: 0.7rem;
-  border-radius: 0.4rem;
+  border-radius: 0.6rem;
 }
 
 .classes-message--error {
@@ -584,14 +665,14 @@ select:focus-visible {
 .classes-confirm {
   position: fixed;
   inset: 50% auto auto 50%;
-  z-index: 10;
+  z-index: 40;
   width: min(90vw, 28rem);
-  padding: 1rem;
+  padding: 1.25rem;
   transform: translate(-50%, -50%);
-  border: 1px solid #9da9bc;
-  border-radius: 0.5rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.9rem;
   background: #fff;
-  box-shadow: 0 0.75rem 2rem rgb(23 32 51 / 24%);
+  box-shadow: 0 1.25rem 3.5rem rgb(5 23 51 / 24%);
 }
 
 .classes-confirm h2 {
@@ -600,22 +681,29 @@ select:focus-visible {
 }
 
 .classes-confirm p {
-  line-height: 1.4;
+  color: #52617a;
+  line-height: 1.45;
 }
 
-@media (max-width: 520px) {
-  .class-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.classes-confirm .class-row__actions {
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
 
-  .class-row__actions {
-    justify-content: stretch;
-  }
+.classes-confirm button {
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.6rem;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 650;
+}
 
-  .class-row__actions button {
-    flex: 1 1 0;
-  }
+.classes-confirm button:last-child {
+  border-color: #c9d5e6;
+  background: #fff;
+  color: #172033;
 }
 
 .booking-form {
@@ -974,56 +1062,91 @@ select:focus-visible {
   color: #245a2c;
 }
 
+.booking-details__actions > .icon-button {
+  display: grid;
+  width: 44px;
+  padding: 0;
+  place-items: center;
+}
+
 .report-shell {
   width: min(100% - 2rem, 76rem);
   margin: 0 auto;
-  padding: 2rem 0 4rem;
+  padding: 1.5rem 0 4rem;
 }
 
 .report-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1.5rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
 }
 
 .report-header h1 {
-  margin: 0.25rem 0 0.5rem;
-  letter-spacing: -0.04em;
+  margin: 0.25rem 0 0.4rem;
+  font-size: clamp(1.4rem, 4vw, 1.75rem);
+  letter-spacing: -0.035em;
 }
 
 .report-intro {
   max-width: 42rem;
   margin: 0;
   color: #52617a;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.report-toolbar {
+  position: sticky;
+  top: calc(4.25rem + 0.5rem);
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.3rem 0.3rem 0.3rem 0.9rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.85rem;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 0.5rem 1.5rem rgb(26 60 108 / 10%);
+  backdrop-filter: blur(10px);
 }
 
 .report-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  min-width: min(100%, 19rem);
+  align-items: center;
+  gap: 0.5rem 1rem;
 }
 
 .report-actions label {
-  display: grid;
-  gap: 0.3rem;
-  color: #30425f;
-  font-size: 0.82rem;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #5b6578;
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .report-actions input,
 .report-actions select {
-  min-height: 2.75rem;
+  min-height: 40px;
   padding: 0 0.6rem;
   border: 1px solid #c9d5e6;
-  border-radius: 0.5rem;
+  border-radius: 0.55rem;
   background: #fff;
-  color: inherit;
+  color: #152036;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.report-toolbar__buttons {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
 }
 
 .report-message {
@@ -1044,46 +1167,50 @@ select:focus-visible {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
-  margin: 1rem 0;
+  margin: 0 0 1rem;
 }
 
 .report-summary__card,
 .report-cashbox {
   display: flex;
-  min-height: 5.25rem;
   flex-direction: column;
   justify-content: center;
-  gap: 0.25rem;
-  padding: 0.85rem 1rem;
+  gap: 0.2rem;
+  padding: 0.8rem 1rem;
   border: 1px solid #d6e0ee;
-  border-radius: 0.7rem;
+  border-radius: 0.75rem;
   background: #fff;
 }
 
 .report-summary__card span,
 .report-cashbox span {
   color: #5b6578;
-  font-size: 0.82rem;
-  font-weight: 650;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .report-summary__card strong,
 .report-cashbox strong {
   color: #132a54;
-  font-size: 1.35rem;
+  font-size: 1.5rem;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.report-summary__card:last-child,
+.report-cashbox {
+  border-color: #b9cff2;
+  background: #eef5ff;
 }
 
 .report-cashbox {
   margin-bottom: 1rem;
-  border-color: #9ebaea;
-  background: #eef5ff;
 }
 
 .report-teacher {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 2px solid #d6e0ee;
+  margin-top: 1.75rem;
 }
 
 .report-teacher__header {
@@ -1091,11 +1218,14 @@ select:focus-visible {
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #d6e0ee;
 }
 
 .report-teacher__header h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
 }
 
 .report-teacher__header span {
@@ -1107,31 +1237,41 @@ select:focus-visible {
 .report-table-wrap {
   overflow-x: auto;
   border: 1px solid #d6e0ee;
-  border-radius: 0.7rem;
+  border-radius: 0.75rem;
   background: #fff;
 }
 
 .report-table {
   width: 100%;
+  min-width: 56rem;
   border-collapse: collapse;
-  min-width: 58rem;
 }
 
 .report-table th,
 .report-table td {
-  padding: 0.7rem 0.6rem;
-  border-bottom: 1px solid #e4e8ef;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #edf1f7;
   text-align: left;
   vertical-align: top;
-  font-size: 0.86rem;
+  font-size: 0.85rem;
+}
+
+.report-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.report-table tbody tr:nth-child(even) td {
+  background: #fbfcfe;
 }
 
 .report-table th {
-  background: #eef3fa;
-  color: #30425f;
-  font-size: 0.76rem;
-  letter-spacing: 0.02em;
+  border-bottom-color: #dde5f0;
+  background: #f7f9fd;
+  color: #5b6578;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .report-table td:nth-child(1),
@@ -1143,26 +1283,46 @@ select:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.report-table__cancelled td {
-  background: #fff8f8;
-  color: #6f4a4a;
+.report-table th:nth-child(7),
+.report-table th:nth-child(8),
+.report-table td:nth-child(7),
+.report-table td:nth-child(8) {
+  text-align: right;
+}
+
+.report-table td:nth-child(8) {
+  color: #132a54;
+  font-weight: 750;
+}
+
+.report-table__cancelled td,
+.report-table tbody tr.report-table__cancelled:nth-child(even) td {
+  background: #fff7f7;
+  color: #8a5a5a;
+}
+
+.report-table__cancelled td:nth-child(5) strong {
+  text-decoration: line-through;
 }
 
 .report-breakdown {
-  margin-top: 0.4rem;
-  color: #52617a;
-  font-size: 0.76rem;
+  margin-top: 0.3rem;
+  color: #6b7a92;
+  font-size: 0.75rem;
 }
 
 .report-breakdown span {
-  color: #1765de;
-  font-size: 0.75rem;
-  font-weight: 700;
+  color: #5b6578;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .report-breakdown ul {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
+  margin: 0.2rem 0 0;
+  padding-left: 1rem;
+  line-height: 1.45;
 }
 
 .report-empty {
@@ -1171,29 +1331,6 @@ select:focus-visible {
   border: 1px dashed #c9d5e6;
   border-radius: 0.6rem;
   color: #52617a;
-}
-
-.report-footer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-top: 1.25rem;
-}
-
-.report-footer-actions button {
-  min-height: 2.75rem;
-  padding: 0 0.9rem;
-  border: 1px solid #2563eb;
-  border-radius: 0.5rem;
-  background: #2563eb;
-  color: #fff;
-  font-weight: 700;
-}
-
-.report-footer-actions button:first-child {
-  border-color: #9da9bc;
-  background: #fff;
-  color: #172033;
 }
 
 .sr-only {
@@ -1212,24 +1349,25 @@ select:focus-visible {
   @page { margin: 1.2cm; }
   body { background: #fff; }
   .app-bar,
-  .report-footer-actions,
-  .report-actions,
+  .report-toolbar,
   .report-message { display: none !important; }
   .report-shell { width: 100%; margin: 0; padding: 0; }
   .report-header { margin-bottom: 0.8rem; }
+  .report-summary__card,
+  .report-cashbox { background: #fff; }
   .report-table-wrap { overflow: visible; border-color: #333; }
   .report-table { min-width: 0; font-size: 9pt; }
   .report-table th,
-  .report-table td { padding: 0.35rem; font-size: 9pt; }
+  .report-table td { padding: 0.35rem; font-size: 9pt; background: #fff !important; }
   .report-breakdown { display: block !important; break-inside: avoid; }
   .report-teacher { break-inside: avoid; }
 }
 
 @media (max-width: 640px) {
-  .report-shell { width: min(100% - 1rem, 76rem); }
-  .report-header { flex-direction: column; }
-  .report-actions { width: 100%; }
-  .report-summary { grid-template-columns: 1fr; }
+  .report-summary { gap: 0.4rem; }
+  .report-summary__card { padding: 0.6rem 0.7rem; }
+  .report-summary__card strong { font-size: 1.1rem; }
+  .report-toolbar { top: calc(4.25rem + 0.25rem); }
 }
 
 .workspace-overlay {
@@ -1282,13 +1420,8 @@ select:focus-visible {
     gap: 0.45rem;
   }
 
-  .brand-lockup > span:last-child,
   .teacher-identity > span:last-child {
     display: none;
-  }
-
-  .workspace-nav {
-    margin-left: auto;
   }
 
   .workspace-nav__item {
@@ -1296,26 +1429,9 @@ select:focus-visible {
     font-size: 0.82rem;
   }
 
-  .teacher-identity {
-    margin-left: 0.25rem;
-  }
-
   .report-shell {
     width: min(100% - 1rem, 76rem);
     padding-top: 1rem;
-  }
-
-  .report-header {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .report-actions {
-    justify-content: flex-start;
-  }
-
-  .report-summary {
-    grid-template-columns: 1fr;
   }
 
   .schedule-shell {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createClass as createClassApi, getMyClasses, getTeachers, updateClass as updateClassApi } from '../lib/api';
 import { getProfile } from '../lib/session';
 import type { ClassItem, Profile } from '../lib/types';
+import Icon from './Icon';
 
 type ClassLoader = () => Promise<ClassItem[]>;
 type ClassCreator = (name: string, teacherId?: string) => Promise<ClassItem>;
@@ -189,21 +190,23 @@ export default function Classes({
       {error && <p className="classes-message classes-message--error" role="alert">{error}</p>}
       {notice && <p className="classes-message classes-message--success" role="status">{notice}</p>}
 
-      <section className="classes-panel" aria-labelledby="add-class-title">
-        <h2 id="add-class-title">Add class</h2>
-        <form onSubmit={handleCreate}>
-          <label htmlFor="new-class-name">Class name</label>
+      <section className="classes-panel" aria-labelledby="class-list-title">
+        <h2 id="class-list-title">Classes</h2>
+        <h2 id="add-class-title" className="visually-hidden">Add class</h2>
+        <form className="class-add" aria-labelledby="add-class-title" onSubmit={handleCreate}>
+          <label htmlFor="new-class-name" className="visually-hidden">Class name</label>
           <input
             id="new-class-name"
             value={className}
             maxLength={100}
+            placeholder="New class"
             onChange={(event) => setClassName(event.target.value)}
             aria-describedby="class-name-help"
           />
-          <p id="class-name-help" className="classes-help">Use 1–100 characters.</p>
+          <p id="class-name-help" className="visually-hidden">Use 1–100 characters.</p>
           {isAdmin && (
-            <label htmlFor="class-owner">
-              Class owner
+            <>
+              <label htmlFor="class-owner" className="visually-hidden">Class owner</label>
               <select
                 id="class-owner"
                 value={selectedTeacherId}
@@ -216,16 +219,12 @@ export default function Classes({
                   </option>
                 ))}
               </select>
-            </label>
+            </>
           )}
-          <button type="submit" disabled={pendingAction === 'create'}>
-            {pendingAction === 'create' ? 'Adding…' : 'Add class'}
+          <button type="submit" className="icon-button icon-button--primary" disabled={pendingAction === 'create'} aria-busy={pendingAction === 'create'} aria-label="Add class" title="Add class">
+            <Icon name="plus" />
           </button>
         </form>
-      </section>
-
-      <section className="classes-panel" aria-labelledby="class-list-title">
-        <h2 id="class-list-title">Classes</h2>
         {loading && <p role="status">Loading classes…</p>}
         {!loading && visibleClasses.length === 0 && (
           <p role="status">You have no classes yet. Create a class before booking.</p>
@@ -244,10 +243,8 @@ export default function Classes({
                       maxLength={100}
                       onChange={(event) => setEditingName(event.target.value)}
                     />
-                    <button type="submit" disabled={pendingAction === `rename:${item.id}`}>Save</button>
-                    <button type="button" onClick={cancelRename} disabled={pendingAction === `rename:${item.id}`}>
-                      Cancel
-                    </button>
+                    <button type="submit" className="icon-button icon-button--primary" disabled={pendingAction === `rename:${item.id}`} aria-label="Save" title="Save"><Icon name="check" /></button>
+                    <button type="button" className="icon-button" onClick={cancelRename} disabled={pendingAction === `rename:${item.id}`} aria-label="Cancel" title="Cancel"><Icon name="x" /></button>
                   </form>
                 ) : (
                   <div className="class-row__content">
@@ -262,26 +259,28 @@ export default function Classes({
                 )}
                 {editingId !== item.id && (
                   <div className="class-row__actions">
-                    <button type="button" onClick={() => beginRename(item)} aria-label={`Rename ${item.name}`}>
-                      Rename
-                    </button>
+                    <button type="button" className="icon-button" onClick={() => beginRename(item)} aria-label={`Rename ${item.name}`} title="Rename"><Icon name="pencil" /></button>
                     {item.active ? (
                       <button
                         type="button"
+                        className="icon-button icon-button--danger"
                         onClick={() => setArchiveCandidate(item)}
                         disabled={pendingAction === `archive:${item.id}`}
                         aria-label={`Archive ${item.name}`}
+                        title="Archive"
                       >
-                        Archive
+                        <Icon name="archive" />
                       </button>
                     ) : (
                       <button
                         type="button"
+                        className="icon-button"
                         onClick={() => void changeActive(item, true)}
                         disabled={pendingAction === `reactivate:${item.id}`}
                         aria-label={`Reactivate ${item.name}`}
+                        title="Reactivate"
                       >
-                        Reactivate
+                        <Icon name="restore" />
                       </button>
                     )}
                   </div>

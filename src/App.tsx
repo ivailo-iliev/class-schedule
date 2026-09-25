@@ -164,10 +164,6 @@ export default function App() {
     <div className="app-shell">
       <header className="app-bar">
         <div className="app-bar__inner">
-          <div className="brand-lockup" aria-label="Class Scheduler">
-            <span className="brand-mark" aria-hidden="true">C</span>
-            <span>Class Scheduler</span>
-          </div>
           <nav className="workspace-nav" aria-label={profile?.role === 'admin' ? 'Administrator workspace' : 'Teacher workspace'}>
             <button
               type="button"

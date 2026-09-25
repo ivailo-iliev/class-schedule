@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getAdminMonthReport, getMyMonthReport, getTeachers } from '../lib/api';
 import { reportRowsToCsv } from '../lib/report-csv';
 import type { AdminMonthReport, MonthReportRow, MyMonthReport, Profile } from '../lib/types';
+import Icon from './Icon';
 
 interface MonthlyReportProps { profile: Profile; }
 type ReportData = MyMonthReport | AdminMonthReport;
@@ -151,6 +152,9 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
           <h1>{title}</h1>
           <p className="report-intro">Authorized reservation detail and effective amount due. Cancelled reservations contribute €0.00.</p>
         </div>
+      </div>
+
+      <div className="report-toolbar">
         <div className="report-actions">
           <label htmlFor="report-month">Report month</label>
           <input id="report-month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
@@ -163,6 +167,12 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
             </label>
           )}
         </div>
+        {!loading && !error && report && (
+          <div className="report-toolbar__buttons">
+            <button type="button" className="icon-button" onClick={() => window.print()} aria-label="Print report" title="Print report"><Icon name="printer" /></button>
+            <button type="button" className="icon-button icon-button--primary" onClick={() => downloadCsv(rows, reportMonth)} aria-label="Export visible rows as CSV" title="Export CSV"><Icon name="download" /></button>
+          </div>
+        )}
       </div>
 
       {error && <div className="report-message report-message--error" role="alert">{error}</div>}
@@ -189,12 +199,7 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
         </section>
       )}
 
-      {!loading && !error && report && (
-        <div className="report-footer-actions">
-          <button type="button" onClick={() => window.print()}>Print report</button>
-          <button type="button" onClick={() => downloadCsv(rows, reportMonth)} aria-label="Export visible rows as CSV">Export CSV</button>
-        </div>
-      )}
+
     </main>
   );
 }
