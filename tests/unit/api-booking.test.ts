@@ -150,7 +150,7 @@ describe('booking RPC client contracts', () => {
         cancelled: true, effective_amount_due: '0.00',
       }],
     }, error: null });
-    await expect(getMyMonthReport('2026-11-01')).resolves.toMatchObject({
+    await expect(getMyMonthReport('2026-11')).resolves.toMatchObject({
       month: '2026-11', reservationCount: 1, cancelledCount: 1,
       rows: [{ bookingDate: '2026-11-02', calculatedAmount: '10.00', effectiveAmountDue: '0.00', cancelled: true }],
     });
@@ -162,7 +162,7 @@ describe('booking RPC client contracts', () => {
         total_due: '10.00', rows: [],
       }],
     }, error: null });
-    await expect(getAdminMonthReport('2026-11-01')).resolves.toMatchObject({
+    await expect(getAdminMonthReport('2026-11')).resolves.toMatchObject({
       cashboxTotal: '10.00', teachers: [{ teacherId: 'teacher-1', totalDue: '10.00' }],
     });
     expect(rpc).toHaveBeenCalledWith('get_admin_month_report', { p_month: '2026-11-01', p_teacher_id: null });

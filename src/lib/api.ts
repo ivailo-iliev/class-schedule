@@ -88,6 +88,9 @@ type AdminMonthReportPayload = {
 };
 
 function client() { return getSupabaseClient(); }
+function monthDate(month: string): string {
+  return /^\d{4}-\d{2}$/.test(month) ? `${month}-01` : month;
+}
 async function fetchOr<T>(operation: () => PromiseLike<SupabaseResult<T>>): Promise<T> {
   const result = await operation();
   if (result.error) { if (isSessionRevokedError(result.error)) await clearSession(); throw result.error; }
@@ -269,7 +272,7 @@ export async function cancelBooking(
 
 export async function getMyMonthReport(month: string): Promise<MyMonthReport> {
   const result = await fetchOr(() => client().rpc('get_my_month_report', {
-    p_month: month,
+    p_month: monthDate(month),
   }) as unknown as PromiseLike<SupabaseResult<MyMonthReportPayload>>);
   return {
     month: result.month,
@@ -284,7 +287,7 @@ export async function getMyMonthReport(month: string): Promise<MyMonthReport> {
 
 export async function getAdminMonthReport(month: string, teacherId: string | null = null): Promise<AdminMonthReport> {
   const result = await fetchOr(() => client().rpc('get_admin_month_report', {
-    p_month: month,
+    p_month: monthDate(month),
     p_teacher_id: teacherId,
   }) as unknown as PromiseLike<SupabaseResult<AdminMonthReportPayload>>);
   const teachers: AdminTeacherMonthReport[] = result.teachers.map((teacher) => ({
