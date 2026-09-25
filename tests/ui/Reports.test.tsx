@@ -107,7 +107,8 @@ describe('MonthlyReport', () => {
     await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), 'teacher-a'));
 
     const summary = screen.getByLabelText('Report totals');
-    expect(within(summary).getByText('€10.00')).toBeInTheDocument();
+    const amountDueCard = within(summary).getByText('Amount due').closest('div');
+    expect(amountDueCard?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Amount due€10.00');
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
     expect(screen.getByText('Activity a-cancelled')).toBeInTheDocument();
     expect(screen.queryByText('Activity b-active')).not.toBeInTheDocument();
