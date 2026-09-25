@@ -72,7 +72,6 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(() => getProfile());
   const scheduleRef = useRef<ScheduleHandle>(null);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
-  const bootstrapStarted = useRef(false);
   const offline = !useOnlineStatus();
 
   useEffect(() => {
@@ -98,18 +97,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (bootstrapStarted.current) return;
-    bootstrapStarted.current = true;
-    bootstrapNativeSession().then((session) => {
-      if (!session) return;
-      const nextProfile = getProfile();
-      setProfile(nextProfile);
-      const profileId = nextProfile?.id;
-      if (profileId) ensurePrivateManifest(profileId);
-      setState('connected');
-    }).catch(() => {
-      setState('unavailable');
-    });
+    let mounted = true;
+    const restore = () => {
+      if (window.location.hash.length > 1) setState('loading');
+      bootstrapNativeSession().then((session) => {
+        if (!mounted) return;
+        if (!session) {
+          setProfile(null);
+          setState('unavailable');
+          return;
+        }
+        const nextProfile = getProfile();
+        setProfile(nextProfile);
+        const profileId = nextProfile?.id;
+        if (profileId) ensurePrivateManifest(profileId);
+        setState('connected');
+      }).catch(() => {
+        if (mounted) setState('unavailable');
+      });
+    };
+    restore();
+    window.addEventListener('hashchange', restore);
+    return () => {
+      mounted = false;
+      window.removeEventListener('hashchange', restore);
+    };
   }, []);
 
   const refreshSchedule = useCallback((): Promise<DaySchedule | undefined> => {

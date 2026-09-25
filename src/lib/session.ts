@@ -62,8 +62,6 @@ async function persistedSession(supabase: AuthClient): Promise<Session | null> {
   const session = result.data.session;
   if (!session) return null;
 
-  // The native client normally refreshes this itself. The explicit check also
-  // makes the behavior deterministic when a persisted session is near expiry.
   if (typeof session.expires_at === 'number' && session.expires_at <= Math.floor(Date.now() / 1000) + 60) {
     const refreshed = await supabase.auth.refreshSession();
     if (refreshed.error || !refreshed.data.session) {
@@ -75,61 +73,59 @@ async function persistedSession(supabase: AuthClient): Promise<Session | null> {
   return session;
 }
 
-async function restoreProfile(session: Session, supabase: AuthClient, fetchImpl: typeof fetch): Promise<void> {
+async function restoreProfile(session: Session, supabase: AuthClient): Promise<Profile | null> {
   const profileId = session.user.user_metadata?.class_scheduler_profile_id;
-  if (typeof profileId === 'string') {
-    const result = await supabase.from('profiles')
-      .select('id, name, role')
-      .eq('id', profileId)
-      .maybeSingle() as unknown as SupabaseResult<RestoredProfile>;
-    if (!result.error && validProfile(result.data)) {
-      currentProfile = result.data;
-      return;
-    }
-  }
+  if (typeof profileId !== 'string') return null;
 
-  const response = await fetchImpl('/api/profile', {
-    headers: { authorization: `Bearer ${session.access_token}` },
-  });
-  if (!response.ok) return;
-  const profile = await response.json();
-  if (validProfile(profile)) currentProfile = profile;
+  const result = await supabase.from('profiles')
+    .select('id, name, role')
+    .eq('id', profileId)
+    .maybeSingle() as unknown as SupabaseResult<RestoredProfile>;
+  if (!result.error && validProfile(result.data)) {
+    currentProfile = result.data;
+    return result.data;
+  }
+  currentProfile = null;
+  return null;
+}
+
+async function activateSession(session: Session, supabase: AuthClient): Promise<Session | null> {
+  if (await restoreProfile(session, supabase)) return session;
+  await clearSession();
+  return null;
 }
 
 async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fetch): Promise<Session | null> {
   const supabase = getSupabaseClient();
-  const existing = await persistedSession(supabase);
-  if (existing) {
-    await restoreProfile(existing, supabase, fetchImpl);
-    clearAccessFragment();
-    return existing;
-  }
-
   const token = location.hash.startsWith('#') ? location.hash.slice(1) : '';
-  if (!/^[0-9a-f]{64}$/.test(token)) return null;
-  const response = await fetchImpl('/api/access', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ token }),
-  });
-  if (!response.ok) throw new Error('invalid_access');
-  const payload = await response.json() as Partial<NativeSessionPayload>;
-  if (typeof payload.access_token !== 'string' || typeof payload.refresh_token !== 'string') {
-    throw new Error('invalid_access');
+
+  // A personal-link fragment is authoritative, even when a different native
+  // session exists in storage. It is removed only after the replacement is live.
+  if (/^[0-9a-f]{64}$/.test(token)) {
+    const response = await fetchImpl('/api/access', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!response.ok) throw new Error('invalid_access');
+    const payload = await response.json() as Partial<NativeSessionPayload>;
+    if (typeof payload.access_token !== 'string' || typeof payload.refresh_token !== 'string') {
+      throw new Error('invalid_access');
+    }
+
+    const result = await supabase.auth.setSession({
+      access_token: payload.access_token,
+      refresh_token: payload.refresh_token,
+    });
+    if (result.error || !result.data.session) throw result.error ?? new Error('invalid_access');
+    const activeSession = await activateSession(result.data.session, supabase);
+    if (!activeSession) throw new Error('profile_access_denied');
+    clearAccessFragment();
+    return activeSession;
   }
 
-  const result = await supabase.auth.setSession({
-    access_token: payload.access_token,
-    refresh_token: payload.refresh_token,
-  });
-  if (result.error || !result.data.session) throw result.error ?? new Error('invalid_access');
-  if (validProfile(payload.profile)) currentProfile = payload.profile;
-  else await restoreProfile(result.data.session, supabase, fetchImpl);
-
-  // The opaque link is only an exchange credential. The native refresh token
-  // is persisted by Supabase and is the sole credential used after this point.
-  clearAccessFragment();
-  return result.data.session;
+  const session = await persistedSession(supabase);
+  return session ? activateSession(session, supabase) : null;
 }
 
 export function bootstrapNativeSession(

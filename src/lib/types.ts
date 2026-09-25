@@ -24,6 +24,6 @@ export interface DaySchedule { date: string; slots: Slot[]; bookings: Booking[];
 export interface Profile { id: string; name: string; role: Role; }
 export interface NativeSessionResponse {
   access_token: string; refresh_token: string; expires_in?: number; expires_at?: number;
-  user?: Session['user']; profile: Profile;
+  user?: Session['user'];
 }
 export type ExchangeResponse = NativeSessionResponse;
