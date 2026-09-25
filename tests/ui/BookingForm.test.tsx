@@ -2,196 +2,132 @@ import { describe, expect, test, vi } from 'vitest';
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import BookingForm from '../../src/components/BookingForm';
-import type { Booking, ClassItem, Profile } from '../../src/lib/types';
+import type { BookingOccurrence, BookingQuote, ClassItem, CreatedBookingSeries, Profile } from '../../src/lib/types';
 
 const teacher: Profile = { id: 'teacher-a', name: 'Teacher A', role: 'teacher' };
-const otherTeacher: Profile = { id: 'teacher-b', name: 'Teacher B', role: 'teacher' };
+const teacherB: Profile = { id: 'teacher-b', name: 'Teacher B', role: 'teacher' };
+const classes: ClassItem[] = [
+  { id: 'class-a', teacherId: teacher.id, name: 'Pilates', active: true },
+  { id: 'class-b', teacherId: teacherB.id, name: 'Yoga', active: true },
+  { id: 'class-old', teacherId: teacher.id, name: 'Archived', active: false },
+];
 
-function classItem(overrides: Partial<ClassItem> = {}): ClassItem {
+function quoteFor(occurrences: BookingOccurrence[], conflicts: boolean[] = []): BookingQuote {
   return {
-    id: 'class-a',
-    teacherId: teacher.id,
-    name: 'Pilates',
-    active: true,
-    ...overrides,
+    total_amount: (occurrences.length * 10).toFixed(2),
+    occurrences: occurrences.map((occurrence, index) => ({
+      ...occurrence,
+      occurrence_index: index + 1,
+      duration_minutes: 30,
+      amount: '10.00',
+      conflicts: conflicts[index] ? [{ date: occurrence.starts_at.slice(0, 10), room: 'hall' }] : [],
+      segments: [{
+        starts_at: occurrence.starts_at,
+        ends_at: occurrence.ends_at,
+        rule_id: 'rule-1',
+        label: 'Standard',
+        hourly_rate: '20.00',
+        subtotal: '10.00',
+      }],
+    })),
   };
 }
 
-function booking(): Booking {
+function createdFor(occurrences: BookingOccurrence[]): CreatedBookingSeries {
   return {
-    id: 'booking-1',
-    classId: 'class-a',
-    teacherId: teacher.id,
-    className: 'Pilates',
-    teacherName: 'Teacher A',
-    room: 'room_1',
-    startsAt: '2026-09-15T15:00:00.000Z',
-    hour: 18,
-    cancelledAt: null,
-    version: 1,
-    canEdit: true,
+    series_id: 'series-1',
+    total_amount: (occurrences.length * 10).toFixed(2),
+    bookings: occurrences.map((occurrence, index) => ({
+      id: `booking-${index}`,
+      series_id: 'series-1',
+      series_index: index,
+      teacher_id: teacher.id,
+      class_id: 'class-a',
+      room: 'hall',
+      starts_at: occurrence.starts_at,
+      ends_at: occurrence.ends_at,
+      student_details: null,
+      currency: 'EUR',
+      amount: '10.00',
+      segments: [],
+      cancelled_at: null,
+      cancelled_by: null,
+      version: 1,
+    })),
   };
 }
 
-function renderForm(
-  classes: ClassItem[] = [classItem()],
-  overrides: Partial<React.ComponentProps<typeof BookingForm>> = {},
-) {
-  return render(
-    <BookingForm
-      date="2026-09-15"
-      hour={18}
-      room="room_1"
-      profile={teacher}
-      loadClasses={vi.fn(async () => classes)}
-      submitBooking={vi.fn(async () => [booking()])}
-      onDone={vi.fn()}
-      {...overrides}
-    />,
-  );
+function renderForm(overrides: Partial<React.ComponentProps<typeof BookingForm>> = {}) {
+  const quoteBooking = vi.fn(async (_classId: string, _room: 'hall' | 'room', occurrences: BookingOccurrence[]) => quoteFor(occurrences));
+  const createBookingSeries = vi.fn(async (_classId: string, _room: 'hall' | 'room', _details: string | null, occurrences: BookingOccurrence[]) => createdFor(occurrences));
+  const onRefresh = vi.fn(async () => undefined);
+  render(<BookingForm
+    date="2026-09-14"
+    startsAt="2026-09-14T08:30:00"
+    room="hall"
+    profile={teacher}
+    loadClasses={vi.fn(async () => classes)}
+    quoteBooking={quoteBooking}
+    createBookingSeries={createBookingSeries}
+    onRefresh={onRefresh}
+    onDone={vi.fn()}
+    {...overrides}
+  />);
+  return { quoteBooking, createBookingSeries, onRefresh };
 }
 
-describe('BookingForm one-off flow', () => {
-  test('prefills the selected date, hour, and room', async () => {
-    renderForm();
-
-    expect(await screen.findByRole('combobox', { name: 'Class' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Booking date')).toHaveValue('2026-09-15');
-    expect(screen.getByLabelText('Booking hour')).toHaveValue(18);
-    expect(screen.getByRole('combobox', { name: 'Room' })).toHaveValue('room_1');
+describe('BookingForm server-quoted creation', () => {
+  test('quotes exact local half-hour occurrences and shows segment pricing', async () => {
+    const { quoteBooking } = renderForm();
+    await waitFor(() => expect(quoteBooking).toHaveBeenCalledWith('class-a', 'hall', [
+      { starts_at: '2026-09-14T08:30:00', ends_at: '2026-09-14T09:00:00' },
+    ]));
+    expect(await screen.findByText('Total: €10.00')).toBeInTheDocument();
+    expect(screen.getByText(/Standard/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm booking' })).toBeEnabled();
   });
 
-  test('offers only the current teacher active classes', async () => {
-    renderForm([
-      classItem(),
-      classItem({ id: 'class-inactive', name: 'Old class', active: false }),
-      classItem({ id: 'class-other', name: 'Teacher B class', teacherId: otherTeacher.id }),
+  test('materializes recurrence preview and creates exactly the previewed occurrences', async () => {
+    const { createBookingSeries, onRefresh } = renderForm();
+    await screen.findByText('Total: €10.00');
+    fireEvent.click(screen.getByRole('radio', { name: 'Recurring' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Tuesday' }));
+    fireEvent.change(screen.getByLabelText('Number of weeks'), { target: { value: '2' } });
+    await waitFor(() => expect(screen.getByText('4 concrete occurrences')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }));
+
+    await waitFor(() => expect(createBookingSeries).toHaveBeenCalledTimes(1));
+    const occurrences = createBookingSeries.mock.calls[0]![3];
+    expect(occurrences).toEqual([
+      { starts_at: '2026-09-14T08:30:00', ends_at: '2026-09-14T09:00:00' },
+      { starts_at: '2026-09-15T08:30:00', ends_at: '2026-09-15T09:00:00' },
+      { starts_at: '2026-09-21T08:30:00', ends_at: '2026-09-21T09:00:00' },
+      { starts_at: '2026-09-22T08:30:00', ends_at: '2026-09-22T09:00:00' },
     ]);
-
-    expect(await screen.findByRole('option', { name: 'Pilates' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: 'Old class' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: 'Teacher B class' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox', { name: /class title/i })).not.toBeInTheDocument();
+    expect(createBookingSeries.mock.calls[0]!.slice(0, 3)).toEqual(['class-a', 'hall', null]);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('status')).toHaveTextContent('Total: €40.00');
   });
 
-  test('explains that a class must be created before booking when none are active', async () => {
-    renderForm([
-      classItem({ active: false }),
-      classItem({ id: 'class-other', teacherId: otherTeacher.id, name: 'Other class' }),
-    ]);
-
-    expect(await screen.findByText('Create an active class before booking a room.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Book slot' })).not.toBeInTheDocument();
+  test('blocks confirmation for conflicts and missing quote amounts', async () => {
+    const quoteBooking = vi.fn(async (_classId: string, _room: 'hall' | 'room', occurrences: BookingOccurrence[]) => ({
+      ...quoteFor(occurrences, [true]),
+      occurrences: quoteFor(occurrences, [true]).occurrences.map((item) => ({ ...item, amount: null })),
+    }));
+    const { createBookingSeries } = renderForm({ quoteBooking });
+    expect(await screen.findByText('A complete, conflict-free server quote is required before confirmation.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm booking' })).toBeDisabled();
+    expect(createBookingSeries).not.toHaveBeenCalled();
   });
 
-  test('disables duplicate submissions until the booking request settles', async () => {
-    let resolveSubmit!: (value: Booking[]) => void;
-    const submit = vi.fn(() => new Promise<Booking[]>((resolve) => { resolveSubmit = resolve; }));
-    renderForm([classItem()], { submitBooking: submit });
-    await screen.findByRole('option', { name: 'Pilates' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Book slot' }));
-    expect(submit).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Booking…' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Booking…' }));
-    expect(submit).toHaveBeenCalledTimes(1);
-
-    resolveSubmit([booking()]);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Book slot' })).toBeInTheDocument());
-  });
-
-  test('shows a conflict without clearing the selected form values', async () => {
-    const submit = vi.fn(async () => {
-      throw { code: 'PT409', message: 'booking_conflict', details: ['2026-09-15T15:00:00.000Z'] };
-    });
-    renderForm([classItem()], { submitBooking: submit });
-    await screen.findByRole('option', { name: 'Pilates' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Class' }), { target: { value: 'class-a' } });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Book slot' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('this slot is no longer available');
-    expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-a');
-    expect(screen.getByLabelText('Booking date')).toHaveValue('2026-09-15');
-    expect(screen.getByLabelText('Booking hour')).toHaveValue(18);
-    expect(screen.getByRole('combobox', { name: 'Room' })).toHaveValue('room_1');
-  });
-});
-
-describe('BookingForm weekly flow', () => {
-  test('reveals bounded weekly controls and all-or-nothing guidance', async () => {
-    renderForm();
-    await screen.findByRole('option', { name: 'Pilates' });
-
-    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
-
-    expect(screen.getByLabelText(/first booking date/i)).toHaveValue('2026-09-15');
-    expect(screen.getByRole('combobox', { name: 'Weekday' })).toHaveValue('2');
-    expect(screen.getByLabelText(/number of weekly bookings/i)).toHaveAttribute('min', '1');
-    expect(screen.getByLabelText(/number of weekly bookings/i)).toHaveAttribute('max', '104');
-    expect(screen.getByLabelText(/number of weekly bookings/i)).toHaveAttribute('step', '1');
-    expect(screen.getByText(/all weekly bookings succeed or none are created/i)).toBeInTheDocument();
-  });
-
-  test('rejects a weekday that does not match the first date', async () => {
-    const submit = vi.fn(async () => [booking(), booking()]);
-    renderForm([classItem()], { submitBooking: submit });
-    await screen.findByRole('option', { name: 'Pilates' });
-    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Weekday' }), { target: { value: '1' } });
-    fireEvent.change(screen.getByLabelText(/number of weekly bookings/i), { target: { value: '2' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/weekday.*match.*date/i);
-    expect(submit).not.toHaveBeenCalled();
-  });
-
-  test('submits weekly values and reports the returned count', async () => {
-    const submit = vi.fn(async () => [booking(), { ...booking(), id: 'booking-2' }]);
-    const onDone = vi.fn();
-    renderForm([classItem()], { submitBooking: submit, onDone });
-    await screen.findByRole('option', { name: 'Pilates' });
-    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
-    fireEvent.change(screen.getByLabelText(/number of weekly bookings/i), { target: { value: '2' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
-
-    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
-    expect(submit).toHaveBeenCalledWith('class-a', 'room_1', '2026-09-15', 18, 2, 2);
-    expect(await screen.findByRole('status')).toHaveTextContent('Created 2 weekly bookings.');
-  });
-
-  test('keeps weekly inputs and displays returned conflict dates', async () => {
-    const submit = vi.fn(async () => {
-      throw { code: 'PT409', message: 'booking_conflict', details: [
-        '2026-09-22T15:00:00.000Z', '2026-10-06T16:00:00.000Z',
-      ] };
-    });
-    renderForm([classItem()], { submitBooking: submit });
-    await screen.findByRole('option', { name: 'Pilates' });
-    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
-    fireEvent.change(screen.getByLabelText(/number of weekly bookings/i), { target: { value: '3' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/2026-09-22/);
-    expect(screen.getByRole('alert')).toHaveTextContent(/2026-10-06/);
-    expect(screen.getByLabelText(/number of weekly bookings/i)).toHaveValue(3);
-    expect(screen.getByRole('combobox', { name: 'Weekday' })).toHaveValue('2');
-  });
-
-  test('does not report success when the RPC returns fewer bookings than requested', async () => {
-    const submit = vi.fn(async () => [booking()]);
-    const onDone = vi.fn();
-    renderForm([classItem()], { submitBooking: submit, onDone });
-    await screen.findByRole('option', { name: 'Pilates' });
-    fireEvent.click(screen.getByRole('checkbox', { name: /book weekly/i }));
-    fireEvent.change(screen.getByLabelText(/number of weekly bookings/i), { target: { value: '2' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /book weekly/i }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/expected 2.*received 1/i);
-    expect(onDone).not.toHaveBeenCalled();
+  test('limits an administrator to the selected teacher active classes', async () => {
+    const admin: Profile = { id: 'admin-1', name: 'Admin', role: 'admin' };
+    renderForm({ profile: admin, loadTeachers: vi.fn(async () => [teacher, teacherB]) });
+    expect(await screen.findByRole('combobox', { name: 'Teacher' })).toHaveValue('teacher-a');
+    expect(screen.getByRole('option', { name: 'Pilates' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Yoga' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Teacher' }), { target: { value: 'teacher-b' } });
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Yoga' })).toBeInTheDocument());
+    expect(screen.queryByRole('option', { name: 'Pilates' })).not.toBeInTheDocument();
   });
 });
