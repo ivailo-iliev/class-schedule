@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 
 const root = resolve('.');
 const dist = resolve(root, 'dist');
+const indexPath = resolve(root, 'index.html');
+const manifestPath = resolve(dist, 'manifest.webmanifest');
 const netlifyConfigPath = resolve(root, 'netlify.toml');
 
 function fail(message) {
@@ -29,8 +31,6 @@ const prohibitedNames = [
   'SUPABASE_SECRET_API_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_SECRET_KEY',
-  'SUPABASE_URL',
-  'APP_ORIGIN',
   'SUPABASE_DB_URL',
   'SUPABASE_JWKS_URL',
   'SIGNING_JWK',
@@ -39,31 +39,58 @@ const prohibitedNames = [
   'access_token_hash',
   'access_token_used_at',
   '__Host-install=',
+  '/.netlify/functions/manifest',
+  '/.netlify/functions/health',
+  '/.netlify/functions/profile',
 ];
-const personalToken = /(?:^|[^0-9a-f])[0-9a-f]{64}(?![0-9a-f])/i;
 const serverOnlyEnvironmentNames = [
   'SUPABASE_SECRET_API_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_SECRET_KEY',
   'SUPABASE_DB_URL',
-  'SIGNING_JWK',
   'SUPABASE_JWKS_URL',
+  'SIGNING_JWK',
 ];
-
+const credentialValuePatterns = [
+  /(?:^|[^0-9a-f])[0-9a-f]{64}(?![0-9a-f])/i,
+  /(?:#|%23)[0-9a-f]{64}(?![0-9a-f])/i,
+  /(?:[?&](?:token|profile)=)[^&\s"']+/i,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
+  /\bsb_secret_[A-Za-z0-9_-]{20,}\b/,
+];
 const files = filesUnder(dist);
 for (const file of files) {
   const text = readFileSync(file.absolute, 'utf8');
   const prohibited = prohibitedNames.find((needle) => text.includes(needle));
-  if (prohibited || personalToken.test(text) || file.relative.startsWith('.keys/')) {
+  const credentialValue = credentialValuePatterns.find((pattern) => pattern.test(text));
+  if (prohibited || credentialValue || file.relative.startsWith('.keys/')) {
     fail(`SECRET LEAK: ${file.relative} contains prohibited public-build content`);
   }
-
   for (const name of serverOnlyEnvironmentNames) {
     const value = process.env[name];
     if (value && text.includes(value)) {
       fail(`SECRET LEAK: ${file.relative} contains configured ${name}`);
     }
   }
+  if (/navigator\.serviceWorker|\.register\(['"]\/sw|workbox-|CacheFirst|runtimeCaching|cacheName/i.test(text)) {
+    fail(`OFFLINE FEATURE LEAK: ${file.relative} contains service-worker or cache code`);
+  }
+}
+
+if (!statSync(manifestPath, { throwIfNoEntry: false })?.isFile()) {
+  fail('STATIC MANIFEST CHECK FAILED: dist/manifest.webmanifest is missing');
+}
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+if (manifest.start_url !== '/' || manifest.scope !== '/' || manifest.display !== 'standalone' ||
+    !Array.isArray(manifest.icons) || manifest.icons.length !== 2) {
+  fail('STATIC MANIFEST CHECK FAILED: invalid public manifest contract');
+}
+const index = readFileSync(indexPath, 'utf8');
+if (!/<link\s+rel="manifest"\s+href="\/manifest\.webmanifest"\s*\/>/.test(index)) {
+  fail('STATIC MANIFEST CHECK FAILED: index.html does not reference the static manifest');
+}
+if (files.some(({ relative }) => /(?:^|\/)(?:sw|registerSW)\.js$/.test(relative))) {
+  fail('OFFLINE FEATURE LEAK: built service-worker artifact exists');
 }
 
 const netlifyConfig = readFileSync(netlifyConfigPath, 'utf8');
@@ -75,16 +102,4 @@ const requiredHeaders = [
 const missingHeader = requiredHeaders.find(([, pattern]) => !pattern.test(netlifyConfig));
 if (missingHeader) fail(`DEPLOYMENT HEADER CHECK FAILED: missing ${missingHeader[0]}`);
 
-const serviceWorkerPath = resolve(dist, 'sw.js');
-if (!statSync(serviceWorkerPath, { throwIfNoEntry: false })?.isFile()) {
-  fail('SERVICE WORKER CACHE CHECK FAILED: dist/sw.js is missing');
-}
-const serviceWorker = readFileSync(serviceWorkerPath, 'utf8');
-const requiredPublicEntries = ['index.html', 'assets/', 'icons/icon-192.png', 'icons/icon-512.png'];
-const missingPublicEntry = requiredPublicEntries.find((entry) => !serviceWorker.includes(entry));
-const privateEntry = ['manifest.webmanifest', '/api/', 'supabase'].find((entry) => serviceWorker.includes(entry));
-if (missingPublicEntry || privateEntry) {
-  fail(`SERVICE WORKER CACHE CHECK FAILED: ${missingPublicEntry ? `missing ${missingPublicEntry}` : `contains ${privateEntry}`}`);
-}
-
-console.log('Build looks safe (no detected static secrets)');
+console.log('Build looks safe (static manifest, no detected credentials or offline artifacts)');

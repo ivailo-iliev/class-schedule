@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bootstrapNativeSession, getProfile, onNativeAuthStateChange } from './lib/session';
-import { useOnlineStatus } from './lib/pwa';
+import { useOnlineStatus } from './lib/network';
 import type { Booking, DaySchedule, Profile, Room } from './lib/types';
 import BookingDetails from './components/BookingDetails';
 import BookingForm from './components/BookingForm';
 import Classes from './components/Classes';
 import Schedule, { type ScheduleHandle } from './components/Schedule';
+import MonthlyReport from './components/MonthlyReport';
 
 type SlotSelection = { date: string; startsAt: string; hour?: number; room: Room };
 
@@ -68,7 +69,7 @@ export default function App() {
   );
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<SlotSelection | null>(null);
-  const [activeView, setActiveView] = useState<'schedule' | 'classes'>('schedule');
+  const [activeView, setActiveView] = useState<'schedule' | 'classes' | 'report'>('schedule');
   const [profile, setProfile] = useState<Profile | null>(() => getProfile());
   const scheduleRef = useRef<ScheduleHandle>(null);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
@@ -80,6 +81,7 @@ export default function App() {
       if (!mounted) return;
       if (session) {
         const nextProfile = getProfile();
+        if (!nextProfile) return;
         setProfile(nextProfile);
         setState('connected');
       } else {
@@ -166,7 +168,7 @@ export default function App() {
             <span className="brand-mark" aria-hidden="true">C</span>
             <span>Class Scheduler</span>
           </div>
-          <nav className="workspace-nav" aria-label="Teacher workspace">
+          <nav className="workspace-nav" aria-label={profile?.role === 'admin' ? 'Administrator workspace' : 'Teacher workspace'}>
             <button
               type="button"
               className={activeView === 'schedule' ? 'workspace-nav__item workspace-nav__item--active' : 'workspace-nav__item'}
@@ -182,6 +184,14 @@ export default function App() {
               onClick={() => setActiveView('classes')}
             >
               My classes
+            </button>
+            <button
+              type="button"
+              className={activeView === 'report' ? 'workspace-nav__item workspace-nav__item--active' : 'workspace-nav__item'}
+              aria-current={activeView === 'report' ? 'page' : undefined}
+              onClick={() => setActiveView('report')}
+            >
+              {profile?.role === 'admin' ? 'Administrator report' : 'Monthly report'}
             </button>
           </nav>
           <div className="teacher-identity">
@@ -204,7 +214,7 @@ export default function App() {
           }}
           offline={offline}
         />
-      ) : <Classes profile={profile} />}
+      ) : activeView === 'classes' ? <Classes profile={profile} /> : <MonthlyReport profile={profile!} />}
 
       {selectedSlot && (
         <WorkspacePanel label="Book a room" onClose={closeSlotPanel}>

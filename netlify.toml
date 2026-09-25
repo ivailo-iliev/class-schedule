@@ -21,15 +21,14 @@
     Cache-Control = "private, no-store"
     X-Content-Type-Options = "nosniff"
 
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
 [[redirects]]
   from = "/api/access"
   to = "/.netlify/functions/access"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/health"
-  to = "/.netlify/functions/health"
   status = 200
   force = true
 
@@ -46,6 +45,3 @@
 
 [functions.access]
   rateLimit = { windowLimit = 60, windowSize = 60, aggregateBy = ["ip", "domain"] }
-
-[functions.health]
-  rateLimit = { windowLimit = 120, windowSize = 60, aggregateBy = ["ip", "domain"] }
