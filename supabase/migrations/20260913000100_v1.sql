@@ -1,6 +1,8 @@
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
+create extension if not exists btree_gist with schema extensions;
 create schema private;
+
 revoke all on schema private from public, anon, authenticated;
 revoke create on schema public from public, anon, authenticated;
 alter default privileges in schema public revoke all on tables from anon, authenticated;
@@ -8,22 +10,28 @@ alter default privileges in schema public revoke execute on functions from publi
 alter default privileges in schema private revoke execute on functions from public;
 
 create type public.app_role as enum ('admin', 'teacher');
-create type public.room as enum ('room_1', 'room_2');
+create type public.room as enum ('hall', 'room');
+
+create function private.valid_weekdays(p_weekdays smallint[]) returns boolean
+language sql immutable set search_path = '' as $$
+  select cardinality(p_weekdays) > 0
+     and p_weekdays <@ array[1, 2, 3, 4, 5, 6, 7]::smallint[]
+     and cardinality(p_weekdays) = cardinality(array(select distinct unnest(p_weekdays)))
+$$;
 
 create table public.profiles (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default extensions.gen_random_uuid(),
   name text not null check (name = btrim(name) and char_length(name) between 1 and 100),
   role public.app_role not null default 'teacher',
   active boolean not null default true,
   access_token_hash text unique check (access_token_hash ~ '^[0-9a-f]{64}$'),
-  access_token_used_at timestamptz,
   auth_user_id uuid unique,
-  credential_version integer not null default 1 check (credential_version > 0),
   created_at timestamptz not null default statement_timestamp(),
   updated_at timestamptz not null default statement_timestamp()
 );
+
 create table public.classes (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default extensions.gen_random_uuid(),
   teacher_id uuid not null references public.profiles(id) on delete restrict,
   name text not null check (name = btrim(name) and char_length(name) between 1 and 100),
   active boolean not null default true,
@@ -34,11 +42,47 @@ create table public.classes (
 );
 create index classes_teacher_idx on public.classes(teacher_id);
 
+create table private.pricing_rules (
+  id uuid primary key default extensions.gen_random_uuid(),
+  teacher_id uuid references public.profiles(id) on delete restrict,
+  weekdays smallint[] not null,
+  start_time time without time zone,
+  end_time time without time zone,
+  hourly_rate numeric(12,2) not null check (hourly_rate >= 0),
+  priority integer not null default 0,
+  label text not null check (label = btrim(label) and char_length(label) between 1 and 200),
+  active boolean not null default true,
+  created_at timestamptz not null default statement_timestamp(),
+  updated_at timestamptz not null default statement_timestamp(),
+  constraint pricing_rules_weekdays check (private.valid_weekdays(weekdays)),
+  constraint pricing_rules_time_range check (
+    (start_time is null and end_time is null)
+    or (
+      start_time is not null and end_time is not null and start_time < end_time
+      and extract(second from start_time) = 0 and extract(second from end_time) = 0
+      and extract(minute from start_time) in (0, 30)
+      and extract(minute from end_time) in (0, 30)
+    )
+  )
+);
+create index pricing_rules_lookup_idx
+  on private.pricing_rules(teacher_id, active, priority desc);
+
 create table public.bookings (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default extensions.gen_random_uuid(),
+  series_id uuid not null default extensions.gen_random_uuid(),
+  series_index integer not null default 0 check (series_index >= 0),
+  teacher_id uuid not null references public.profiles(id) on delete restrict,
   class_id uuid not null references public.classes(id) on delete restrict,
   room public.room not null,
-  starts_at timestamptz not null,
+  starts_at timestamp without time zone not null,
+  ends_at timestamp without time zone not null,
+  student_details text check (
+    student_details is null or (student_details = btrim(student_details) and char_length(student_details) <= 1000)
+  ),
+  currency text not null default 'EUR' check (currency = 'EUR'),
+  calculated_amount numeric(12,2) not null default 0 check (calculated_amount >= 0),
+  price_breakdown jsonb not null default '[]'::jsonb check (jsonb_typeof(price_breakdown) = 'array'),
   cancelled_at timestamptz,
   cancelled_by uuid references public.profiles(id) on delete restrict,
   created_at timestamptz not null default statement_timestamp(),
@@ -46,58 +90,41 @@ create table public.bookings (
   created_by uuid references public.profiles(id) on delete restrict,
   updated_by uuid references public.profiles(id) on delete restrict,
   version integer not null default 1 check (version > 0),
-  active_slot timestamptz generated always as (
-    case when cancelled_at is null then starts_at else null end
-  ) stored,
-  constraint bookings_room_active_slot_key unique (room, active_slot),
-  constraint bookings_finite_start check (isfinite(starts_at)),
-  constraint bookings_cancellation_actor check (
-    cancelled_at is not null or cancelled_by is null
-  )
+  constraint bookings_series_index_key unique (series_id, series_index),
+  constraint bookings_local_range check (
+    isfinite(starts_at) and isfinite(ends_at)
+    and starts_at::date = ends_at::date and ends_at > starts_at
+    and extract(second from starts_at) = 0 and extract(second from ends_at) = 0
+    and extract(minute from starts_at) in (0, 30)
+    and extract(minute from ends_at) in (0, 30)
+  ),
+  constraint bookings_cancellation_actor check (cancelled_at is not null or cancelled_by is null)
 );
-create index bookings_start_idx on public.bookings(starts_at);
-create index bookings_class_start_idx on public.bookings(class_id, starts_at);
-
--- There is one current room rate. The singleton key permits a missing row to
--- be detected explicitly while preventing accidental second-rate records.
-create table private.room_rate (
-  singleton boolean primary key default true check (singleton),
-  room_hour_rate numeric(12,2) not null check (room_hour_rate >= 0),
-  currency text not null check (currency ~ '^[A-Z]{3}$')
-);
-
-alter table public.profiles enable row level security;
-alter table public.classes enable row level security;
-alter table public.bookings enable row level security;
-alter table private.room_rate enable row level security;
-revoke all on public.profiles, public.classes, public.bookings
-  from public, anon, authenticated;
-revoke all on private.room_rate from public, anon, authenticated;
-
--- A2: Profile credentials, trusted actor, and safe profile projection
+create index bookings_local_date_idx on public.bookings((starts_at::date));
+create index bookings_teacher_start_idx on public.bookings(teacher_id, starts_at);
+alter table public.bookings add constraint bookings_active_room_no_overlap
+  exclude using gist (room with =, tsrange(starts_at, ends_at, '[)') with &&)
+  where (cancelled_at is null);
+alter table public.bookings add constraint bookings_active_teacher_no_overlap
+  exclude using gist (teacher_id with =, tsrange(starts_at, ends_at, '[)') with &&)
+  where (cancelled_at is null);
 
 create function private.profile_guard() returns trigger
 language plpgsql set search_path = '' as $$
 begin
-  if tg_op = 'INSERT' then
-    new.credential_version := 1;
-    new.created_at := statement_timestamp();
-  else
+  if tg_op = 'UPDATE' then
     if new.id <> old.id then
       raise check_violation using message = 'profile_id_immutable';
     end if;
-    new.created_at := old.created_at;
-    if new.access_token_hash is distinct from old.access_token_hash
-       or new.active is distinct from old.active
-       or new.role is distinct from old.role then
-      new.credential_version := old.credential_version + 1;
-    else
-      new.credential_version := old.credential_version;
+    if old.auth_user_id is not null and new.auth_user_id is distinct from old.auth_user_id then
+      raise check_violation using message = 'auth_user_id_immutable';
     end if;
+    new.created_at := old.created_at;
+  else
+    new.created_at := statement_timestamp();
   end if;
   if not new.active then
     new.access_token_hash := null;
-    new.access_token_used_at := null;
   end if;
   new.updated_at := statement_timestamp();
   return new;
@@ -108,25 +135,21 @@ for each row execute function private.profile_guard();
 
 create function private.actor_id() returns uuid
 language sql stable security definer set search_path = '' as $$
-  select p.id from public.profiles p
-  where p.active and (
-    p.auth_user_id = auth.uid()
-    -- Local SQL fixtures have no auth.users rows. Native sessions always use
-    -- auth_user_id; this fallback only keeps the database test fixtures useful.
-    or (p.auth_user_id is null and p.id = auth.uid())
-  );
+  select p.id
+  from public.profiles p
+  where p.active and p.auth_user_id = auth.uid()
 $$;
 create function private.is_admin() returns boolean
 language sql stable security definer set search_path = '' as $$
   select exists (
     select 1 from public.profiles p
     where p.id = private.actor_id() and p.role = 'admin'
-  );
+  )
 $$;
 create function private.can_manage(p_teacher_id uuid) returns boolean
 language sql stable security definer set search_path = '' as $$
-  select private.actor_id() is not null and
-    (p_teacher_id = private.actor_id() or private.is_admin());
+  select private.actor_id() is not null
+    and (p_teacher_id = private.actor_id() or private.is_admin())
 $$;
 
 create function public.resolve_access(p_token_hash text)
@@ -135,24 +158,8 @@ language sql stable security definer set search_path = '' as $$
   select p.id, p.name, p.role, p.auth_user_id
   from public.profiles p
   where p.active and p.access_token_hash = p_token_hash
-    and p.access_token_used_at is null
-    and p_token_hash ~ '^[0-9a-f]{64}$';
-$$;
-revoke all on function public.resolve_access(text) from public, anon, authenticated;
-grant execute on function public.resolve_access(text) to service_role;
-
-create function public.consume_access(p_token_hash text)
-returns table(id uuid, name text, role public.app_role, auth_user_id uuid)
-language sql security definer set search_path = '' as $$
-  update public.profiles
-  set access_token_used_at = statement_timestamp()
-  where active and access_token_hash = p_token_hash
-    and access_token_used_at is null
     and p_token_hash ~ '^[0-9a-f]{64}$'
-  returning id, name, role, auth_user_id;
 $$;
-revoke all on function public.consume_access(text) from public, anon, authenticated;
-grant execute on function public.consume_access(text) to service_role;
 
 create function private.issue_access_link(p_profile_id uuid) returns text
 language plpgsql security definer set search_path = '' as $$
@@ -160,36 +167,21 @@ declare token text;
 begin
   token := encode(extensions.gen_random_bytes(32), 'hex');
   update public.profiles
-  set access_token_hash = encode(extensions.digest(token, 'sha256'), 'hex'),
-      access_token_used_at = null
-  where id = p_profile_id and active;
+     set access_token_hash = encode(extensions.digest(token, 'sha256'), 'hex')
+   where id = p_profile_id and active;
   if not found then
     raise no_data_found using message = 'active_profile_required';
   end if;
   return token;
 end;
 $$;
-revoke all on function private.issue_access_link(uuid) from public, anon, authenticated, service_role;
-revoke all on function private.profile_guard() from public, anon, authenticated;
-revoke all on function private.actor_id(), private.is_admin(), private.can_manage(uuid)
-  from public, anon, authenticated;
-grant usage on schema private to authenticated;
-grant execute on function private.actor_id(), private.is_admin(), private.can_manage(uuid)
-  to authenticated;
-
-grant select(id, name, role, active, created_at, updated_at)
-  on public.profiles to authenticated;
-create policy profiles_read on public.profiles for select to authenticated
-using ((select private.actor_id()) is not null);
-
--- A3. Class assignment, immutability, and RLS
 
 create function private.class_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare actor uuid := private.actor_id();
 begin
   if actor is null and current_user not in ('postgres', 'supabase_admin') then
-    raise insufficient_privilege using message = 'access_required';
+    raise insufficient_privilege using message = 'active_profile_required';
   end if;
   if tg_op = 'INSERT' then
     if actor is not null and not private.is_admin() then
@@ -218,68 +210,28 @@ begin
   return new;
 end;
 $$;
-revoke all on function private.class_guard() from public, anon, authenticated;
 create trigger classes_guard before insert or update on public.classes
 for each row execute function private.class_guard();
 
-grant select on public.classes to authenticated;
-grant insert(teacher_id, name, active) on public.classes to authenticated;
-grant update(name, active) on public.classes to authenticated;
-create policy classes_read on public.classes for select to authenticated
-using ((select private.actor_id()) is not null);
-create policy classes_insert on public.classes for insert to authenticated
-with check (private.can_manage(teacher_id));
-create policy classes_update on public.classes for update to authenticated
-using (private.can_manage(teacher_id))
-with check (private.can_manage(teacher_id));
-
--- A4. Local-hour validation and booking guards
-
-create function private.valid_slot(p_instant timestamptz) returns boolean
-language sql stable set search_path = '' as $$
-  select case when p_instant is null or not isfinite(p_instant) then false else
-    (p_instant at time zone 'Europe/Sofia') =
-      date_trunc('hour', p_instant at time zone 'Europe/Sofia')
-    and ((p_instant - interval '1 hour') at time zone 'Europe/Sofia') <>
-      (p_instant at time zone 'Europe/Sofia')
-    and ((p_instant + interval '1 hour') at time zone 'Europe/Sofia') <>
-      (p_instant at time zone 'Europe/Sofia')
-  end;
-$$;
-create function private.resolve_slot(p_date date, p_hour integer) returns timestamptz
-language plpgsql stable set search_path = '' as $$
-declare wall timestamp; instant timestamptz;
-begin
-  if p_date is null or not isfinite(p_date) or p_hour is null or p_hour not between 0 and 23 then
-    raise sqlstate 'PT422' using message = 'invalid_slot';
-  end if;
-  wall := p_date + make_time(p_hour, 0, 0);
-  instant := wall at time zone 'Europe/Sofia';
-  if (instant at time zone 'Europe/Sofia') <> wall or not private.valid_slot(instant) then
-    raise sqlstate 'PT422' using message = 'invalid_slot',
-      detail = jsonb_build_object('date', p_date, 'hour', p_hour)::text;
-  end if;
-  return instant;
-end;
-$$;
-alter table public.bookings add constraint bookings_valid_hour
-  check (private.valid_slot(starts_at));
-
 create function private.booking_guard() returns trigger
 language plpgsql set search_path = '' as $$
-declare actor uuid := private.actor_id(); owner_row public.classes%rowtype;
+declare actor uuid := private.actor_id(); owner_id uuid;
 begin
   if actor is null and current_user not in ('postgres', 'supabase_admin') then
-    raise insufficient_privilege using message = 'access_required';
+    raise insufficient_privilege using message = 'active_profile_required';
   end if;
-  select * into owner_row from public.classes where id = new.class_id for share;
-  if not found then raise foreign_key_violation using message = 'class_not_found'; end if;
+  select c.teacher_id into owner_id from public.classes c where c.id = new.class_id;
+  if not found then
+    raise foreign_key_violation using message = 'class_not_found';
+  end if;
   if tg_op = 'INSERT' then
-    if not owner_row.active or not exists (
-      select 1 from public.profiles p where p.id = owner_row.teacher_id and p.active
-    ) then raise check_violation using message = 'active_class_required'; end if;
-    new.cancelled_at := null;
-    new.cancelled_by := null;
+    if not exists (
+      select 1 from public.classes c join public.profiles p on p.id = c.teacher_id
+      where c.id = new.class_id and c.active and p.active
+    ) then
+      raise check_violation using message = 'active_class_required';
+    end if;
+    new.teacher_id := owner_id;
     new.created_at := statement_timestamp();
     new.created_by := actor;
     new.version := 1;
@@ -287,15 +239,14 @@ begin
     if old.cancelled_at is not null then
       raise check_violation using message = 'cancelled_booking_read_only';
     end if;
-    if new.id <> old.id then raise check_violation using message = 'booking_id_immutable'; end if;
-    if new.class_id <> old.class_id and (not owner_row.active or not exists (
-      select 1 from public.profiles p where p.id = owner_row.teacher_id and p.active
-    )) then raise check_violation using message = 'active_class_required'; end if;
+    if new.id <> old.id or new.series_id <> old.series_id or new.series_index <> old.series_index
+       or new.teacher_id <> old.teacher_id then
+      raise check_violation using message = 'booking_identity_immutable';
+    end if;
+    if owner_id <> old.teacher_id then
+      raise check_violation using message = 'booking_teacher_immutable';
+    end if;
     if new.cancelled_at is not null then
-      if row(new.class_id, new.room, new.starts_at) is distinct from
-         row(old.class_id, old.room, old.starts_at) then
-        raise check_violation using message = 'cancel_without_editing';
-      end if;
       new.cancelled_at := statement_timestamp();
       new.cancelled_by := actor;
     else
@@ -310,204 +261,570 @@ begin
   return new;
 end;
 $$;
-revoke all on function private.valid_slot(timestamptz), private.resolve_slot(date, integer),
-  private.booking_guard() from public, anon, authenticated;
-grant execute on function private.valid_slot(timestamptz), private.resolve_slot(date, integer)
-  to authenticated;
 create trigger bookings_guard before insert or update on public.bookings
 for each row execute function private.booking_guard();
 
-grant select on public.bookings to authenticated;
-grant insert(class_id, room, starts_at) on public.bookings to authenticated;
-grant update(class_id, room, starts_at, cancelled_at) on public.bookings to authenticated;
-create policy bookings_read on public.bookings for select to authenticated
-using ((select private.actor_id()) is not null);
-create policy bookings_insert on public.bookings for insert to authenticated
-with check (exists (
-  select 1 from public.classes c
-  where c.id = class_id and private.can_manage(c.teacher_id)
-));
-create policy bookings_update on public.bookings for update to authenticated
-using (exists (
-  select 1 from public.classes c
-  where c.id = class_id and private.can_manage(c.teacher_id)
-))
-with check (exists (
-  select 1 from public.classes c
-  where c.id = class_id and private.can_manage(c.teacher_id)
-));
+alter table public.profiles enable row level security;
+alter table public.classes enable row level security;
+alter table public.bookings enable row level security;
+alter table private.pricing_rules enable row level security;
 
--- A5. Atomic one-off and weekly creation
-create function public.schedule_bookings(
-  p_class_id uuid, p_room public.room, p_first_date date, p_hour integer,
-  p_occurrences integer default 1, p_weekday integer default null
-) returns setof public.bookings
-language plpgsql security invoker set search_path = '' as $$
-declare
-  owner_row public.classes%rowtype;
-  slots timestamptz[];
-  conflicts jsonb;
-  constraint_name text;
+revoke all on public.profiles, public.classes, public.bookings from public, anon, authenticated;
+revoke all on private.pricing_rules from public, anon, authenticated;
+revoke all on function public.resolve_access(text) from public, anon, authenticated;
+revoke all on function private.issue_access_link(uuid), private.profile_guard(), private.class_guard(), private.booking_guard()
+  from public, anon, authenticated, service_role;
+revoke all on function private.actor_id(), private.is_admin(), private.can_manage(uuid)
+  from public, anon, authenticated;
+
+grant usage on schema private to authenticated;
+grant execute on function private.actor_id(), private.is_admin(), private.can_manage(uuid) to authenticated;
+grant execute on function public.resolve_access(text) to service_role;
+
+grant select(id, name, role, active, created_at, updated_at) on public.profiles to authenticated;
+create policy profiles_read_active on public.profiles for select to authenticated
+using (private.actor_id() is not null);
+
+grant select on public.classes to authenticated;
+grant insert(teacher_id, name, active) on public.classes to authenticated;
+grant update(name, active) on public.classes to authenticated;
+create policy classes_read_active on public.classes for select to authenticated
+using (private.actor_id() is not null);
+create policy classes_insert_managed on public.classes for insert to authenticated
+with check (private.can_manage(teacher_id));
+create policy classes_update_managed on public.classes for update to authenticated
+using (private.can_manage(teacher_id)) with check (private.can_manage(teacher_id));
+
+-- A2: authoritative pricing and booking-series mutations.
+create function private.require_active_managed_class(p_class_id uuid)
+returns public.classes
+language plpgsql security definer set search_path = '' as $$
+declare class_row public.classes%rowtype;
 begin
   if private.actor_id() is null then
-    raise insufficient_privilege using message = 'access_required';
+    raise insufficient_privilege using message = 'active_profile_required';
   end if;
-  if p_occurrences is null or p_occurrences not between 1 and 104
-     or p_first_date is null or not isfinite(p_first_date) or p_room is null
-     or (p_occurrences > 1 and p_weekday is null)
-     or (p_weekday is not null and (
-       p_weekday not between 1 and 7 or extract(isodow from p_first_date) <> p_weekday
-     )) then
-    raise sqlstate 'PT422' using message = 'invalid_recurrence';
-  end if;
-  select * into owner_row from public.classes where id = p_class_id for share;
-  if not found or not private.can_manage(owner_row.teacher_id) then
+  select c.* into class_row from public.classes c where c.id = p_class_id for share;
+  if not found then raise sqlstate 'PT404' using message = 'class_not_found'; end if;
+  if not private.can_manage(class_row.teacher_id) then
     raise insufficient_privilege using message = 'class_forbidden';
   end if;
-  if not owner_row.active then
+  if not class_row.active or not exists (
+    select 1 from public.profiles p where p.id = class_row.teacher_id and p.active
+  ) then
     raise sqlstate 'PT422' using message = 'active_class_required';
   end if;
-  select array_agg(private.resolve_slot(p_first_date + 7 * i, p_hour) order by i)
-  into slots from generate_series(0, p_occurrences - 1) as g(i);
-
-  select jsonb_agg(b.starts_at order by b.starts_at) into conflicts
-  from public.bookings b
-  where b.room = p_room and b.cancelled_at is null and b.starts_at = any(slots);
-  if conflicts is not null then
-    raise sqlstate 'PT409' using message = 'booking_conflict', detail = conflicts::text;
-  end if;
-  return query
-    insert into public.bookings(class_id, room, starts_at)
-    select p_class_id, p_room, s from unnest(slots) as t(s) order by s
-    returning *;
-exception when unique_violation then
-  get stacked diagnostics constraint_name = constraint_name;
-  if constraint_name <> 'bookings_room_active_slot_key' then raise; end if;
-  select jsonb_agg(b.starts_at order by b.starts_at) into conflicts
-  from public.bookings b
-  where b.room = p_room and b.cancelled_at is null and b.starts_at = any(slots);
-  raise sqlstate 'PT409' using message = 'booking_conflict',
-    detail = coalesce(conflicts, '[]'::jsonb)::text;
+  return class_row;
 end;
 $$;
-revoke all on function public.schedule_bookings(uuid, public.room, date, integer, integer, integer)
-  from public, anon, authenticated;
-grant execute on function public.schedule_bookings(uuid, public.room, date, integer, integer, integer)
-  to authenticated;
 
--- A6. Optimistic edits and cancellation
-create function public.edit_booking(
-  p_id uuid, p_expected_version integer, p_class_id uuid,
-  p_room public.room, p_date date, p_hour integer
-) returns public.bookings
-language plpgsql security invoker set search_path = '' as $$
-declare b public.bookings%rowtype; c public.classes%rowtype; violated_constraint text;
+create function private.occurrence_rows(p_occurrences jsonb)
+returns table(occurrence_index integer, starts_at timestamp without time zone, ends_at timestamp without time zone)
+language plpgsql stable set search_path = '' as $$
+declare
+  item jsonb;
+  start_text text;
+  end_text text;
+  seen_ranges tsrange[] := array[]::tsrange[];
+  normalized_range tsrange;
 begin
-  if private.actor_id() is null then
-    raise insufficient_privilege using message = 'access_required';
+  if p_occurrences is null
+     or jsonb_typeof(p_occurrences) is distinct from 'array' then
+    raise sqlstate 'PT422' using message = 'invalid_occurrences';
   end if;
-  -- Resolve ownership with a plain read first: under RLS a non-owner cannot
-  -- acquire a row lock, so FOR UPDATE alone would mask the row as not found.
-  select class_id into c.teacher_id from public.bookings where id = p_id;
-  if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
-  select teacher_id into c.teacher_id from public.classes where id = c.teacher_id;
-  if not private.can_manage(c.teacher_id) then
-    raise insufficient_privilege using message = 'booking_forbidden';
+  if jsonb_array_length(p_occurrences) not between 1 and 104 then
+    raise sqlstate 'PT422' using message = 'invalid_occurrences';
   end if;
-  select * into b from public.bookings where id = p_id for update;
-  if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
-  if b.cancelled_at is not null then
-    raise sqlstate 'PT409' using message = 'cancelled_booking_read_only';
+  occurrence_index := 0;
+  for item in select value from jsonb_array_elements(p_occurrences) as x(value) loop
+    occurrence_index := occurrence_index + 1;
+    if jsonb_typeof(item) is distinct from 'object'
+       or jsonb_typeof(item -> 'starts_at') is distinct from 'string'
+       or jsonb_typeof(item -> 'ends_at') is distinct from 'string' then
+      raise sqlstate 'PT422' using message = 'invalid_occurrences';
+    end if;
+    start_text := item ->> 'starts_at'; end_text := item ->> 'ends_at';
+    if start_text !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:00)?$'
+       or end_text !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:00)?$' then
+      raise sqlstate 'PT422' using message = 'invalid_local_range';
+    end if;
+    starts_at := start_text::timestamp; ends_at := end_text::timestamp;
+    if not isfinite(starts_at) or not isfinite(ends_at)
+       or starts_at::date <> ends_at::date or ends_at <= starts_at
+       or extract(minute from starts_at) not in (0, 30)
+       or extract(minute from ends_at) not in (0, 30) then
+      raise sqlstate 'PT422' using message = 'invalid_local_range';
+    end if;
+    normalized_range := tsrange(starts_at, ends_at, '[)');
+    if normalized_range = any(seen_ranges) then
+      raise sqlstate 'PT422' using message = 'duplicate_occurrence';
+    end if;
+    seen_ranges := array_append(seen_ranges, normalized_range);
+    return next;
+  end loop;
+end;
+$$;
+
+create function private.price_occurrence(
+  p_teacher_id uuid, p_starts_at timestamp without time zone, p_ends_at timestamp without time zone
+) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  segment_start timestamp without time zone; segment_end timestamp without time zone;
+  winning_level integer; candidate_count integer;
+  rule_id uuid; rule_label text; rate numeric(12,2); subtotal numeric(12,2);
+  segments jsonb := '[]'::jsonb; total numeric(12,2) := 0;
+begin
+  for segment_start in select generate_series(p_starts_at, p_ends_at - interval '30 minutes', interval '30 minutes')::timestamp loop
+    segment_end := segment_start + interval '30 minutes';
+    with candidates as (
+      select r.*, case
+        when r.teacher_id = p_teacher_id and r.start_time is not null then 1
+        when r.teacher_id = p_teacher_id and r.start_time is null then 2
+        else 3 end as level
+      from private.pricing_rules r
+      where r.active
+        and extract(isodow from segment_start)::smallint = any(r.weekdays)
+        and (
+          (r.teacher_id = p_teacher_id and r.start_time is not null
+            and r.start_time <= segment_start::time and r.end_time >= segment_end::time)
+          or (r.teacher_id = p_teacher_id and r.start_time is null and r.end_time is null)
+          or (r.teacher_id is null and r.start_time is not null
+            and r.start_time <= segment_start::time and r.end_time >= segment_end::time)
+        )
+    ), level_choice as (select min(level) as level from candidates),
+    priority_choice as (
+      select max(c.priority) as priority from candidates c join level_choice l on l.level = c.level
+    )
+    select count(*), (array_agg(c.id))[1], (array_agg(c.label))[1], (array_agg(c.hourly_rate))[1],
+           (select level from level_choice)
+      into candidate_count, rule_id, rule_label, rate, winning_level
+      from candidates c
+      where c.level = (select level from level_choice)
+        and c.priority = (select priority from priority_choice);
+    if winning_level is null or candidate_count <> 1 then
+      raise sqlstate 'PT422' using message = 'pricing_configuration_error',
+        detail = jsonb_build_object('starts_at', segment_start, 'ends_at', segment_end)::text;
+    end if;
+    subtotal := round(rate / 2, 2); total := total + subtotal;
+    segments := segments || jsonb_build_array(jsonb_build_object(
+      'starts_at', to_char(segment_start, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'ends_at', to_char(segment_end, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'rule_id', rule_id, 'label', rule_label,
+      'hourly_rate', to_char(rate, 'FM9999999990.00'),
+      'subtotal', to_char(subtotal, 'FM9999999990.00')
+    ));
+  end loop;
+  return jsonb_build_object('amount', to_char(round(total, 2), 'FM9999999990.00'), 'segments', segments);
+end;
+$$;
+
+create function private.booking_conflicts(
+  p_teacher_id uuid, p_room public.room, p_starts_at timestamp without time zone,
+  p_ends_at timestamp without time zone, p_exclude_id uuid default null
+) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(jsonb_build_object('date', b.starts_at::date, 'room', b.room)
+    order by b.starts_at, b.room), '[]'::jsonb)
+  from public.bookings b
+  where b.cancelled_at is null and b.id is distinct from p_exclude_id
+    and (b.room = p_room or b.teacher_id = p_teacher_id)
+    and tsrange(b.starts_at, b.ends_at, '[)') && tsrange(p_starts_at, p_ends_at, '[)')
+$$;
+
+create function private.booking_payload(p_booking public.bookings) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object(
+    'id', p_booking.id, 'series_id', p_booking.series_id, 'series_index', p_booking.series_index,
+    'teacher_id', p_booking.teacher_id, 'class_id', p_booking.class_id, 'room', p_booking.room,
+    'starts_at', to_char(p_booking.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'ends_at', to_char(p_booking.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'student_details', p_booking.student_details, 'currency', p_booking.currency,
+    'amount', to_char(p_booking.calculated_amount, 'FM9999999990.00'),
+    'segments', p_booking.price_breakdown, 'cancelled_at', p_booking.cancelled_at,
+    'cancelled_by', p_booking.cancelled_by, 'version', p_booking.version
+  )
+$$;
+
+create function public.quote_booking(
+  p_class_id uuid, p_room public.room, p_occurrences jsonb
+) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare class_row public.classes%rowtype; occurrence record; priced jsonb;
+  result jsonb := '[]'::jsonb; total numeric(12,2) := 0;
+begin
+  class_row := private.require_active_managed_class(p_class_id);
+  if p_room is null then raise sqlstate 'PT422' using message = 'invalid_room'; end if;
+  for occurrence in select * from private.occurrence_rows(p_occurrences) loop
+    priced := private.price_occurrence(class_row.teacher_id, occurrence.starts_at, occurrence.ends_at);
+    total := total + (priced ->> 'amount')::numeric;
+    result := result || jsonb_build_array(jsonb_build_object(
+      'occurrence_index', occurrence.occurrence_index, 'starts_at', to_char(occurrence.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'ends_at', to_char(occurrence.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'duration_minutes', (extract(epoch from occurrence.ends_at - occurrence.starts_at) / 60)::integer,
+      'amount', priced ->> 'amount', 'segments', priced -> 'segments',
+      'conflicts', private.booking_conflicts(class_row.teacher_id, p_room, occurrence.starts_at, occurrence.ends_at)
+    ));
+  end loop;
+  return jsonb_build_object('occurrences', result, 'total_amount', to_char(round(total, 2), 'FM9999999990.00'));
+end;
+$$;
+
+create function public.create_booking_series(
+  p_class_id uuid, p_room public.room, p_student_details text, p_occurrences jsonb
+) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  class_row public.classes%rowtype; occurrence record; other record; priced jsonb;
+  new_series_id uuid := extensions.gen_random_uuid(); booked public.bookings%rowtype;
+  next_series_index integer := 0;
+  inserted jsonb := '[]'::jsonb;
+begin
+  class_row := private.require_active_managed_class(p_class_id);
+  if p_room is null then raise sqlstate 'PT422' using message = 'invalid_room'; end if;
+  if p_student_details is not null and (p_student_details <> btrim(p_student_details) or char_length(p_student_details) > 1000) then
+    raise sqlstate 'PT422' using message = 'invalid_student_details';
   end if;
-  if p_expected_version is distinct from b.version then
-    raise sqlstate 'PT409' using message = 'stale_booking';
-  end if;
-  select * into c from public.classes where id = p_class_id for share;
-  if not found or not private.can_manage(c.teacher_id) then
-    raise insufficient_privilege using message = 'class_forbidden';
-  end if;
-  update public.bookings set class_id = p_class_id, room = p_room,
-    starts_at = private.resolve_slot(p_date, p_hour)
-  where id = p_id returning * into b;
-  return b;
-exception when unique_violation then
-  get stacked diagnostics violated_constraint = constraint_name;
-  if violated_constraint <> 'bookings_room_active_slot_key' then raise; end if;
+  for occurrence in select * from private.occurrence_rows(p_occurrences) loop
+    if private.booking_conflicts(class_row.teacher_id, p_room, occurrence.starts_at, occurrence.ends_at) <> '[]'::jsonb then
+      raise sqlstate 'PT409' using message = 'booking_conflict';
+    end if;
+    for other in select * from private.occurrence_rows(p_occurrences) where occurrence_index < occurrence.occurrence_index loop
+      if tsrange(other.starts_at, other.ends_at, '[)') && tsrange(occurrence.starts_at, occurrence.ends_at, '[)') then
+        raise sqlstate 'PT409' using message = 'booking_conflict';
+      end if;
+    end loop;
+  end loop;
+  for occurrence in select * from private.occurrence_rows(p_occurrences) order by starts_at, ends_at loop
+    priced := private.price_occurrence(class_row.teacher_id, occurrence.starts_at, occurrence.ends_at);
+    insert into public.bookings(series_id, series_index, teacher_id, class_id, room, starts_at, ends_at,
+      student_details, currency, calculated_amount, price_breakdown)
+    values (new_series_id, next_series_index, class_row.teacher_id, p_class_id, p_room,
+      occurrence.starts_at, occurrence.ends_at, p_student_details, 'EUR', (priced ->> 'amount')::numeric,
+      priced -> 'segments') returning * into booked;
+    inserted := inserted || jsonb_build_array(private.booking_payload(booked));
+    next_series_index := next_series_index + 1;
+  end loop;
+  return jsonb_build_object('series_id', new_series_id, 'bookings', inserted);
+exception when exclusion_violation then
   raise sqlstate 'PT409' using message = 'booking_conflict';
 end;
 $$;
-create function public.cancel_booking(p_id uuid, p_expected_version integer)
-returns public.bookings
-language plpgsql security invoker set search_path = '' as $$
-declare b public.bookings%rowtype; owner_id uuid;
+
+create function public.edit_booking(
+  p_id uuid, p_expected_version integer, p_class_id uuid, p_room public.room,
+  p_starts_at timestamp without time zone, p_ends_at timestamp without time zone, p_student_details text
+) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare booking_row public.bookings%rowtype; class_row public.classes%rowtype;
+  occurrence record; priced jsonb;
 begin
-  if private.actor_id() is null then
-    raise insufficient_privilege using message = 'access_required';
-  end if;
-  -- Resolve ownership with a plain read first: under RLS a non-owner cannot
-  -- acquire a row lock, so FOR UPDATE alone would mask the row as not found.
-  select class_id into owner_id from public.bookings where id = p_id;
+  if private.actor_id() is null then raise insufficient_privilege using message = 'active_profile_required'; end if;
+  select * into booking_row from public.bookings where id = p_id for update;
   if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
-  select teacher_id into owner_id from public.classes where id = owner_id;
-  if not private.can_manage(owner_id) then
-    raise insufficient_privilege using message = 'booking_forbidden';
+  if not private.can_manage(booking_row.teacher_id) then raise insufficient_privilege using message = 'booking_forbidden'; end if;
+  if booking_row.cancelled_at is not null then raise sqlstate 'PT409' using message = 'cancelled_booking_read_only'; end if;
+  if p_expected_version is distinct from booking_row.version then raise sqlstate 'PT409' using message = 'stale_booking'; end if;
+  class_row := private.require_active_managed_class(p_class_id);
+  if class_row.teacher_id <> booking_row.teacher_id then raise sqlstate 'PT422' using message = 'booking_teacher_immutable'; end if;
+  if p_room is null then raise sqlstate 'PT422' using message = 'invalid_room'; end if;
+  if p_student_details is not null and (p_student_details <> btrim(p_student_details) or char_length(p_student_details) > 1000) then
+    raise sqlstate 'PT422' using message = 'invalid_student_details';
   end if;
-  select * into b from public.bookings where id = p_id for update;
-  if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
-  if b.cancelled_at is not null then return b; end if;
-  if p_expected_version is distinct from b.version then
-    raise sqlstate 'PT409' using message = 'stale_booking';
+  if p_starts_at is null or p_ends_at is null
+     or not isfinite(p_starts_at) or not isfinite(p_ends_at)
+     or p_starts_at::date <> p_ends_at::date or p_ends_at <= p_starts_at
+     or extract(minute from p_starts_at) not in (0, 30)
+     or extract(minute from p_ends_at) not in (0, 30)
+     or extract(second from p_starts_at) <> 0
+     or extract(second from p_ends_at) <> 0 then
+    raise sqlstate 'PT422' using message = 'invalid_local_range';
   end if;
-  update public.bookings set cancelled_at = statement_timestamp()
-  where id = p_id returning * into b;
-  return b;
+  select * into occurrence from private.occurrence_rows(jsonb_build_array(jsonb_build_object(
+    'starts_at', to_char(p_starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'ends_at', to_char(p_ends_at, 'YYYY-MM-DD"T"HH24:MI:SS')
+  )));
+  if private.booking_conflicts(booking_row.teacher_id, p_room, occurrence.starts_at, occurrence.ends_at, p_id) <> '[]'::jsonb then
+    raise sqlstate 'PT409' using message = 'booking_conflict';
+  end if;
+  priced := private.price_occurrence(booking_row.teacher_id, occurrence.starts_at, occurrence.ends_at);
+  update public.bookings set class_id = p_class_id, room = p_room, starts_at = occurrence.starts_at,
+    ends_at = occurrence.ends_at, student_details = p_student_details,
+    calculated_amount = (priced ->> 'amount')::numeric, price_breakdown = priced -> 'segments'
+  where id = p_id returning * into booking_row;
+  return private.booking_payload(booking_row);
+exception when exclusion_violation then
+  raise sqlstate 'PT409' using message = 'booking_conflict';
 end;
 $$;
-revoke all on function public.edit_booking(uuid, integer, uuid, public.room, date, integer),
-  public.cancel_booking(uuid, integer) from public, anon, authenticated;
-grant execute on function public.edit_booking(uuid, integer, uuid, public.room, date, integer),
-  public.cancel_booking(uuid, integer) to authenticated;
 
--- A7. Daily schedule read
+create function public.cancel_booking(p_id uuid, p_expected_version integer, p_scope text)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare booking_row public.bookings%rowtype; affected public.bookings%rowtype;
+  cancelled jsonb := '[]'::jsonb; count_cancelled integer := 0;
+begin
+  if private.actor_id() is null then raise insufficient_privilege using message = 'active_profile_required'; end if;
+  if p_scope is null or p_scope not in ('one', 'future') then raise sqlstate 'PT422' using message = 'invalid_cancel_scope'; end if;
+  select * into booking_row from public.bookings where id = p_id for update;
+  if not found then raise sqlstate 'PT404' using message = 'booking_not_found'; end if;
+  if not private.can_manage(booking_row.teacher_id) then raise insufficient_privilege using message = 'booking_forbidden'; end if;
+  if booking_row.cancelled_at is null and p_expected_version is distinct from booking_row.version then
+    raise sqlstate 'PT409' using message = 'stale_booking';
+  end if;
+  for affected in select * from public.bookings
+    where series_id = booking_row.series_id and series_index >= booking_row.series_index
+      and cancelled_at is null and (p_scope = 'future' or id = booking_row.id)
+    order by series_index for update
+  loop
+    update public.bookings set cancelled_at = statement_timestamp() where id = affected.id returning * into affected;
+    cancelled := cancelled || jsonb_build_array(private.booking_payload(affected));
+    count_cancelled := count_cancelled + 1;
+  end loop;
+  return jsonb_build_object('bookings', cancelled, 'cancelled_count', count_cancelled);
+end;
+$$;
+
+revoke all on function private.require_active_managed_class(uuid), private.occurrence_rows(jsonb),
+  private.price_occurrence(uuid, timestamp without time zone, timestamp without time zone),
+  private.booking_conflicts(uuid, public.room, timestamp without time zone, timestamp without time zone, uuid),
+  private.booking_payload(public.bookings) from public, anon, authenticated;
+revoke all on function public.quote_booking(uuid, public.room, jsonb),
+  public.create_booking_series(uuid, public.room, text, jsonb),
+  public.edit_booking(uuid, integer, uuid, public.room, timestamp without time zone, timestamp without time zone, text),
+  public.cancel_booking(uuid, integer, text) from public, anon;
+grant execute on function public.quote_booking(uuid, public.room, jsonb),
+  public.create_booking_series(uuid, public.room, text, jsonb),
+  public.edit_booking(uuid, integer, uuid, public.room, timestamp without time zone, timestamp without time zone, text),
+  public.cancel_booking(uuid, integer, text) to authenticated;
+
+-- A3: narrow schedule and booking-detail projections. Base booking rows carry
+-- student and financial data, so browsers receive them only through these RPCs.
 create function public.get_day(p_date date) returns jsonb
-language plpgsql stable security invoker set search_path = '' as $$
-declare slots jsonb; items jsonb;
+language plpgsql stable security definer set search_path = '' as $$
+declare schedule jsonb;
 begin
   if private.actor_id() is null then
-    raise insufficient_privilege using message = 'access_required';
+    raise insufficient_privilege using message = 'active_profile_required';
   end if;
   if p_date is null or not isfinite(p_date) then
     raise sqlstate 'PT422' using message = 'invalid_date';
   end if;
-  select jsonb_agg(jsonb_build_object(
-    'hour', h,
-    'valid', valid,
-    'starts_at', case when valid then instant else null end
-  ) order by h) into slots
-  from (
-    select h, instant, private.valid_slot(instant)
-      and instant at time zone 'Europe/Sofia' = wall as valid
-    from (
-      select h, p_date + make_time(h, 0, 0) as wall,
-        (p_date + make_time(h, 0, 0)) at time zone 'Europe/Sofia' as instant
-      from generate_series(0, 23) as g(h)
-    ) x
-  ) y;
-  select coalesce(jsonb_agg(jsonb_build_object(
-    'id', b.id, 'class_id', b.class_id, 'teacher_id', c.teacher_id,
-    'class_name', c.name, 'teacher_name', p.name, 'room', b.room,
-    'starts_at', b.starts_at,
-    'hour', extract(hour from b.starts_at at time zone 'Europe/Sofia'),
-    'cancelled_at', b.cancelled_at, 'version', b.version,
-    'can_edit', private.can_manage(c.teacher_id) and b.cancelled_at is null
-  ) order by b.starts_at, b.room, b.id), '[]'::jsonb) into items
+
+  select jsonb_build_object(
+    'date', to_char(p_date, 'YYYY-MM-DD'),
+    'bookings', coalesce(jsonb_agg(jsonb_build_object(
+      'id', b.id,
+      'room', b.room,
+      'starts_at', to_char(b.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'ends_at', to_char(b.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'teacher_name', p.name,
+      'activity_title', c.name,
+      'can_manage', private.can_manage(b.teacher_id)
+    ) order by b.starts_at, b.room, b.id), '[]'::jsonb)
+  ) into schedule
   from public.bookings b
   join public.classes c on c.id = b.class_id
-  join public.profiles p on p.id = c.teacher_id
-  where b.starts_at >= (p_date::timestamp at time zone 'Europe/Sofia')
-    and b.starts_at < ((p_date + 1)::timestamp at time zone 'Europe/Sofia');
-  return jsonb_build_object('date', p_date, 'slots', slots, 'bookings', items);
+  join public.profiles p on p.id = b.teacher_id
+  where b.starts_at::date = p_date and b.cancelled_at is null;
+
+  return schedule;
 end;
 $$;
-revoke all on function public.get_day(date) from public, anon, authenticated;
-grant execute on function public.get_day(date) to authenticated;
+
+create function public.get_booking_details(p_id uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare booking_row public.bookings%rowtype;
+  class_name text;
+  teacher_name text;
+begin
+  if private.actor_id() is null then
+    raise insufficient_privilege using message = 'active_profile_required';
+  end if;
+  if p_id is null then
+    raise sqlstate 'PT422' using message = 'invalid_booking_id';
+  end if;
+  select * into booking_row from public.bookings where id = p_id;
+  if not found then
+    raise sqlstate 'PT404' using message = 'booking_not_found';
+  end if;
+  if not private.can_manage(booking_row.teacher_id) then
+    raise insufficient_privilege using message = 'booking_forbidden';
+  end if;
+  select c.name, p.name into class_name, teacher_name
+  from public.classes c join public.profiles p on p.id = booking_row.teacher_id
+  where c.id = booking_row.class_id;
+  return jsonb_build_object(
+    'id', booking_row.id,
+    'series_id', booking_row.series_id,
+    'series_index', booking_row.series_index,
+    'teacher_id', booking_row.teacher_id,
+    'teacher_name', teacher_name,
+    'class_id', booking_row.class_id,
+    'activity_title', class_name,
+    'room', booking_row.room,
+    'starts_at', to_char(booking_row.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'ends_at', to_char(booking_row.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'student_details', booking_row.student_details,
+    'currency', booking_row.currency,
+    'amount', to_char(booking_row.calculated_amount, 'FM9999999990.00'),
+    'segments', booking_row.price_breakdown,
+    'cancelled_at', booking_row.cancelled_at,
+    'cancelled_by', booking_row.cancelled_by,
+    'version', booking_row.version,
+    'can_manage', true
+  );
+end;
+$$;
+
+revoke all on function public.get_day(date), public.get_booking_details(uuid) from public, anon;
+grant execute on function public.get_day(date), public.get_booking_details(uuid) to authenticated;
+
+-- A4: authorized monthly report projections. These reports derive totals only
+-- from immutable booking snapshots; they do not represent payments or a
+-- balance/ledger.
+create function private.month_report_row(
+  p_booking public.bookings, p_activity_title text, p_teacher_name text
+) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object(
+    'id', p_booking.id,
+    'teacher_id', p_booking.teacher_id,
+    'teacher_name', p_teacher_name,
+    'class_id', p_booking.class_id,
+    'activity_title', p_activity_title,
+    'booking_date', to_char(p_booking.starts_at::date, 'YYYY-MM-DD'),
+    'starts_at', to_char(p_booking.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'ends_at', to_char(p_booking.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'duration_minutes', (extract(epoch from p_booking.ends_at - p_booking.starts_at) / 60)::integer,
+    'room', p_booking.room,
+    'currency', p_booking.currency,
+    'calculated_amount', to_char(p_booking.calculated_amount, 'FM9999999990.00'),
+    'price_breakdown', p_booking.price_breakdown,
+    'cancelled_at', p_booking.cancelled_at,
+    'cancelled', p_booking.cancelled_at is not null,
+    'effective_amount_due', to_char(
+      case when p_booking.cancelled_at is null then p_booking.calculated_amount else 0 end,
+      'FM9999999990.00'
+    )
+  )
+$$;
+
+create function private.month_report_summary(
+  p_month_start date, p_teacher_id uuid default null
+) returns table(
+  teacher_id uuid,
+  teacher_name text,
+  reservation_count bigint,
+  cancelled_count bigint,
+  total_due numeric,
+  rows jsonb
+)
+language sql stable security definer set search_path = '' as $$
+  select p.id,
+    p.name,
+    count(b.id)::bigint,
+    count(b.id) filter (where b.cancelled_at is not null)::bigint,
+    coalesce(sum(case when b.cancelled_at is null then b.calculated_amount else 0 end), 0)::numeric,
+    coalesce(jsonb_agg(
+      private.month_report_row(b, c.name, p.name)
+      order by b.starts_at, b.id
+    ) filter (where b.id is not null), '[]'::jsonb)
+  from public.profiles p
+  left join public.bookings b
+    on b.teacher_id = p.id
+   and b.starts_at >= p_month_start::timestamp
+   and b.starts_at < (p_month_start + interval '1 month')::timestamp
+  left join public.classes c on c.id = b.class_id
+  where p.role = 'teacher'
+    and (p_teacher_id is null or p.id = p_teacher_id)
+  group by p.id, p.name
+$$;
+
+create function public.get_my_month_report(p_month date) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  actor uuid := private.actor_id();
+  month_start date;
+  teacher_name text;
+  reservation_count bigint;
+  cancelled_count bigint;
+  total_due numeric;
+  report_rows jsonb;
+begin
+  if actor is null then
+    raise insufficient_privilege using message = 'active_profile_required';
+  end if;
+  if p_month is null or not isfinite(p_month) then
+    raise sqlstate 'PT422' using message = 'invalid_month';
+  end if;
+  month_start := date_trunc('month', p_month::timestamp)::date;
+  select s.teacher_name, s.reservation_count, s.cancelled_count, s.total_due, s.rows
+    into teacher_name, reservation_count, cancelled_count, total_due, report_rows
+  from private.month_report_summary(month_start, actor) s;
+  if not found then
+    select p.name into teacher_name from public.profiles p where p.id = actor;
+    reservation_count := 0;
+    cancelled_count := 0;
+    total_due := 0;
+    report_rows := '[]'::jsonb;
+  end if;
+  return jsonb_build_object(
+    'month', to_char(month_start, 'YYYY-MM'),
+    'teacher_id', actor,
+    'teacher_name', teacher_name,
+    'reservation_count', reservation_count,
+    'cancelled_count', cancelled_count,
+    'total_due', to_char(total_due, 'FM9999999990.00'),
+    'rows', report_rows
+  );
+end;
+$$;
+
+create function public.get_admin_month_report(p_month date, p_teacher_id uuid default null) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  month_start date;
+  teacher_reports jsonb;
+  cashbox numeric;
+begin
+  if private.actor_id() is null or not private.is_admin() then
+    raise insufficient_privilege using message = 'admin_required';
+  end if;
+  if p_month is null or not isfinite(p_month) then
+    raise sqlstate 'PT422' using message = 'invalid_month';
+  end if;
+  month_start := date_trunc('month', p_month::timestamp)::date;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'teacher_id', s.teacher_id,
+      'teacher_name', s.teacher_name,
+      'reservation_count', s.reservation_count,
+      'cancelled_count', s.cancelled_count,
+      'total_due', to_char(s.total_due, 'FM9999999990.00'),
+      'rows', s.rows
+    ) order by s.teacher_name, s.teacher_id), '[]'::jsonb)
+    into teacher_reports
+  from private.month_report_summary(month_start, p_teacher_id) s;
+
+  select coalesce(sum(b.calculated_amount), 0)::numeric into cashbox
+  from public.bookings b
+  where b.cancelled_at is null
+    and b.starts_at >= month_start::timestamp
+    and b.starts_at < (month_start + interval '1 month')::timestamp;
+
+  return jsonb_build_object(
+    'month', to_char(month_start, 'YYYY-MM'),
+    'teacher_id', p_teacher_id,
+    'teachers', teacher_reports,
+    'cashbox_total', to_char(cashbox, 'FM9999999990.00')
+  );
+end;
+$$;
+
+revoke all on function private.month_report_row(public.bookings, text, text),
+  private.month_report_summary(date, uuid) from public, anon, authenticated;
+revoke all on function public.get_my_month_report(date),
+  public.get_admin_month_report(date, uuid) from public, anon, authenticated;
+grant execute on function public.get_my_month_report(date),
+  public.get_admin_month_report(date, uuid) to authenticated;

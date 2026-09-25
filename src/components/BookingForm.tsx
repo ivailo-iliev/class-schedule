@@ -1,45 +1,69 @@
-import { useEffect, useState } from 'react';
-import { editBooking as editBookingApi, getMyClasses, scheduleBookings } from '../lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  createBookingSeries as createBookingSeriesApi,
+  getMyClasses,
+  getTeachers,
+  quoteBooking as quoteBookingApi,
+} from '../lib/api';
+import { localTime, minutesOf } from '../lib/calendar';
 import { getProfile } from '../lib/session';
-import type { Booking, ClassItem, DaySchedule, Profile, Room } from '../lib/types';
+import type {
+  Booking,
+  BookingOccurrence,
+  BookingQuote,
+  ClassItem,
+  CreatedBookingSeries,
+  DaySchedule,
+  Profile,
+  Room,
+} from '../lib/types';
 
 type ClassLoader = () => Promise<ClassItem[]>;
-type BookingSubmitter = (
+type TeacherLoader = () => Promise<Profile[]>;
+type QuoteLoader = (classId: string, room: Room, occurrences: BookingOccurrence[]) => Promise<BookingQuote>;
+type SeriesCreator = (
   classId: string,
   room: Room,
-  date: string,
-  hour: number,
-  occurrences?: number,
-  weekday?: number,
-) => Promise<Booking[]>;
+  studentDetails: string | null,
+  occurrences: BookingOccurrence[],
+) => Promise<CreatedBookingSeries>;
 type BookingEditor = (
   id: string,
   expectedVersion: number,
   classId: string,
   room: Room,
-  date: string,
-  hour: number,
+  startsAt: string,
+  endsAt: string,
+  studentDetails: string | null,
 ) => Promise<Booking>;
 
 export interface BookingFormProps {
   date: string;
-  hour: number;
   room: Room;
+  startsAt?: string;
+  /** Kept for the details editor and older callers; new creation uses startsAt. */
+  hour?: number;
   existingBooking?: Booking;
+  /** Immutable context shown while editing an existing occurrence. */
+  editingSeriesLabel?: string;
   onDone: (updated?: Booking, refreshed?: DaySchedule, refreshFailed?: boolean) => void;
+  onCancel?: () => void;
   profile?: Profile | null;
   loadClasses?: ClassLoader;
-  submitBooking?: BookingSubmitter;
+  loadTeachers?: TeacherLoader;
+  quoteBooking?: QuoteLoader;
+  createBookingSeries?: SeriesCreator;
   editBooking?: BookingEditor;
+  /** @deprecated Old weekly mutation injection; creation no longer calls it. */
+  submitBooking?: (...args: unknown[]) => Promise<Booking[]>;
   onRefresh?: () => Promise<DaySchedule | void> | DaySchedule | void;
   offline?: boolean;
 }
 
 const ROOMS: readonly { id: Room; label: string }[] = [
-  { id: 'room_1', label: 'Room 1' },
-  { id: 'room_2', label: 'Room 2' },
+  { id: 'hall', label: 'Зала' },
+  { id: 'room', label: 'Стая' },
 ];
-
 const WEEKDAYS: readonly { value: number; label: string }[] = [
   { value: 1, label: 'Monday' },
   { value: 2, label: 'Tuesday' },
@@ -49,321 +73,387 @@ const WEEKDAYS: readonly { value: number; label: string }[] = [
   { value: 6, label: 'Saturday' },
   { value: 7, label: 'Sunday' },
 ];
+const MAX_OCCURRENCES = 104;
+const QUOTE_DEBOUNCE_MS = 300;
 
-function isConflict(error: unknown): boolean {
-  if (error === 'booking_conflict') return true;
-  if (!error || typeof error !== 'object') return false;
-  const value = error as { code?: unknown; message?: unknown };
-  return value.code === 'PT409' || value.code === 'booking_conflict' || value.message === 'booking_conflict';
+function validDate(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const [year, month, day] = date.split('-').map(Number);
+  const value = new Date(Date.UTC(year!, month! - 1, day!));
+  return value.getUTCFullYear() === year && value.getUTCMonth() === month! - 1 && value.getUTCDate() === day;
 }
 
-function errorMessage(error: unknown): string {
+function isoWeekday(date: string): number {
+  if (!validDate(date)) return 1;
+  const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return day === 0 ? 7 : day;
+}
+
+function shiftDate(date: string, days: number): string {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function mondayOf(date: string): string {
+  return shiftDate(date, 1 - isoWeekday(date));
+}
+
+function timeFromStartsAt(startsAt: string | undefined, hour: number | undefined): string {
+  if (startsAt) return startsAt.slice(11, 16);
+  return `${String(hour ?? 8).padStart(2, '0')}:00`;
+}
+
+function validTime(value: string): boolean {
+  return /^([01]\d|2[0-3]):(?:00|30)$/.test(value);
+}
+
+function minutes(value: string): number {
+  const [hour, minute] = value.split(':').map(Number);
+  return hour! * 60 + minute!;
+}
+
+function addMinutes(value: string, amount: number): string {
+  const next = minutes(value) + amount;
+  return `${String(Math.floor(next / 60)).padStart(2, '0')}:${String(next % 60).padStart(2, '0')}`;
+}
+
+export function buildOccurrences(
+  mode: 'one-off' | 'recurring',
+  date: string,
+  startTime: string,
+  endTime: string,
+  weekStart: string,
+  weekdays: number[],
+  weeks: string,
+): { occurrences: BookingOccurrence[]; error: string | null } {
+  if (!validDate(date) || (mode === 'recurring' && !validDate(weekStart))) {
+    return { occurrences: [], error: 'Choose a valid local date.' };
+  }
+  if (!validTime(startTime) || !validTime(endTime) || minutes(endTime) <= minutes(startTime)) {
+    return { occurrences: [], error: 'Start and end must be different 30-minute times on the same day.' };
+  }
+  if (mode === 'one-off') {
+    return {
+      occurrences: [{ starts_at: localTime(date, minutes(startTime)), ends_at: localTime(date, minutes(endTime)) }],
+      error: null,
+    };
+  }
+  const countWeeks = Number(weeks);
+  const selected = [...new Set(weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 7).sort((a, b) => a - b);
+  if (!Number.isInteger(countWeeks) || countWeeks < 1 || countWeeks > 52 || selected.length === 0) {
+    return { occurrences: [], error: 'Choose at least one weekday and between 1 and 52 weeks.' };
+  }
+  const count = countWeeks * selected.length;
+  if (count > MAX_OCCURRENCES) return { occurrences: [], error: 'A recurrence can contain at most 104 occurrences.' };
+  const occurrences: BookingOccurrence[] = [];
+  for (let week = 0; week < countWeeks; week += 1) {
+    for (const day of selected) {
+      const occurrenceDate = shiftDate(weekStart, week * 7 + day - 1);
+      occurrences.push({
+        starts_at: localTime(occurrenceDate, minutes(startTime)),
+        ends_at: localTime(occurrenceDate, minutes(endTime)),
+      });
+    }
+  }
+  return { occurrences, error: null };
+}
+
+function errorText(error: unknown): string {
+  if (typeof error === 'string') return error;
   if (!error || typeof error !== 'object') return '';
   const value = error as { code?: unknown; message?: unknown };
   return `${typeof value.code === 'string' ? value.code : ''} ${typeof value.message === 'string' ? value.message : ''}`;
 }
 
-function isStale(error: unknown): boolean {
-  return /stale_booking|version/i.test(errorMessage(error));
+function money(value: string | null | undefined): string {
+  return value === null || value === undefined ? '—' : `€${value}`;
 }
 
-function isUnknownOutcome(error: unknown): boolean {
-  if (error instanceof TypeError) return true;
-  return /network|fetch|timeout|timed out|abort/i.test(errorMessage(error));
+function isConflict(error: unknown): boolean {
+  return /PT409|booking_conflict|conflict/i.test(errorText(error));
 }
 
-function localDateOf(instant: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Sofia', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date(instant));
-  const values = Object.fromEntries(parts
-    .filter((part) => part.type !== 'literal')
-    .map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
+function displayTime(value: string): string {
+  return value.slice(11, 16);
 }
 
-function isoWeekdayOf(date: string): number {
-  const parts = date.split('-').map(Number);
-  const year = parts[0] ?? Number.NaN;
-  const month = parts[1] ?? Number.NaN;
-  const day = parts[2] ?? Number.NaN;
-  if (![year, month, day].every(Number.isFinite)) return 1;
-  const utcDay = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  return utcDay === 0 ? 7 : utcDay;
-}
-
-function conflictDates(error: unknown): string[] {
-  if (!error || typeof error !== 'object') return [];
-  const details = (error as { details?: unknown }).details;
-  let values: unknown = details;
-  if (typeof details === 'string') {
-    try {
-      values = JSON.parse(details);
-    } catch {
-      return [];
-    }
-  }
-  if (!Array.isArray(values)) return [];
-  return [...new Set(values.flatMap((value) => {
-    if (typeof value !== 'string') return [];
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return [value];
-    if (!Number.isNaN(new Date(value).getTime())) return [localDateOf(value)];
-    return [];
-  }))];
-}
-
-function countMismatch(requested: number, received: number): string {
-  return `Weekly booking count mismatch: expected ${requested}, but received ${received}. Please refresh before trying again.`;
+function createdTotal(result: CreatedBookingSeries): string | null {
+  if (typeof result.total_amount === 'string' && /^\d+(?:\.\d{2})$/.test(result.total_amount)) return result.total_amount;
+  return null;
 }
 
 export default function BookingForm({
   date: selectedDate,
-  hour: selectedHour,
   room: selectedRoom,
+  startsAt: selectedStartsAt,
+  hour: selectedHour,
   existingBooking,
+  editingSeriesLabel,
   onDone,
+  onCancel,
   profile: suppliedProfile,
   loadClasses = getMyClasses,
-  submitBooking = scheduleBookings,
-  editBooking = editBookingApi,
+  loadTeachers = getTeachers,
+  quoteBooking = quoteBookingApi,
+  createBookingSeries = createBookingSeriesApi,
+  editBooking,
   onRefresh,
   offline = false,
 }: BookingFormProps) {
   const profile = suppliedProfile ?? getProfile();
+  const editing = Boolean(existingBooking);
+  const initialDate = existingBooking?.startsAt.slice(0, 10) ?? selectedDate;
+  const initialStart = existingBooking
+    ? (existingBooking.startsAt.endsWith('Z')
+      ? `${String(existingBooking.hour).padStart(2, '0')}:00`
+      : timeFromStartsAt(existingBooking.startsAt, existingBooking.hour))
+    : timeFromStartsAt(selectedStartsAt, selectedHour);
+  const initialEnd = existingBooking?.endsAt ? existingBooking.endsAt.slice(11, 16) : addMinutes(initialStart, 30);
   const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [teachers, setTeachers] = useState<Profile[]>([]);
+  const [teacherId, setTeacherId] = useState(existingBooking?.teacherId ?? profile?.id ?? '');
   const [classId, setClassId] = useState(existingBooking?.classId ?? '');
-  const [date, setDate] = useState(existingBooking ? localDateOf(existingBooking.startsAt) : selectedDate);
-  const [hour, setHour] = useState(existingBooking?.hour ?? selectedHour);
+  const [date, setDate] = useState(initialDate);
+  const [weekStart, setWeekStart] = useState(mondayOf(initialDate));
+  const [startTime, setStartTime] = useState(initialStart);
+  const [endTime, setEndTime] = useState(initialEnd);
   const [room, setRoom] = useState<Room>(existingBooking?.room ?? selectedRoom);
-  const [weekly, setWeekly] = useState(false);
-  const [weekday, setWeekday] = useState(isoWeekdayOf(existingBooking ? localDateOf(existingBooking.startsAt) : selectedDate));
-  const [occurrences, setOccurrences] = useState('1');
+  const [mode, setMode] = useState<'one-off' | 'recurring'>('one-off');
+  const [weekdays, setWeekdays] = useState<number[]>([isoWeekday(initialDate)]);
+  const [weeks, setWeeks] = useState('1');
+  const [studentDetails, setStudentDetails] = useState('');
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quote, setQuote] = useState<BookingQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const requestId = useState({ value: 0 })[0];
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    void loadClasses().then((items) => {
+    const load = async () => {
+      if (!editing) {
+        if (profile?.role === 'admin') {
+          const availableTeachers = await loadTeachers();
+          if (!mounted) return;
+          setTeachers(availableTeachers);
+          setTeacherId((current) => availableTeachers.some((item) => item.id === current)
+            ? current : (availableTeachers[0]?.id ?? ''));
+        }
+      }
+      const items = await loadClasses();
       if (!mounted) return;
-      const available = items.filter((item) => (item.active || item.id === existingBooking?.classId) &&
-        (profile?.role === 'admin' || item.teacherId === profile?.id));
-      setClasses(available);
-      setClassId((current) => available.some((item) => item.id === current)
-        ? current
-        : (available[0]?.id ?? ''));
-    }).catch(() => {
-      if (mounted) setError('Unable to load classes. Please try again.');
-    }).finally(() => {
-      if (mounted) setLoading(false);
-    });
+      setClasses(items);
+      setClassId((current) => items.some((item) => item.id === current)
+        ? current : (items.some((item) => item.id === existingBooking?.classId) ? existingBooking!.classId : ''));
+    };
+    void load().catch(() => { if (mounted) setError('Unable to load active classes. Please try again.'); })
+      .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [loadClasses, profile?.id, profile?.role]);
+  }, [loadClasses, loadTeachers, profile?.role]);
 
-  const refreshAfterFailure = async (): Promise<boolean> => {
-    if (!onRefresh) return false;
-    try {
-      await onRefresh();
-      return false;
-    } catch {
-      return true;
+  const availableClasses = useMemo(() => classes.filter((item) =>
+    (item.active || (editing && item.id === existingBooking?.classId)) &&
+    (profile?.role === 'admin' ? item.teacherId === teacherId : item.teacherId === profile?.id)),
+  [classes, editing, existingBooking?.classId, profile?.id, profile?.role, teacherId]);
+
+  useEffect(() => {
+    if (editing) return;
+    setClassId((current) => availableClasses.some((item) => item.id === current)
+      ? current : (availableClasses[0]?.id ?? ''));
+  }, [availableClasses, editing]);
+
+  const generated = useMemo(() => buildOccurrences(mode, date, startTime, endTime, weekStart, weekdays, weeks),
+    [date, endTime, mode, startTime, weekStart, weekdays, weeks]);
+  const occurrences = generated.occurrences;
+
+  useEffect(() => {
+    if (editing || loading || offline || !classId || generated.error) {
+      setQuote(null);
+      setQuoteError(generated.error);
+      setQuoteLoading(false);
+      return;
     }
-  };
+    const currentRequest = requestId.value + 1;
+    requestId.value = currentRequest;
+    setQuoteLoading(true);
+    setQuoteError(null);
+    const timer = window.setTimeout(() => {
+      void quoteBooking(classId, room, occurrences).then((result) => {
+        if (requestId.value !== currentRequest) return;
+        setQuote(result);
+      }).catch((reason) => {
+        if (requestId.value !== currentRequest) return;
+        setQuote(null);
+        setQuoteError(isConflict(reason) ? 'One or more occurrences conflict with the current schedule.' : 'Unable to get a server quote.');
+      }).finally(() => {
+        if (requestId.value === currentRequest) setQuoteLoading(false);
+      });
+    }, QUOTE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [classId, editing, generated.error, loading, offline, occurrences, quoteBooking, requestId, room]);
+
+  const quoteInvalid = !quote || quote.occurrences.length !== occurrences.length ||
+    quote.occurrences.some((item) => item.amount === null || item.conflicts.length > 0) ||
+    quote.total_amount === null;
+  const confirmDisabled = editing
+    ? pending || offline || !classId
+    : pending || offline || loading || !classId || Boolean(generated.error) || quoteLoading || quoteInvalid;
+  const noClasses = !editing && !loading && availableClasses.length === 0 && !error;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!classId || pending) return;
-    if (offline) {
-      setError('You are offline. Reconnect before saving a booking.');
-      return;
-    }
-
-    const requested = weekly ? Number(occurrences) : 1;
-    if (weekly && (!Number.isInteger(requested) || requested < 1 || requested > 104)) {
-      setError('Enter between 1 and 104 whole weekly bookings.');
-      return;
-    }
-    if (weekly && isoWeekdayOf(date) !== weekday) {
-      setError('The selected weekday must match the first booking date.');
-      return;
-    }
-
-    setPending(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      if (editing && existingBooking) {
-        const updated = await editBooking(existingBooking.id, existingBooking.version, classId, room, date, hour);
+    if (editing) {
+      if (!existingBooking || !editBooking || pending) return;
+      setPending(true); setError(null); setSuccess(null);
+      try {
+        const updated = await editBooking(
+          existingBooking.id,
+          existingBooking.version,
+          classId || existingBooking.classId,
+          room,
+          localTime(date, minutes(startTime)),
+          localTime(date, minutes(endTime)),
+          existingBooking.studentDetails ?? null,
+        );
         let refreshed: DaySchedule | undefined;
-        let refreshFailed = false;
+        let failed = false;
         if (onRefresh) {
-          try {
-            const result = await onRefresh();
-            if (result && 'bookings' in result) refreshed = result;
-          } catch {
-            refreshFailed = true;
-          }
+          try { const result = await onRefresh(); if (result && 'bookings' in result) refreshed = result; }
+          catch { failed = true; }
         }
-        setSuccess('Booking updated.');
-        onDone(updated, refreshed, refreshFailed);
-        return;
+        onDone(updated, refreshed, failed);
+      } catch (reason) {
+        setError(/stale_booking|PT409|version/i.test(errorText(reason))
+          ? 'This booking changed elsewhere. Refresh the schedule and review it before trying again.'
+          : /booking_forbidden|insufficient_privilege/i.test(errorText(reason))
+            ? 'You are not authorized to update this booking.'
+            : 'Unable to update this booking. Please try again.');
       }
-      const created = await submitBooking(
-        classId, room, date, hour, requested, weekly ? weekday : undefined,
-      );
-      if (created.length !== requested) throw new Error(`count_mismatch:${requested}:${created.length}`);
-      setSuccess(weekly
-        ? `Created ${created.length} weekly bookings.`
-        : 'Created 1 booking.');
-      onDone();
-    } catch (reason) {
-      const match = reason instanceof Error && reason.message.match(/^count_mismatch:(\d+):(\d+)$/);
-      if (match) {
-        setError(countMismatch(Number(match[1]), Number(match[2])));
-      } else if (isConflict(reason)) {
-        const refreshFailed = await refreshAfterFailure();
-        const dates = conflictDates(reason);
-        setError(isStale(reason)
-          ? `This booking changed elsewhere. ${refreshFailed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`
-          : weekly && dates.length > 0
-            ? `Conflict dates: ${dates.join(', ')}. All weekly bookings were left unchanged.`
-            : `Conflict: this slot is no longer available. ${refreshFailed ? 'The schedule refresh failed; ' : 'Refresh the schedule and '}choose another slot.`);
-      } else if (isUnknownOutcome(reason)) {
-        const refreshFailed = await refreshAfterFailure();
-        setError(`We could not confirm the booking change. ${refreshFailed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`);
-      } else {
-        setError(weekly
-          ? 'Unable to create weekly bookings. Please try again.'
-          : editing
-            ? 'Unable to update this booking. Please try again.'
-            : 'Unable to book this slot. Please try again.');
-      }
-    } finally {
-      setPending(false);
+      finally { setPending(false); }
+      return;
     }
+    if (confirmDisabled || !quote) return;
+    setPending(true); setError(null); setSuccess(null); setRefreshFailed(false);
+    try {
+      const result = await createBookingSeries(classId, room, studentDetails.trim() || null, occurrences);
+      const total = createdTotal(result);
+      if (result.bookings.length !== occurrences.length || !total || result.bookings.some((item) => item.amount === null)) {
+        throw new Error('invalid_create_response');
+      }
+      let refreshed: DaySchedule | undefined;
+      let failed = false;
+      if (onRefresh) {
+        try { const value = await onRefresh(); if (value && 'bookings' in value) refreshed = value; }
+        catch { failed = true; }
+      }
+      setRefreshFailed(failed);
+      setSuccess(`Created ${result.bookings.length} booking${result.bookings.length === 1 ? '' : 's'}. Total: ${money(total)}${failed ? ' Schedule refresh failed.' : ''}`);
+      onDone(undefined, refreshed, failed);
+    } catch (reason) {
+      setError(isConflict(reason) ? 'This booking conflicts with the current schedule.' : 'Unable to create bookings. Please try again.');
+    } finally { setPending(false); }
   };
 
-  const noClasses = !loading && classes.length === 0 && error === null;
-  const editing = Boolean(existingBooking);
+  const toggleWeekday = (value: number) => {
+    setWeekdays((current) => current.includes(value) ? current.filter((day) => day !== value) : [...current, value].sort((a, b) => a - b));
+  };
 
   return (
     <section className="booking-form" aria-labelledby="booking-form-title">
       <header>
         <h2 id="booking-form-title">{editing ? 'Edit booking' : 'Book a room'}</h2>
-        <p>{editing
-          ? 'Edit this booking instance only.'
-          : weekly ? 'Book the same class and room every week.' : 'Book one hourly slot using one of your active classes.'}</p>
+        <p>{editing ? 'Edit this booking instance only.' : 'Get a server quote before confirming your reservation.'}</p>
       </header>
-
       {error && <p className="booking-form__message booking-form__message--error" role="alert">{error}</p>}
       {success && <p className="booking-form__message booking-form__message--success" role="status">{success}</p>}
-      {loading && <p role="status">Loading your active classes…</p>}
-      {noClasses && (
-        <p className="booking-form__message" role="status">
-          Create an active class before booking a room.
-        </p>
-      )}
-
-      {offline && (
-        <p className="booking-form__message booking-form__message--offline" role="alert">
-          You are offline. Booking changes are disabled until the connection is restored.
-        </p>
-      )}
-
+      {loading && <p role="status">Loading active classes…</p>}
+      {noClasses && <p className="booking-form__message" role="status">Create an active class before booking a room.</p>}
+      {offline && <p className="booking-form__message booking-form__message--offline" role="alert">You are offline. Booking changes are disabled until the connection is restored.</p>}
       {!loading && !noClasses && (
         <form onSubmit={handleSubmit}>
-          <label htmlFor="booking-class">Class</label>
-          <select
-            id="booking-class"
-            value={classId}
-            onChange={(event) => setClassId(event.target.value)}
-            disabled={pending || offline}
-          >
-            {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-
-          <label className="booking-form__checkbox" htmlFor="booking-weekly">
-            <input
-              id="booking-weekly"
-              type="checkbox"
-              checked={weekly}
-              onChange={(event) => setWeekly(event.target.checked)}
-              disabled={pending || editing}
-            />
-            Book weekly
-          </label>
-
-          {weekly && (
-            <p className="booking-form__help">All weekly bookings succeed or none are created.</p>
+          {editing && existingBooking && (
+            <dl className="booking-form__identity" aria-label="Booking identity">
+              <div><dt>Teacher</dt><dd>{existingBooking.teacherName}</dd></div>
+              <div><dt>Series</dt><dd>{editingSeriesLabel ?? 'Selected series occurrence'}</dd></div>
+            </dl>
           )}
-
-          <label htmlFor="booking-date">{weekly ? 'First booking date' : 'Booking date'}</label>
-          <input
-            id="booking-date"
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            disabled={pending || offline}
-            required
-          />
-
-          {weekly && (
+          {profile?.role === 'admin' && !editing && (
             <>
-              <label htmlFor="booking-weekday">Weekday</label>
-              <select
-                id="booking-weekday"
-                value={weekday}
-                onChange={(event) => setWeekday(Number(event.target.value))}
-                disabled={pending || offline}
-              >
-                {WEEKDAYS.map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}
+              <label htmlFor="booking-teacher">Teacher</label>
+              <select id="booking-teacher" value={teacherId} onChange={(event) => setTeacherId(event.target.value)} disabled={pending || offline || editing}>
+                {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
               </select>
-
-              <label htmlFor="booking-occurrences">Number of weekly bookings</label>
-              <input
-                id="booking-occurrences"
-                type="number"
-                min={1}
-                max={104}
-                step={1}
-                value={occurrences}
-                onChange={(event) => setOccurrences(event.target.value)}
-                disabled={pending || offline}
-                required
-              />
             </>
           )}
-
-          <label htmlFor="booking-hour">Booking hour</label>
-          <input
-            id="booking-hour"
-            type="number"
-            min={0}
-            max={23}
-            step={1}
-            value={hour}
-            onChange={(event) => setHour(Number(event.target.value))}
-            disabled={pending || offline}
-            required
-          />
-
+          <label htmlFor="booking-class">Class</label>
+          <select id="booking-class" value={classId} onChange={(event) => setClassId(event.target.value)} disabled={pending || offline}>
+            {availableClasses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+          {!editing && (
+            <>
+              <fieldset className="booking-form__mode">
+                <legend>Reservation pattern</legend>
+                <label><input type="radio" name="booking-mode" value="one-off" checked={mode === 'one-off'} onChange={() => setMode('one-off')} disabled={pending || offline} /> One-off</label>
+                <label><input type="radio" name="booking-mode" value="recurring" checked={mode === 'recurring'} onChange={() => setMode('recurring')} disabled={pending || offline} /> Recurring</label>
+              </fieldset>
+              <label htmlFor="booking-date">{mode === 'recurring' ? 'Start week (Monday)' : 'Booking date'}</label>
+              <input id="booking-date" type="date" value={mode === 'recurring' ? weekStart : date} onChange={(event) => { setDate(event.target.value); setWeekStart(mondayOf(event.target.value)); }} disabled={pending || offline} required />
+              {mode === 'recurring' && (
+                <>
+                  <fieldset className="booking-form__weekdays">
+                    <legend>Weekdays</legend>
+                    {WEEKDAYS.map((day) => <label key={day.value}><input type="checkbox" checked={weekdays.includes(day.value)} onChange={() => toggleWeekday(day.value)} disabled={pending || offline} /> {day.label}</label>)}
+                  </fieldset>
+                  <label htmlFor="booking-weeks">Number of weeks</label>
+                  <input id="booking-weeks" type="number" min={1} max={52} step={1} value={weeks} onChange={(event) => setWeeks(event.target.value)} disabled={pending || offline} required />
+                </>
+              )}
+            </>
+          )}
+          <label htmlFor="booking-start">Start time</label>
+          <input id="booking-start" type="time" step={1800} value={startTime} onChange={(event) => setStartTime(event.target.value)} disabled={pending || offline} required />
+          <label htmlFor="booking-end">End time</label>
+          <input id="booking-end" type="time" step={1800} value={endTime} onChange={(event) => setEndTime(event.target.value)} disabled={pending || offline} required />
           <label htmlFor="booking-room">Room</label>
-          <select
-            id="booking-room"
-            value={room}
-            onChange={(event) => setRoom(event.target.value as Room)}
-            disabled={pending || offline}
-          >
+          <select id="booking-room" value={room} onChange={(event) => setRoom(event.target.value as Room)} disabled={pending || offline}>
             {ROOMS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
-
+          {!editing && <>
+            <label htmlFor="booking-student-details">Private student details (optional)</label>
+            <textarea id="booking-student-details" maxLength={1000} value={studentDetails} onChange={(event) => setStudentDetails(event.target.value)} disabled={pending || offline} />
+          </>}
+          {!editing && (
+            <section className="booking-form__quote" aria-live="polite" aria-label="Server quote">
+              <h3>Quote preview</h3>
+              {quoteLoading && <p role="status">Getting a server quote…</p>}
+              {!quoteLoading && quoteError && <p className="booking-form__message booking-form__message--error" role="alert">{quoteError}</p>}
+              {!quoteLoading && !quoteError && generated.error && <p className="booking-form__message booking-form__message--error" role="alert">{generated.error}</p>}
+              {!quoteLoading && !quoteError && !generated.error && quote && (
+                <>
+                  <p>{quote.occurrences.length} concrete occurrence{quote.occurrences.length === 1 ? '' : 's'}</p>
+                  <ul className="booking-form__occurrences">
+                    {quote.occurrences.map((occurrence) => <li key={`${occurrence.occurrence_index}:${occurrence.starts_at}`}>
+                      <strong>{occurrence.starts_at.slice(0, 10)} {displayTime(occurrence.starts_at)}–{displayTime(occurrence.ends_at)}</strong>
+                      <span>{occurrence.duration_minutes} minutes · {money(occurrence.amount)}</span>
+                      {occurrence.segments.length > 0 && <ul>{occurrence.segments.map((segment) => <li key={`${segment.starts_at}:${segment.ends_at}`}>{displayTime(segment.starts_at)}–{displayTime(segment.ends_at)} · {segment.label} · {money(segment.hourly_rate)}/h · {money(segment.subtotal)}</li>)}</ul>}
+                      {occurrence.conflicts.length > 0 && <span role="alert">Conflict on this occurrence.</span>}
+                    </li>)}
+                  </ul>
+                  <p className="booking-form__total"><strong>Total: {money(quote.total_amount)}</strong></p>
+                  {quoteInvalid && <p className="booking-form__message booking-form__message--error" role="alert">A complete, conflict-free server quote is required before confirmation.</p>}
+                </>
+              )}
+            </section>
+          )}
           <div className="booking-form__actions">
-            <button type="submit" disabled={pending || offline || !classId}>
-              {pending ? (editing ? 'Saving…' : 'Booking…') : editing ? 'Save booking' : weekly ? 'Book weekly bookings' : 'Book slot'}
-            </button>
-            <button type="button" onClick={() => onDone()} disabled={pending}>Cancel</button>
+            <button type="submit" disabled={confirmDisabled}>{pending ? 'Saving…' : editing ? 'Save booking' : 'Confirm booking'}</button>
+            <button type="button" onClick={() => onCancel ? onCancel() : onDone()} disabled={pending}>Cancel</button>
           </div>
         </form>
       )}

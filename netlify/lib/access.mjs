@@ -147,22 +147,12 @@ export async function handleAccessRequest(request, options = {}) {
     if (!profile?.id || !profile.name || !profile.role) return invalid(401);
 
     const session = await nativeSession(profile, config);
-    const consumed = await supabaseRequest(supabaseUrl, '/rest/v1/rpc/consume_access', {
-      method: 'POST',
-      headers: authHeaders(serviceKey, true),
-      body: JSON.stringify({ p_token_hash: tokenHash }),
-    }, fetchImpl);
-    if (!Array.isArray(consumed) || consumed.length !== 1 || consumed[0].id !== profile.id) return invalid(401);
-
     return result(200, {
       access_token: session.access_token,
       refresh_token: session.refresh_token,
       expires_in: session.expires_in,
       expires_at: session.expires_at,
       user: session.user,
-      profile: { id: profile.id, name: profile.name, role: profile.role },
-    }, {
-      'set-cookie': `__Host-install=${body.token}; Path=/; Max-Age=600; Secure; HttpOnly; SameSite=Strict`,
     });
   } catch {
     return invalid(401);
