@@ -55,7 +55,8 @@ const credentialValuePatterns = [
   /(?:^|[^0-9a-f])[0-9a-f]{64}(?![0-9a-f])/i,
   /(?:#|%23)[0-9a-f]{64}(?![0-9a-f])/i,
   /(?:[?&](?:token|profile)=)[^&\s"']+/i,
-  /(?:Bearer\s+|Authorization:\s*)[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
+  /\bsb_secret_[A-Za-z0-9_-]{20,}\b/,
 ];
 const files = filesUnder(dist);
 for (const file of files) {
