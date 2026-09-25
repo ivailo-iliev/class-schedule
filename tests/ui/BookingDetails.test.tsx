@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import BookingDetails from '../../src/components/BookingDetails';
-import type { Booking, ClassItem, Profile } from '../../src/lib/types';
+import type { Booking, BookingDetail, ClassItem, Profile } from '../../src/lib/types';
 
 const teacher: Profile = { id: 'teacher-a', name: 'Teacher A', role: 'teacher' };
 const admin: Profile = { id: 'admin', name: 'Admin', role: 'admin' };
@@ -20,6 +20,21 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     cancelledAt: null,
     version: 3,
     canEdit: true,
+    ...overrides,
+  };
+}
+
+function detail(overrides: Partial<BookingDetail> = {}): BookingDetail {
+  return {
+    ...booking(),
+    endsAt: '2026-09-15T15:30:00.000Z',
+    seriesId: 'series-1',
+    seriesIndex: 1,
+    studentDetails: 'Private student note',
+    currency: 'EUR',
+    amount: '12.00',
+    segments: [],
+    hasFutureActive: false,
     ...overrides,
   };
 }
@@ -71,7 +86,7 @@ describe('BookingDetails', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
-      'booking-1', 3, 'class-a', 'room', '2026-09-15', 18,
+      'booking-1', 3, 'class-a', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
     ));
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('status')).toHaveTextContent('Booking updated.');
@@ -91,7 +106,7 @@ describe('BookingDetails', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
-      'booking-1', 3, 'class-a', 'hall', '2026-09-15', 18,
+      'booking-1', 3, 'class-a', 'hall', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
     ));
   });
 
@@ -108,7 +123,7 @@ describe('BookingDetails', () => {
     expect(dialog).toHaveTextContent('Зала');
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
-    await waitFor(() => expect(cancelBooking).toHaveBeenCalledWith('booking-1', 3));
+    await waitFor(() => expect(cancelBooking).toHaveBeenCalledWith('booking-1', 3, 'one'));
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('status')).toHaveTextContent('Booking cancelled.');
   });
@@ -166,5 +181,41 @@ describe('BookingDetails', () => {
     expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
     expect(editBooking).not.toHaveBeenCalled();
     expect(cancelBooking).not.toHaveBeenCalled();
+  });
+
+  test('hydrates authorized private details and offers future scope only when later active rows exist', async () => {
+    const loadDetails = vi.fn(async () => detail({ hasFutureActive: true, version: 4 }));
+    renderDetails({ booking: booking({ version: 0 }), loadDetails });
+
+    expect(await screen.findByText('Private student note')).toBeInTheDocument();
+    expect(screen.getByText('EUR 12.00')).toBeInTheDocument();
+    expect(loadDetails).toHaveBeenCalledWith('booking-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+    expect(screen.getByLabelText('This and later occurrences')).toBeInTheDocument();
+  });
+
+  test('does not request private details for an unrelated teacher', () => {
+    const loadDetails = vi.fn(async () => detail());
+    renderDetails({
+      booking: booking({ canEdit: false, teacherId: 'teacher-b', teacherName: 'Teacher B' }),
+      loadDetails,
+    });
+
+    expect(loadDetails).not.toHaveBeenCalled();
+    expect(screen.queryByText('Private student note')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Snapshot amount/)).not.toBeInTheDocument();
+  });
+
+  test('reports an idempotent cancellation after refreshing the schedule', async () => {
+    const cancelBooking = vi.fn(async () => ({ bookings: [], cancelledCount: 0 }));
+    const onRefresh = vi.fn(async () => undefined);
+    renderDetails({ cancelBooking, onRefresh });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/already cancelled/i);
+    expect(cancelBooking).toHaveBeenCalledWith('booking-1', 3, 'one');
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 });

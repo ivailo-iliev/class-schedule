@@ -896,6 +896,41 @@ select:focus-visible {
   color: #8c2020;
 }
 
+.booking-details__confirm fieldset {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0 0;
+  padding: 0.7rem;
+  border: 1px solid #e2c77d;
+  border-radius: 0.4rem;
+}
+
+.booking-details__confirm label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.booking-details__snapshot {
+  margin: 1rem 0;
+  padding: 0.8rem;
+  border: 1px solid #d7e1ef;
+  border-radius: 0.5rem;
+  background: #f7faff;
+}
+
+.booking-details__snapshot h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.booking-details__snapshot ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
 .booking-details__message--success {
   border: 1px solid #72a77d;
   background: #effaf1;

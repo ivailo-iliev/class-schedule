@@ -32,8 +32,9 @@ type BookingEditor = (
   expectedVersion: number,
   classId: string,
   room: Room,
-  date: string,
-  hour: number,
+  startsAt: string,
+  endsAt: string,
+  studentDetails: string | null,
 ) => Promise<Booking>;
 
 export interface BookingFormProps {
@@ -309,7 +310,15 @@ export default function BookingForm({
       if (!existingBooking || !editBooking || pending) return;
       setPending(true); setError(null); setSuccess(null);
       try {
-        const updated = await editBooking(existingBooking.id, existingBooking.version, classId || existingBooking.classId, room, date, minutes(startTime) / 60);
+        const updated = await editBooking(
+          existingBooking.id,
+          existingBooking.version,
+          classId || existingBooking.classId,
+          room,
+          localTime(date, minutes(startTime)),
+          localTime(date, minutes(endTime)),
+          existingBooking.studentDetails ?? null,
+        );
         let refreshed: DaySchedule | undefined;
         let failed = false;
         if (onRefresh) {
@@ -317,7 +326,13 @@ export default function BookingForm({
           catch { failed = true; }
         }
         onDone(updated, refreshed, failed);
-      } catch { setError('Unable to update this booking. Please try again.'); }
+      } catch (reason) {
+        setError(/stale_booking|PT409|version/i.test(errorText(reason))
+          ? 'This booking changed elsewhere. Refresh the schedule and review it before trying again.'
+          : /booking_forbidden|insufficient_privilege/i.test(errorText(reason))
+            ? 'You are not authorized to update this booking.'
+            : 'Unable to update this booking. Please try again.');
+      }
       finally { setPending(false); }
       return;
     }
