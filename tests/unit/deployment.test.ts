@@ -37,6 +37,7 @@ describe('Netlify deployment boundaries', () => {
     expect(healthRedirect).toBeLessThan(apiFallback);
     expect(accessFunction).not.toMatch(/path:\s*['"]\/api\/access['"]/);
     expect(manifestFunction).not.toMatch(/path:\s*['"]\/manifest\.webmanifest['"]/);
+    expect(netlify).not.toMatch(/\/api\/profile|functions\.profile|\.netlify\/functions\/profile/);
   });
 
   test('returns unknown API routes as 404 before the SPA fallback', () => {

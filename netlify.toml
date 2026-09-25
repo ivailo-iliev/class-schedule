@@ -47,12 +47,6 @@
   force = true
 
 [[redirects]]
-  from = "/api/profile"
-  to = "/.netlify/functions/profile"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/api/*"
   to = "/404.html"
   status = 404
@@ -70,7 +64,4 @@
   rateLimit = { windowLimit = 120, windowSize = 60, aggregateBy = ["ip", "domain"] }
 
 [functions.health]
-  rateLimit = { windowLimit = 120, windowSize = 60, aggregateBy = ["ip", "domain"] }
-
-[functions.profile]
   rateLimit = { windowLimit = 120, windowSize = 60, aggregateBy = ["ip", "domain"] }
