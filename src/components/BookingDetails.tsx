@@ -51,7 +51,7 @@ function hourLabel(booking: Booking): string {
 }
 
 function roomLabel(room: Room): string {
-  return room === 'room_1' ? 'Room 1' : 'Room 2';
+  return room === 'hall' ? 'Зала' : 'Стая';
 }
 
 function errorMessage(error: unknown): string {

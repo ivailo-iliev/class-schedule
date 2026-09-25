@@ -359,6 +359,8 @@ select:focus-visible {
 }
 
 .booking {
+  display: flex;
+  min-height: 4rem;
   flex-direction: column;
   gap: 0.15rem;
   overflow-wrap: anywhere;

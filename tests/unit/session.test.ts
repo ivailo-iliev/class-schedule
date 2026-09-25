@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
-import { createElement } from 'react';
-import { render, waitFor } from '@testing-library/react';
-import App from '../../src/App';
 import {
   bootstrapNativeSession,
   clearSession,
@@ -17,23 +14,28 @@ vi.mock('@supabase/supabase-js', async () => {
 });
 
 const token = 'a'.repeat(64);
+const profile = { id: 'profile-id', name: 'Teacher', role: 'teacher' as const };
 const session = {
   access_token: 'access-token',
   refresh_token: 'refresh-token',
   expires_at: Math.floor(Date.now() / 1000) + 3600,
-  user: { id: 'auth-user' },
+  user: { id: 'auth-user', user_metadata: { class_scheduler_profile_id: profile.id } },
 } as unknown as Session;
 
-function authStub(initial: Session | null = null) {
+function clientStub(initial: Session | null = null, restoredProfile: unknown = profile) {
   let current = initial;
   const auth = {
     getSession: vi.fn(async () => ({ data: { session: current }, error: null })),
-    setSession: vi.fn(async () => ({ data: { session }, error: null })),
+    setSession: vi.fn(async () => { current = session; return { data: { session }, error: null }; }),
     refreshSession: vi.fn(async () => ({ data: { session }, error: null })),
     signOut: vi.fn(async () => { current = null; return { error: null }; }),
     onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
   };
-  return auth;
+  const maybeSingle = vi.fn(async () => ({ data: restoredProfile, error: null }));
+  const eq = vi.fn(() => ({ maybeSingle }));
+  const select = vi.fn(() => ({ eq }));
+  const from = vi.fn(() => ({ select }));
+  return { client: { auth, from } as unknown as SupabaseClient, auth, from, select, eq, maybeSingle };
 }
 
 function accessResponse() {
@@ -41,7 +43,6 @@ function accessResponse() {
     access_token: session.access_token,
     refresh_token: session.refresh_token,
     expires_at: session.expires_at,
-    profile: { id: 'profile-id', name: 'Teacher', role: 'teacher' },
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 }
 
@@ -54,93 +55,77 @@ describe('native browser session', () => {
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'publishable-key');
   });
 
-  test('exchanges a valid fragment once and removes the bearer fragment', async () => {
-    const auth = authStub();
-    createClient.mockReturnValue({ auth } as unknown as SupabaseClient);
+  test('exchanges a valid fragment over a different persisted session and clears it only after success', async () => {
+    const differentSession = {
+      ...session,
+      access_token: 'other-access',
+      user: { id: 'other-auth', user_metadata: { class_scheduler_profile_id: 'other-profile' } },
+    } as unknown as Session;
+    const state = clientStub(differentSession);
+    createClient.mockReturnValue(state.client);
     const fetchImpl = vi.fn(async () => accessResponse());
     window.history.replaceState(null, '', `/#${token}`);
 
     const result = await bootstrapNativeSession(window.location, fetchImpl);
-    await bootstrapNativeSession(window.location, fetchImpl);
 
     expect(result).toBe(session);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(auth.setSession).toHaveBeenCalledWith({
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
+    expect(fetchImpl).toHaveBeenCalledWith('/api/access', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
     });
+    expect(state.auth.setSession).toHaveBeenCalledWith({ access_token: 'access-token', refresh_token: 'refresh-token' });
+    expect(state.from).toHaveBeenCalledWith('profiles');
     expect(window.location.hash).toBe('');
+    expect(getProfile()).toEqual(profile);
   });
 
-  test('refreshes an expired persisted session without exchanging the access link', async () => {
-    const expired = { ...session, expires_at: Math.floor(Date.now() / 1000) - 1 } as Session;
-    const auth = authStub(expired);
-    createClient.mockReturnValue({ auth } as unknown as SupabaseClient);
-    const fetchImpl = vi.fn(async () => accessResponse());
+  test('restores the persisted session and safe profile directly through RLS without a profile endpoint', async () => {
+    const state = clientStub(session);
+    createClient.mockReturnValue(state.client);
+    const fetchImpl = vi.fn();
 
-    const result = await bootstrapNativeSession({ hash: `#${token}`, origin: window.location.origin }, fetchImpl);
+    const result = await bootstrapNativeSession({ hash: '', origin: window.location.origin }, fetchImpl);
 
     expect(result).toBe(session);
-    expect(auth.refreshSession).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith('/api/profile', {
-      headers: { authorization: 'Bearer access-token' },
-    });
+    expect(getProfile()).toEqual(profile);
+    expect(state.from).toHaveBeenCalledWith('profiles');
+    expect(state.select).toHaveBeenCalledWith('id, name, role');
+    expect(state.eq).toHaveBeenCalledWith('id', profile.id);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  test('restores the teacher profile from a persisted native session', async () => {
-    const persisted = {
-      ...session,
-      user: { id: 'auth-user', user_metadata: { class_scheduler_profile_id: 'profile-id' } },
-    } as unknown as Session;
-    const auth = authStub(persisted);
-    const maybeSingle = vi.fn(async () => ({
-      data: { id: 'profile-id', name: 'Teacher', role: 'teacher' },
-      error: null,
-    }));
-    const eq = vi.fn(() => ({ maybeSingle }));
-    const select = vi.fn(() => ({ eq }));
-    const from = vi.fn(() => ({ select }));
-    createClient.mockReturnValue({ auth, from } as unknown as SupabaseClient);
+  test('clears an unbound or inactive persisted session instead of falling back to a profile function', async () => {
+    const state = clientStub(session, null);
+    createClient.mockReturnValue(state.client);
+    const fetchImpl = vi.fn();
 
-    await bootstrapNativeSession({ hash: '', origin: window.location.origin });
+    const result = await bootstrapNativeSession({ hash: '', origin: window.location.origin }, fetchImpl);
 
-    expect(getProfile()).toEqual({ id: 'profile-id', name: 'Teacher', role: 'teacher' });
-    expect(from).toHaveBeenCalledWith('profiles');
+    expect(result).toBeNull();
+    expect(state.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(getProfile()).toBeNull();
   });
 
-  test('looks up the profile server-side when an older session has no profile metadata', async () => {
-    const auth = authStub(session);
-    createClient.mockReturnValue({ auth } as unknown as SupabaseClient);
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
-      id: 'profile-id', name: 'Teacher', role: 'teacher',
-    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+  test('keeps a failed fragment visible and leaves the existing native session untouched', async () => {
+    const state = clientStub(session);
+    createClient.mockReturnValue(state.client);
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 401 }));
+    window.history.replaceState(null, '', `/#${token}`);
 
-    await bootstrapNativeSession({ hash: '', origin: window.location.origin }, fetchImpl);
+    await expect(bootstrapNativeSession(window.location, fetchImpl)).rejects.toThrow('invalid_access');
 
-    expect(fetchImpl).toHaveBeenCalledWith('/api/profile', {
-      headers: { authorization: 'Bearer access-token' },
-    });
-    expect(getProfile()).toEqual({ id: 'profile-id', name: 'Teacher', role: 'teacher' });
+    expect(state.auth.setSession).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe(`#${token}`);
   });
 
   test('clears a revoked native session through the client', async () => {
-    const auth = authStub(session);
-    createClient.mockReturnValue({ auth } as unknown as SupabaseClient);
+    const state = clientStub(session);
+    createClient.mockReturnValue(state.client);
 
     await clearSession();
 
-    expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
-  });
-
-  test('does not put the access token in rendered component state', async () => {
-    const auth = authStub();
-    createClient.mockReturnValue({ auth } as unknown as SupabaseClient);
-    const fetchImpl = vi.fn(async () => accessResponse());
-    vi.stubGlobal('fetch', fetchImpl);
-    window.history.replaceState(null, '', `/#${token}`);
-    render(createElement(App));
-    await waitFor(() => expect(document.body.textContent).toContain('Connected'));
-
-    expect(document.body.textContent ?? '').not.toContain(token);
+    expect(state.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 });

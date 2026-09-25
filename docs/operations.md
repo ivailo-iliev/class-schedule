@@ -15,11 +15,9 @@ Supabase CLI against the target project (local or hosted).
 
 `netlify.toml` is the deployment source of truth. Netlify builds with Node 24
 using `npm run build`, publishes `dist`, and loads functions from
-`netlify/functions`. The access function owns `/api/access`; the installation
-manifest function owns `/manifest.webmanifest`; both routes appear before the
-final `/*` SPA fallback so function errors cannot become an HTML 200 response.
-The access and manifest functions use Netlify rate limits of 60 and 120
-requests per IP/domain per 60 seconds respectively.
+`netlify/functions`. The access function owns `/api/access` and appears before
+the final `/*` SPA fallback so its errors cannot become an HTML 200 response.
+Its Netlify rate limit is 60 requests per IP/domain per 60 seconds.
 
 Configure environment variables in Netlify's site settings, not in this
 repository:

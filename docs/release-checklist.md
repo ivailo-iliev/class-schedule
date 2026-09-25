@@ -12,8 +12,8 @@ checkbox is checked only when the command or review named beside it was run.
 - Migration: `supabase/migrations/20260913000100_v1.sql`
 - Database model: `public.profiles`, `public.classes`, `public.bookings`, and
   the private singleton `private.room_rate`.
-- Authentication model: a personal `/access#<token>` link is exchanged once
-  for a native Supabase session. The browser and installed PWA use the native
+- Authentication model: a reusable personal `/access#<token>` link establishes a
+  native Supabase session. The browser and installed PWA use the native
   session; RLS resolves `auth.uid()`.
 
 ## Verified local evidence
@@ -35,7 +35,7 @@ this task handoff and must be refreshed after a source change.
       isolation, and offline launch passed.
 - [x] `npm run check:public-build` — `Build looks safe (no detected static
       secrets)`; exit 0.
-- [x] `npm run auth:smoke` — native session exchange, single-use token, RLS
+- [x] `npm run auth:smoke` — native session exchange, reusable token, RLS
       owner write, cross-teacher denial, and deactivation revocation all
       printed `PASS`; exit 0.
 - [x] `git diff --check` — no output; exit 0.
@@ -70,7 +70,7 @@ update public.profiles set active = false where id = '<profile-uuid>';
 ```
 
 To replace a link, issue a new link for the active profile. Reactivating a
-profile does not revive its consumed or revoked link:
+Reactivating a profile does not revive its superseded or revoked link:
 
 ```sql
 update public.profiles set active = true where id = '<profile-uuid>';
@@ -125,7 +125,7 @@ keep-alive or application export endpoint is provided.
 - [ ] Owner-authorized deployment to the named Netlify site only.
 - [ ] Production response headers read back: CSP, `Referrer-Policy:
       no-referrer`, `X-Content-Type-Options: nosniff`, and private/no-store
-      headers for access and manifest responses.
+      headers for the access response.
 - [ ] Production check used only disposable synthetic profiles and bookings;
       all such data was removed or the profiles were deactivated afterward.
 - [ ] Production build contains only public Vite variables; function secrets

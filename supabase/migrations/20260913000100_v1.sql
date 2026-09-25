@@ -597,3 +597,85 @@ grant execute on function public.quote_booking(uuid, public.room, jsonb),
   public.create_booking_series(uuid, public.room, text, jsonb),
   public.edit_booking(uuid, integer, uuid, public.room, timestamp without time zone, timestamp without time zone, text),
   public.cancel_booking(uuid, integer, text) to authenticated;
+
+-- A3: narrow schedule and booking-detail projections. Base booking rows carry
+-- student and financial data, so browsers receive them only through these RPCs.
+create function public.get_day(p_date date) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare schedule jsonb;
+begin
+  if private.actor_id() is null then
+    raise insufficient_privilege using message = 'active_profile_required';
+  end if;
+  if p_date is null or not isfinite(p_date) then
+    raise sqlstate 'PT422' using message = 'invalid_date';
+  end if;
+
+  select jsonb_build_object(
+    'date', to_char(p_date, 'YYYY-MM-DD'),
+    'bookings', coalesce(jsonb_agg(jsonb_build_object(
+      'id', b.id,
+      'room', b.room,
+      'starts_at', to_char(b.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'ends_at', to_char(b.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+      'teacher_name', p.name,
+      'activity_title', c.name,
+      'can_manage', private.can_manage(b.teacher_id)
+    ) order by b.starts_at, b.room, b.id), '[]'::jsonb)
+  ) into schedule
+  from public.bookings b
+  join public.classes c on c.id = b.class_id
+  join public.profiles p on p.id = b.teacher_id
+  where b.starts_at::date = p_date and b.cancelled_at is null;
+
+  return schedule;
+end;
+$$;
+
+create function public.get_booking_details(p_id uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare booking_row public.bookings%rowtype;
+  class_name text;
+  teacher_name text;
+begin
+  if private.actor_id() is null then
+    raise insufficient_privilege using message = 'active_profile_required';
+  end if;
+  if p_id is null then
+    raise sqlstate 'PT422' using message = 'invalid_booking_id';
+  end if;
+  select * into booking_row from public.bookings where id = p_id;
+  if not found then
+    raise sqlstate 'PT404' using message = 'booking_not_found';
+  end if;
+  if not private.can_manage(booking_row.teacher_id) then
+    raise insufficient_privilege using message = 'booking_forbidden';
+  end if;
+  select c.name, p.name into class_name, teacher_name
+  from public.classes c join public.profiles p on p.id = booking_row.teacher_id
+  where c.id = booking_row.class_id;
+  return jsonb_build_object(
+    'id', booking_row.id,
+    'series_id', booking_row.series_id,
+    'series_index', booking_row.series_index,
+    'teacher_id', booking_row.teacher_id,
+    'teacher_name', teacher_name,
+    'class_id', booking_row.class_id,
+    'activity_title', class_name,
+    'room', booking_row.room,
+    'starts_at', to_char(booking_row.starts_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'ends_at', to_char(booking_row.ends_at, 'YYYY-MM-DD"T"HH24:MI:SS'),
+    'student_details', booking_row.student_details,
+    'currency', booking_row.currency,
+    'amount', to_char(booking_row.calculated_amount, 'FM9999999990.00'),
+    'segments', booking_row.price_breakdown,
+    'cancelled_at', booking_row.cancelled_at,
+    'cancelled_by', booking_row.cancelled_by,
+    'version', booking_row.version,
+    'can_manage', true
+  );
+end;
+$$;
+
+revoke all on function public.get_day(date), public.get_booking_details(uuid) from public, anon;
+grant execute on function public.get_day(date), public.get_booking_details(uuid) to authenticated;

@@ -1,186 +1,52 @@
 import type { PostgrestError } from '@supabase/supabase-js';
-import { dayBounds, daySlots, localHourOf } from './calendar';
-import { getProfile, getSupabaseClient, clearSession, isSessionRevokedError } from './session';
+import { daySlots, minutesOf } from './calendar';
+import { getSupabaseClient, clearSession, isSessionRevokedError } from './session';
 import type { Database, Tables, TablesInsert } from './database.types';
 import type { Booking, ClassItem, DaySchedule, Profile, Room } from './types';
 
-type BookingRow = Pick<Tables<'bookings'>, 'id' | 'class_id' | 'room' | 'starts_at' | 'cancelled_at' | 'cancelled_by' | 'version'> & {
-  classes: Pick<Tables<'classes'>, 'id' | 'name' | 'teacher_id'> | null;
-};
-type ProfileRow = Pick<Tables<'profiles'>, 'id' | 'name'>;
-type TeacherProfileRow = Pick<Tables<'profiles'>, 'id' | 'name' | 'role'>;
-type ClassRow = Pick<Tables<'classes'>, 'id' | 'teacher_id' | 'name' | 'active'>;
 type SupabaseResult<T> = { data: T | null; error: PostgrestError | null };
+type DayPayload = { date: string; bookings: Array<{ id: string; room: Room; starts_at: string; ends_at: string; teacher_name: string; activity_title: string; can_manage: boolean }> };
+type ClassRow = Pick<Tables<'classes'>, 'id' | 'teacher_id' | 'name' | 'active'>;
+type TeacherProfileRow = Pick<Tables<'profiles'>, 'id' | 'name' | 'role'>;
 
-function client() {
-  return getSupabaseClient();
-}
-
+function client() { return getSupabaseClient(); }
 async function fetchOr<T>(operation: () => PromiseLike<SupabaseResult<T>>): Promise<T> {
   const result = await operation();
-  if (result.error) {
-    if (isSessionRevokedError(result.error)) await clearSession();
-    throw result.error;
-  }
+  if (result.error) { if (isSessionRevokedError(result.error)) await clearSession(); throw result.error; }
   if (result.data === null) throw new Error('empty_response');
   return result.data;
 }
-
-function mapClass(row: ClassRow): ClassItem {
-  return { id: row.id, teacherId: row.teacher_id, name: row.name, active: row.active };
-}
-
-function mapBooking(row: BookingRow, teacherName: string, profile: Profile | null): Booking {
-  if (!row.classes) throw new Error('booking_class_missing');
-  return {
-    id: row.id,
-    classId: row.class_id,
-    teacherId: row.classes.teacher_id,
-    className: row.classes.name,
-    teacherName,
-    room: row.room,
-    startsAt: row.starts_at,
-    hour: localHourOf(row.starts_at),
-    cancelledAt: row.cancelled_at,
-    cancelledBy: row.cancelled_by,
-    version: row.version,
-    canEdit: Boolean(profile && row.cancelled_at === null &&
-      (profile.role === 'admin' || profile.id === row.classes.teacher_id)),
-  };
+function mapScheduleBooking(row: DayPayload['bookings'][number]): Booking {
+  return { id: row.id, classId: '', teacherId: '', className: row.activity_title, teacherName: row.teacher_name,
+    room: row.room, startsAt: row.starts_at, endsAt: row.ends_at, hour: Math.floor(minutesOf(row.starts_at) / 60),
+    cancelledAt: null, version: 0, canEdit: row.can_manage };
 }
 
 export async function getDay(date: string): Promise<DaySchedule> {
-  const { start, end } = dayBounds(date);
-  const rows = await fetchOr(() => client().from('bookings')
-    .select('id, class_id, room, starts_at, cancelled_at, cancelled_by, version, classes!inner(id, name, teacher_id)')
-    .gte('starts_at', start.toISOString())
-    .lt('starts_at', end.toISOString())
-    .order('starts_at') as unknown as PromiseLike<SupabaseResult<BookingRow[]>>);
-
-  const teacherIds = [...new Set(rows.flatMap((row) => row.classes ? [row.classes.teacher_id] : []))];
-  const profiles = teacherIds.length === 0 ? [] : await fetchOr(() => client().from('profiles')
-    .select('id, name')
-    .in('id', teacherIds) as unknown as PromiseLike<SupabaseResult<ProfileRow[]>>);
-  const teacherNames = new Map(profiles.map((profile) => [profile.id, profile.name]));
-  const profile = getProfile();
-  return {
-    date,
-    slots: daySlots(date),
-    bookings: rows.map((row) => mapBooking(row, row.classes ? (teacherNames.get(row.classes.teacher_id) ?? '') : '', profile)),
-  };
-}
-
-async function getBookingById(id: string): Promise<Booking> {
-  const row = await fetchOr(() => client().from('bookings')
-    .select('id, class_id, room, starts_at, cancelled_at, cancelled_by, version, classes!inner(id, name, teacher_id)')
-    .eq('id', id)
-    .single() as unknown as PromiseLike<SupabaseResult<BookingRow>>);
-  if (!row.classes) throw new Error('booking_class_missing');
-  const teacherId = row.classes.teacher_id;
-  const teacher = await fetchOr(() => client().from('profiles')
-    .select('id, name')
-    .eq('id', teacherId)
-    .single() as unknown as PromiseLike<SupabaseResult<ProfileRow>>);
-  return mapBooking(row, teacher.name, getProfile());
+  const result = await fetchOr(() => client().rpc('get_day', { p_date: date }) as unknown as PromiseLike<SupabaseResult<DayPayload>>);
+  if (result.date !== date || !Array.isArray(result.bookings)) throw new Error('invalid_day_response');
+  return { date, slots: daySlots(date), bookings: result.bookings.map(mapScheduleBooking) };
 }
 
 export async function getMyClasses(): Promise<ClassItem[]> {
-  const rows = await fetchOr(() => client().from('classes')
-    .select('id, teacher_id, name, active')
-    .order('name') as unknown as PromiseLike<SupabaseResult<ClassRow[]>>);
-  return rows.map(mapClass);
+  const rows = await fetchOr(() => client().from('classes').select('id, teacher_id, name, active').order('name') as unknown as PromiseLike<SupabaseResult<ClassRow[]>>);
+  return rows.map((row) => ({ id: row.id, teacherId: row.teacher_id, name: row.name, active: row.active }));
 }
-
 export async function getTeachers(): Promise<Profile[]> {
-  const rows = await fetchOr(() => client().from('profiles')
-    .select('id, name, role, active')
-    .eq('role', 'teacher')
-    .eq('active', true)
-    .order('name') as unknown as PromiseLike<SupabaseResult<TeacherProfileRow[]>>);
-  return rows.map((row) => ({ id: row.id, name: row.name, role: row.role }));
+  const rows = await fetchOr(() => client().from('profiles').select('id, name, role, active').eq('role', 'teacher').eq('active', true).order('name') as unknown as PromiseLike<SupabaseResult<TeacherProfileRow[]>>);
+  return rows.map(({ id, name, role }) => ({ id, name, role }));
 }
-
 export async function createClass(name: string, teacherId?: string): Promise<ClassItem> {
-  const trimmed = name.trim();
-  const payload = (teacherId ? { name: trimmed, teacher_id: teacherId } : { name: trimmed }) as TablesInsert<'classes'>;
-  const row = await fetchOr(() => client().from('classes')
-    .insert(payload)
-    .select('id, teacher_id, name, active')
-    .single() as unknown as PromiseLike<SupabaseResult<ClassRow>>);
-  return mapClass(row);
+  const payload = (teacherId ? { name: name.trim(), teacher_id: teacherId } : { name: name.trim() }) as TablesInsert<'classes'>;
+  const row = await fetchOr(() => client().from('classes').insert(payload).select('id, teacher_id, name, active').single() as unknown as PromiseLike<SupabaseResult<ClassRow>>);
+  return { id: row.id, teacherId: row.teacher_id, name: row.name, active: row.active };
+}
+export async function updateClass(id: string, changes: Partial<Pick<ClassItem, 'name' | 'active'>>): Promise<ClassItem> {
+  const row = await fetchOr(() => client().from('classes').update({ ...(changes.name === undefined ? {} : { name: changes.name.trim() }), ...(changes.active === undefined ? {} : { active: changes.active }) }).eq('id', id).select('id, teacher_id, name, active').single() as unknown as PromiseLike<SupabaseResult<ClassRow>>);
+  return { id: row.id, teacherId: row.teacher_id, name: row.name, active: row.active };
 }
 
-export async function updateClass(
-  id: string,
-  changes: Partial<Pick<ClassItem, 'name' | 'active'>>,
-): Promise<ClassItem> {
-  const payload: Database['public']['Tables']['classes']['Update'] = {
-    ...(changes.name === undefined ? {} : { name: changes.name.trim() }),
-    ...(changes.active === undefined ? {} : { active: changes.active }),
-  };
-  const row = await fetchOr(() => client().from('classes')
-    .update(payload)
-    .eq('id', id)
-    .select('id, teacher_id, name, active')
-    .single() as unknown as PromiseLike<SupabaseResult<ClassRow>>);
-  return mapClass(row);
-}
-
-export async function scheduleBookings(
-  classId: string,
-  room: Room,
-  firstDate: string,
-  hour: number,
-  occurrences = 1,
-  weekday?: number,
-): Promise<Booking[]> {
-  const rows = await fetchOr(() => client().rpc('schedule_bookings', {
-    p_class_id: classId,
-    p_room: room,
-    p_first_date: firstDate,
-    p_hour: hour,
-    p_occurrences: occurrences,
-    ...(weekday === undefined ? {} : { p_weekday: weekday }),
-  }) as unknown as PromiseLike<SupabaseResult<Tables<'bookings'>[]>>);
-  return rows.map((row) => ({
-    id: row.id,
-    classId: row.class_id,
-    teacherId: '',
-    className: '',
-    teacherName: '',
-    room: row.room,
-    startsAt: row.starts_at,
-    hour: localHourOf(row.starts_at),
-    cancelledAt: row.cancelled_at,
-    cancelledBy: row.cancelled_by,
-    version: row.version,
-    canEdit: true,
-  }));
-}
-
-export async function editBooking(
-  id: string,
-  expectedVersion: number,
-  classId: string,
-  room: Room,
-  date: string,
-  hour: number,
-): Promise<Booking> {
-  const row = await fetchOr(() => client().rpc('edit_booking', {
-    p_id: id,
-    p_expected_version: expectedVersion,
-    p_class_id: classId,
-    p_room: room,
-    p_date: date,
-    p_hour: hour,
-  }).single() as unknown as PromiseLike<SupabaseResult<Tables<'bookings'>>>);
-  return getBookingById(row.id);
-}
-
-export async function cancelBooking(id: string, expectedVersion: number): Promise<Booking> {
-  const row = await fetchOr(() => client().rpc('cancel_booking', {
-    p_id: id,
-    p_expected_version: expectedVersion,
-  }).single() as unknown as PromiseLike<SupabaseResult<Tables<'bookings'>>>);
-  return getBookingById(row.id);
-}
+// Mutation UX is intentionally deferred; these compatibility exports prevent stale callers from bypassing the authoritative RPC path.
+export async function scheduleBookings(_classId: string, _room: Room, _date: string, _hour: number, _occurrences = 1, _weekday?: number): Promise<Booking[]> { throw new Error('booking_mutation_ui_pending'); }
+export async function editBooking(_id: string, _version: number, _classId: string, _room: Room, _date: string, _hour: number): Promise<Booking> { throw new Error('booking_mutation_ui_pending'); }
+export async function cancelBooking(_id: string, _version: number): Promise<Booking> { throw new Error('booking_mutation_ui_pending'); }
