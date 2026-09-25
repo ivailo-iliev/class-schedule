@@ -81,6 +81,7 @@ export default function App() {
       if (!mounted) return;
       if (session) {
         const nextProfile = getProfile();
+        if (!nextProfile) return;
         setProfile(nextProfile);
         setState('connected');
       } else {

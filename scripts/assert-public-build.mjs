@@ -43,11 +43,19 @@ const prohibitedNames = [
   '/.netlify/functions/health',
   '/.netlify/functions/profile',
 ];
+const serverOnlyEnvironmentNames = [
+  'SUPABASE_SECRET_API_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_SECRET_KEY',
+  'SUPABASE_DB_URL',
+  'SUPABASE_JWKS_URL',
+  'SIGNING_JWK',
+];
 const credentialValuePatterns = [
   /(?:^|[^0-9a-f])[0-9a-f]{64}(?![0-9a-f])/i,
   /(?:#|%23)[0-9a-f]{64}(?![0-9a-f])/i,
   /(?:[?&](?:token|profile)=)[^&\s"']+/i,
-  /(?:Bearer\s+|Authorization:\s*)eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/,
+  /(?:Bearer\s+|Authorization:\s*)[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/,
 ];
 const files = filesUnder(dist);
 for (const file of files) {
@@ -56,6 +64,12 @@ for (const file of files) {
   const credentialValue = credentialValuePatterns.find((pattern) => pattern.test(text));
   if (prohibited || credentialValue || file.relative.startsWith('.keys/')) {
     fail(`SECRET LEAK: ${file.relative} contains prohibited public-build content`);
+  }
+  for (const name of serverOnlyEnvironmentNames) {
+    const value = process.env[name];
+    if (value && text.includes(value)) {
+      fail(`SECRET LEAK: ${file.relative} contains configured ${name}`);
+    }
   }
   if (/navigator\.serviceWorker|\.register\(['"]\/sw|workbox-|CacheFirst|runtimeCaching|cacheName/i.test(text)) {
     fail(`OFFLINE FEATURE LEAK: ${file.relative} contains service-worker or cache code`);
