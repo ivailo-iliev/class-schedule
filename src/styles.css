@@ -1221,7 +1221,15 @@ select:focus-visible {
   .report-table { min-width: 0; font-size: 9pt; }
   .report-table th,
   .report-table td { padding: 0.35rem; font-size: 9pt; }
+  .report-breakdown { display: block !important; break-inside: avoid; }
   .report-teacher { break-inside: avoid; }
+}
+
+@media (max-width: 640px) {
+  .report-shell { width: min(100% - 1rem, 76rem); }
+  .report-header { flex-direction: column; }
+  .report-actions { width: 100%; }
+  .report-summary { grid-template-columns: 1fr; }
 }
 
 .workspace-overlay {
