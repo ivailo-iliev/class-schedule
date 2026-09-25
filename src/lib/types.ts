@@ -22,8 +22,59 @@ export interface Booking {
 }
 export interface DaySchedule { date: string; slots: Slot[]; bookings: Booking[]; }
 export interface Profile { id: string; name: string; role: Role; }
+
+export interface BookingOccurrence {
+  starts_at: string;
+  ends_at: string;
+}
+export interface PriceSegment {
+  starts_at: string;
+  ends_at: string;
+  rule_id: string | null;
+  label: string;
+  hourly_rate: string;
+  subtotal: string;
+}
+export interface QuoteConflict {
+  date: string;
+  room: Room;
+}
+export interface QuotedOccurrence extends BookingOccurrence {
+  occurrence_index: number;
+  duration_minutes: number;
+  amount: string | null;
+  segments: PriceSegment[];
+  conflicts: QuoteConflict[];
+}
+export interface BookingQuote {
+  occurrences: QuotedOccurrence[];
+  total_amount: string | null;
+}
+export interface CreatedBooking {
+  id: string;
+  series_id: string;
+  series_index: number;
+  teacher_id: string;
+  class_id: string;
+  room: Room;
+  starts_at: string;
+  ends_at: string;
+  student_details: string | null;
+  currency: string;
+  amount: string | null;
+  segments: PriceSegment[];
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  version: number;
+}
+export interface CreatedBookingSeries {
+  series_id: string;
+  bookings: CreatedBooking[];
+  total_amount: string;
+}
+
 export interface NativeSessionResponse {
   access_token: string; refresh_token: string; expires_in?: number; expires_at?: number;
-  user?: Session['user'];
+  user?: Session['user']; profile: Profile;
 }
 export type ExchangeResponse = NativeSessionResponse;

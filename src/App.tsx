@@ -7,7 +7,7 @@ import BookingForm from './components/BookingForm';
 import Classes from './components/Classes';
 import Schedule, { type ScheduleHandle } from './components/Schedule';
 
-type SlotSelection = { date: string; hour: number; room: Room };
+type SlotSelection = { date: string; startsAt: string; hour?: number; room: Room };
 
 interface WorkspacePanelProps {
   label: string;
@@ -210,13 +210,14 @@ export default function App() {
         <WorkspacePanel label="Book a room" onClose={closeSlotPanel}>
           <BookingForm
             date={selectedSlot.date}
+            startsAt={selectedSlot.startsAt}
             hour={selectedSlot.hour}
             room={selectedSlot.room}
             offline={offline}
             onRefresh={refreshSchedule}
+            onCancel={closeSlotPanel}
             onDone={() => {
-              closeSlotPanel();
-              void refreshSchedule().catch(() => undefined);
+              // BookingForm already awaited this exact refresh before onDone.
             }}
           />
           <button className="workspace-panel__close" type="button" onClick={closeSlotPanel} aria-label="Close booking form">×</button>
