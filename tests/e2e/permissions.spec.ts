@@ -14,13 +14,32 @@ function setFor(project: string) {
   return state.sets[project] ?? state.sets.chromium!;
 }
 
-async function deactivateProfile(profileId: string): Promise<void> {
+function localDbUrl(): string {
   const output = execFileSync('supabase', ['status', '--output', 'env'], { cwd: resolve(dirname(new URL(import.meta.url).pathname), '../..'), encoding: 'utf8' });
   const dbUrl = output.match(/^DB_URL=(.+)$/m)?.[1]?.replace(/^"|"$/g, '');
   if (!dbUrl) throw new Error('local_db_url_missing');
-  const pool = new pg.Pool({ connectionString: dbUrl });
+  return dbUrl;
+}
+
+async function deactivateProfile(profileId: string): Promise<void> {
+  const pool = new pg.Pool({ connectionString: localDbUrl() });
   try {
     await pool.query('update public.profiles set active = false where id = $1', [profileId]);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function issueReplacementAccessLink(profileId: string): Promise<string> {
+  const pool = new pg.Pool({ connectionString: localDbUrl() });
+  try {
+    const result = await pool.query<{ token: string }>(
+      'select private.issue_access_link($1) as token',
+      [profileId],
+    );
+    const token = result.rows[0]?.token;
+    if (typeof token !== 'string') throw new Error('replacement_access_link_missing');
+    return token;
   } finally {
     await pool.end();
   }
@@ -108,6 +127,36 @@ test('reuses a personal link in clean browsers, replaces a persisted session, an
   await page.reload();
   await expect(page.getByRole('main', { name: 'Schedule' })).toBeVisible();
   await expect(page.getByText('Open your personal access link')).toHaveCount(0);
+});
+
+test('rotating a personal link rejects its old fragment without ending an established native session', async ({ browser, page }, testInfo) => {
+  const fixture = setFor(testInfo.project.name);
+  await openPersonalLink(page, fixture.teacherB.token, fixture.day);
+  const establishedSession = await issuedAccessToken(page);
+  const replacementToken = await issueReplacementAccessLink(fixture.teacherB.id);
+
+  const oldLink = await page.request.post('/api/access', {
+    headers: { origin: appOrigin, 'content-type': 'application/json' },
+    data: { token: fixture.teacherB.token },
+  });
+  expect(oldLink.status()).toBe(401);
+
+  const cleanContext = await browser.newContext();
+  try {
+    const cleanPage = await cleanContext.newPage();
+    await openPersonalLink(cleanPage, replacementToken, fixture.day);
+    expect(await issuedAccessToken(cleanPage)).toBeTruthy();
+  } finally {
+    await cleanContext.close();
+  }
+
+  const establishedApi = await request.newContext({ baseURL: state.apiUrl, extraHTTPHeaders: restHeaders(establishedSession) });
+  try {
+    const day = await establishedApi.post('/rest/v1/rpc/get_day', { data: { p_date: fixture.day } });
+    expect(day.status()).toBe(200);
+  } finally {
+    await establishedApi.dispose();
+  }
 });
 
 test('enforces safe RPC projections, RLS ownership, and base-table denial', async ({ page }, testInfo) => {
