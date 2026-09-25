@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { getDay } from '../lib/api';
 import { localDateOf, minutesOf } from '../lib/calendar';
 import type { Booking, DaySchedule, Room } from '../lib/types';
+import Icon from './Icon';
 
 const ROOMS: readonly { id: Room; label: string }[] = [{ id: 'hall', label: 'Зала' }, { id: 'room', label: 'Стая' }];
 type SlotSelection = { date: string; startsAt: string; hour?: number; room: Room };
@@ -13,6 +14,7 @@ function today(): string { return new Date().toISOString().slice(0, 10); }
 function shiftDate(date: string, days: number): string { const value = new Date(`${date}T12:00:00Z`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); }
 function displayDate(date: string): string { return new Intl.DateTimeFormat('bg-BG', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`)); }
 function timeLabel(local: string): string { return local.slice(11, 16); }
+function classHue(id: string): number { let hash = 0; for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0; return (hash % 12) * 30; }
 
 const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ initialDate = today(), loadSchedule = getDay, onSelectSlot, onSelectBooking, offline = false }, ref) {
   const [date, setDate] = useState(initialDate);
@@ -42,19 +44,19 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   return <main className="schedule-shell" aria-label="Schedule">
     <p className="visually-hidden">Connected</p>
     <header className="schedule-date-bar"><div className="date-controls" aria-label="Schedule date controls">
-      <button type="button" onClick={() => selectDate(shiftDate(date, -1))} aria-label="Previous day">‹</button>
+      <button type="button" onClick={() => selectDate(shiftDate(date, -1))} aria-label="Previous day" title="Previous day"><Icon name="chevronLeft" /></button>
       <label><span className="visually-hidden">Schedule date</span><input type="date" value={date} onChange={(event) => selectDate(event.target.value)} /></label>
-      <button type="button" onClick={() => selectDate(shiftDate(date, 1))} aria-label="Next day">›</button>
-      <button type="button" onClick={() => void load(date).catch(() => undefined)} aria-label="Refresh schedule">⟳</button>
+      <button type="button" onClick={() => selectDate(shiftDate(date, 1))} aria-label="Next day" title="Next day"><Icon name="chevronRight" /></button>
+      <button type="button" onClick={() => void load(date).catch(() => undefined)} aria-label="Refresh schedule" title="Refresh schedule"><Icon name="refresh" /></button>
     </div><p className="selected-date">{displayDate(date)}</p></header>
     {Boolean(error) && <p className="schedule-message schedule-message--inline" role="alert"><strong>Schedule may be out of date.</strong> Availability is read-only until refreshed.</p>}
     {loading && !schedule && <p className="schedule-loading" role="status">Loading schedule…</p>}
-    {schedule && <section className="schedule-grid" role="grid" aria-label={`Schedule for ${displayDate(date)}`} style={{ gridTemplateRows: `44px repeat(${slots.length}, 4rem)` }}>
+    {schedule && <section className="schedule-grid" role="grid" aria-label={`Schedule for ${displayDate(date)}`} style={{ gridTemplateRows: `44px repeat(${slots.length}, 3rem)` }}>
       <div className="schedule-grid__corner" aria-hidden="true">Час</div>{ROOMS.map((room) => <h2 className="schedule-grid__header" key={room.id}>{room.label}</h2>)}
       {slots.flatMap((slot, index) => [<div className="schedule-grid__hour" role="rowheader" key={`${slot.startsAt}:time`} style={{ gridRow: index + 2 }}>{timeLabel(slot.startsAt)}</div>, ...ROOMS.map((room) => {
         const booking = bookingAt(room.id, slot.startsAt); const label = `${room.label} at ${timeLabel(slot.startsAt)}`;
-        if (booking && bookingStarts(booking, slot.startsAt)) return <button type="button" className={`booking${booking.canEdit ? ' booking--editable' : ''}`} key={`${slot.startsAt}:${room.id}:booking`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: `${index + 2} / span ${spanFor(booking)}`, zIndex: 1 }} aria-label={`View details for ${booking.className} in ${label}`} onClick={() => onSelectBooking?.(booking)}><strong>{booking.className}</strong><span>{booking.teacherName}</span></button>;
-        return <div className="schedule-grid__cell" role="gridcell" key={`${slot.startsAt}:${room.id}`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: index + 2 }}>{!booking && (canBook ? <button type="button" className="empty-slot" aria-label={`Book ${label}`} onClick={() => onSelectSlot?.({ date: localDateOf(slot.startsAt), startsAt: slot.startsAt, hour: Math.floor(minutesOf(slot.startsAt) / 60), room: room.id })}>+</button> : <div className="schedule-grid__unknown" aria-label={`${label} unavailable`}>Unavailable</div>)}</div>;
+        if (booking && bookingStarts(booking, slot.startsAt)) return <button type="button" className={`booking${booking.canEdit ? ' booking--editable' : ''}`} key={`${slot.startsAt}:${room.id}:booking`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: `${index + 2} / span ${spanFor(booking)}`, zIndex: 1, '--class-hue': classHue(booking.classId) } as React.CSSProperties} aria-label={`View details for ${booking.className} in ${label}`} onClick={() => onSelectBooking?.(booking)}><strong>{booking.className}</strong><span>{booking.teacherName}</span></button>;
+        return <div className="schedule-grid__cell" role="gridcell" key={`${slot.startsAt}:${room.id}`} style={{ gridColumn: room.id === 'hall' ? 2 : 3, gridRow: index + 2 }}>{!booking && (canBook ? <button type="button" className="empty-slot" aria-label={`Book ${label}`} onClick={() => onSelectSlot?.({ date: localDateOf(slot.startsAt), startsAt: slot.startsAt, hour: Math.floor(minutesOf(slot.startsAt) / 60), room: room.id })}><Icon name="plus" /></button> : <div className="schedule-grid__unknown" aria-label={`${label} unavailable`}>Unavailable</div>)}</div>;
       })])}
     </section>}
   </main>;

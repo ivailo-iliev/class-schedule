@@ -150,14 +150,14 @@ describe('MonthlyReport', () => {
     expect(narrowRule).toBeDefined();
 
     const printStyles = Array.from(printRule?.cssRules ?? []).filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
-    const hiddenInPrint = printStyles.find((rule) => rule.selectorText.includes('.report-footer-actions'));
+    const hiddenInPrint = printStyles.find((rule) => rule.selectorText.includes('.report-toolbar'));
     const breakdownInPrint = printStyles.find((rule) => rule.selectorText === '.report-breakdown');
     expect(hiddenInPrint?.style.display).toBe('none');
     expect(breakdownInPrint?.style.display).toBe('block');
     expect(breakdownInPrint?.style.breakInside).toBe('avoid');
 
     const narrowStyles = Array.from(narrowRule?.cssRules ?? []).filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
-    expect(narrowStyles.find((rule) => rule.selectorText === '.report-header')?.style.flexDirection).toBe('column');
-    expect(narrowStyles.find((rule) => rule.selectorText === '.report-summary')?.style.gridTemplateColumns).toBe('1fr');
+    expect(narrowStyles.find((rule) => rule.selectorText === '.report-summary')?.style.gap).toBe('0.4rem');
+    expect(narrowStyles.find((rule) => rule.selectorText === '.report-summary__card')?.style.padding).toBe('0.6rem 0.7rem');
   });
 });
