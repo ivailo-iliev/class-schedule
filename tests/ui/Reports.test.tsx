@@ -7,6 +7,12 @@ import MonthlyReport from '../../src/components/MonthlyReport';
 import { reportRowsToCsv } from '../../src/lib/report-csv';
 import type { AdminMonthReport, MyMonthReport, MonthReportRow, Profile } from '../../src/lib/types';
 const reportStyles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8');
+const urlApi = URL as typeof URL & {
+  createObjectURL?: (object: Blob | MediaSource) => string;
+  revokeObjectURL?: (url: string) => void;
+};
+const originalCreateObjectURL = urlApi.createObjectURL;
+const originalRevokeObjectURL = urlApi.revokeObjectURL;
 
 const api = vi.hoisted(() => ({
   getMyMonthReport: vi.fn(),
@@ -62,6 +68,10 @@ describe('MonthlyReport', () => {
   afterEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    if (originalCreateObjectURL) Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreateObjectURL });
+    else Reflect.deleteProperty(URL, 'createObjectURL');
+    if (originalRevokeObjectURL) Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevokeObjectURL });
+    else Reflect.deleteProperty(URL, 'revokeObjectURL');
   });
 
   test('teacher loads only personal report rows, cancelled totals, and print/export controls', async () => {
