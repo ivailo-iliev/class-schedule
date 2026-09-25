@@ -82,6 +82,9 @@ describe('BookingDetails', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
     expect(await screen.findByRole('heading', { name: 'Edit booking' })).toBeInTheDocument();
+    expect(screen.getByText('Teacher A')).toBeInTheDocument();
+    expect(screen.getByText('Selected series occurrence')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-a');
     fireEvent.change(screen.getByRole('combobox', { name: 'Room' }), { target: { value: 'room' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
 
@@ -103,6 +106,8 @@ describe('BookingDetails', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
     expect(await screen.findByRole('heading', { name: 'Edit booking' })).toBeInTheDocument();
+    expect(screen.getByText('Teacher B')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-a');
     fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
@@ -121,6 +126,7 @@ describe('BookingDetails', () => {
     expect(dialog).toHaveTextContent('September 15, 2026');
     expect(dialog).toHaveTextContent('18:00');
     expect(dialog).toHaveTextContent('Зала');
+    expect(screen.queryByLabelText('This and later occurrences')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
     await waitFor(() => expect(cancelBooking).toHaveBeenCalledWith('booking-1', 3, 'one'));
@@ -244,13 +250,38 @@ describe('BookingDetails', () => {
 
   test('hydrates authorized private details and offers future scope only when later active rows exist', async () => {
     const loadDetails = vi.fn(async () => detail({ hasFutureActive: true, version: 4 }));
-    renderDetails({ booking: booking({ version: 0 }), loadDetails });
+    const cancelBooking = vi.fn(async () => ({
+      bookings: [detail({ cancelledAt: '2026-09-15T12:00:00.000Z' })],
+      cancelledCount: 2,
+    }));
+    const onRefresh = vi.fn(async () => undefined);
+    renderDetails({ booking: booking({ version: 0 }), loadDetails, cancelBooking, onRefresh });
 
     expect(await screen.findByText('Private student note')).toBeInTheDocument();
     expect(screen.getByText('EUR 12.00')).toBeInTheDocument();
     expect(loadDetails).toHaveBeenCalledWith('booking-1');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    expect(screen.getByLabelText('This and later occurrences')).toBeInTheDocument();
+    const future = screen.getByLabelText('This and later occurrences');
+    expect(future).toBeInTheDocument();
+    fireEvent.click(future);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
+    await waitFor(() => expect(cancelBooking).toHaveBeenCalledWith('booking-1', 4, 'future'));
+    expect(await screen.findByRole('status')).toHaveTextContent(/later bookings were cancelled/i);
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
+  });
+
+  test('keeps teacher and series identity visible while editing an authorized occurrence', async () => {
+    const loadDetails = vi.fn(async () => detail({ version: 4 }));
+    renderDetails({ booking: booking({ version: 0 }), loadDetails });
+
+    expect(await screen.findByText('Private student note')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
+
+    expect(await screen.findByRole('heading', { name: 'Edit booking' })).toBeInTheDocument();
+    expect(screen.getByText('Teacher A')).toBeInTheDocument();
+    expect(screen.getByText('2 of series series-1')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Class' })).toHaveValue('class-a');
+    expect(screen.queryByRole('combobox', { name: 'Teacher' })).not.toBeInTheDocument();
   });
 
   test('does not request private details for an unrelated teacher', () => {

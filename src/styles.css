@@ -657,6 +657,30 @@ select:focus-visible {
   resize: vertical;
 }
 
+.booking-form__identity {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.35rem;
+  padding: 0.65rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.4rem;
+  background: #f7faff;
+}
+
+.booking-form__identity div {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 0.5rem;
+}
+
+.booking-form__identity dt {
+  font-weight: 700;
+}
+
+.booking-form__identity dd {
+  margin: 0;
+}
+
 .booking-form__mode,
 .booking-form__weekdays {
   display: flex;

@@ -257,6 +257,7 @@ export default function BookingDetails({
         startsAt={currentBooking.startsAt}
         room={currentBooking.room}
         existingBooking={currentBooking}
+        editingSeriesLabel={detail ? `${detail.seriesIndex + 1} of series ${detail.seriesId}` : undefined}
         profile={profile}
         loadClasses={loadClasses}
         editBooking={editBooking}

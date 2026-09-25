@@ -44,6 +44,8 @@ export interface BookingFormProps {
   /** Kept for the details editor and older callers; new creation uses startsAt. */
   hour?: number;
   existingBooking?: Booking;
+  /** Immutable context shown while editing an existing occurrence. */
+  editingSeriesLabel?: string;
   onDone: (updated?: Booking, refreshed?: DaySchedule, refreshFailed?: boolean) => void;
   onCancel?: () => void;
   profile?: Profile | null;
@@ -187,6 +189,7 @@ export default function BookingForm({
   startsAt: selectedStartsAt,
   hour: selectedHour,
   existingBooking,
+  editingSeriesLabel,
   onDone,
   onCancel,
   profile: suppliedProfile,
@@ -242,23 +245,22 @@ export default function BookingForm({
           setTeacherId((current) => availableTeachers.some((item) => item.id === current)
             ? current : (availableTeachers[0]?.id ?? ''));
         }
-        const items = await loadClasses();
-        if (!mounted) return;
-        setClasses(items);
-        setClassId((current) => items.some((item) => item.id === current)
-          ? current : (items.some((item) => item.id === existingBooking?.classId) ? existingBooking!.classId : ''));
-      } else {
-        setClassId(existingBooking?.classId ?? '');
       }
+      const items = await loadClasses();
+      if (!mounted) return;
+      setClasses(items);
+      setClassId((current) => items.some((item) => item.id === current)
+        ? current : (items.some((item) => item.id === existingBooking?.classId) ? existingBooking!.classId : ''));
     };
     void load().catch(() => { if (mounted) setError('Unable to load active classes. Please try again.'); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [loadClasses, loadTeachers, profile?.role]);
 
-  const availableClasses = useMemo(() => classes.filter((item) => item.active &&
+  const availableClasses = useMemo(() => classes.filter((item) =>
+    (item.active || (editing && item.id === existingBooking?.classId)) &&
     (profile?.role === 'admin' ? item.teacherId === teacherId : item.teacherId === profile?.id)),
-  [classes, profile?.id, profile?.role, teacherId]);
+  [classes, editing, existingBooking?.classId, profile?.id, profile?.role, teacherId]);
 
   useEffect(() => {
     if (editing) return;
@@ -375,6 +377,12 @@ export default function BookingForm({
       {offline && <p className="booking-form__message booking-form__message--offline" role="alert">You are offline. Booking changes are disabled until the connection is restored.</p>}
       {!loading && !noClasses && (
         <form onSubmit={handleSubmit}>
+          {editing && existingBooking && (
+            <dl className="booking-form__identity" aria-label="Booking identity">
+              <div><dt>Teacher</dt><dd>{existingBooking.teacherName}</dd></div>
+              <div><dt>Series</dt><dd>{editingSeriesLabel ?? 'Selected series occurrence'}</dd></div>
+            </dl>
+          )}
           {profile?.role === 'admin' && !editing && (
             <>
               <label htmlFor="booking-teacher">Teacher</label>
