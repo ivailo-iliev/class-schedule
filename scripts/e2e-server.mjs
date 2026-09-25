@@ -3,7 +3,6 @@ import { createServer as createHttpServer } from 'node:http';
 import { resolve } from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import { handleAccessRequest } from '../netlify/lib/access.mjs';
-import { handleManifestRequest } from '../netlify/lib/manifest.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const output = execFileSync('supabase', ['status', '--output', 'env'], {
@@ -61,15 +60,6 @@ const server = createHttpServer(async (request, response) => {
         headers,
         body: await readBody(request),
         clientIp: headers['x-nf-client-connection-ip'] ?? request.socket.remoteAddress,
-      }, { env, fetchImpl: fetch });
-      sendResult(response, result);
-      return;
-    }
-    if (url.pathname === '/manifest.webmanifest') {
-      const result = await handleManifestRequest({
-        method: request.method,
-        headers,
-        queryStringParameters: Object.fromEntries(url.searchParams.entries()),
       }, { env, fetchImpl: fetch });
       sendResult(response, result);
       return;

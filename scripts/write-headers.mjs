@@ -19,9 +19,7 @@ const headers = `/*
   X-Content-Type-Options: nosniff
 
 /manifest.webmanifest
-  Cache-Control: private, no-store
-  Netlify-CDN-Cache-Control: no-store
-  Vary: Cookie
+  Cache-Control: public, max-age=3600, must-revalidate
 `;
 
 writeFileSync(resolve(dist, '_headers'), headers, 'utf8');

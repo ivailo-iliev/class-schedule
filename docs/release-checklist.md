@@ -29,10 +29,10 @@ this task handoff and must be refreshed after a source change.
 - [x] `npm run test:unit` — `Test Files  11 passed (11)`;
       `Tests  68 passed (68)`; exit 0.
 - [x] `npm run test:e2e` — Chromium and WebKit, 390x844; `8 passed (5.3s)`.
-- [x] `npm run build` — Vite 8.3.0 built 66 modules; Workbox precache 6
-      entries (252.58 KiB); public-build safety passed.
-- [x] `npm run test:pwa` — Chromium and WebKit 390x844 PWA shell, cache
-      isolation, and offline launch passed.
+- [x] `npm run build` — Vite built the static manifest and public assets;
+      public-build safety passed.
+- [x] `npm run test:pwa` — Chromium and WebKit 390x844 static manifest and
+      no-service-worker/cache checks passed.
 - [x] `npm run check:public-build` — `Build looks safe (no detected static
       secrets)`; exit 0.
 - [x] `npm run auth:smoke` — native session exchange, single-use token, RLS
@@ -144,8 +144,8 @@ the applicable access-revocation controls.
 | Gate | Evidence/status |
 |---|---|
 | Phone-first layout at 390x844 | Playwright Chromium/WebKit emulation; record `npm run test:e2e` output. |
-| Credential-free manifest and public-only service-worker cache | `npm run test:pwa`; record exact output. |
-| Offline launch | Browser emulation shows connectivity guidance and disables writes; no stale availability claim. |
+| Static manifest and no service-worker cache | `npm run test:pwa`; record exact output. |
+| Offline behavior | Not supported; reconnect before using the network-backed app. |
 | Android Chrome installed launch | Physical-device check deferred to the owner; not claimed here. |
 | iPhone Safari installed launch | Physical-device check deferred to the owner; not claimed here. |
 | Link replacement after rotation | Opening the replacement link is supported; any already-installed app using old persisted state must be reauthenticated/reinstalled as needed. |

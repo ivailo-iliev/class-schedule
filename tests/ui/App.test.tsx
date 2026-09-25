@@ -163,17 +163,6 @@ describe('App booking details integration', () => {
     expect(screen.getByRole('heading', { name: 'Add class' })).toBeInTheDocument();
   });
 
-  test('adds the private credential-free manifest link after native exchange', async () => {
-    mocks.getProfile.mockReturnValue({ id: '11111111-1111-4111-8111-111111111111', name: 'Teacher A', role: 'teacher' });
-    render(<App />);
-
-    await screen.findByRole('main', { name: 'Schedule' });
-    expect(document.head.querySelector('link[rel="manifest"]')).toHaveAttribute(
-      'href',
-      '/manifest.webmanifest?profile=11111111-1111-4111-8111-111111111111',
-    );
-  });
-
   test('refreshes the active schedule after cancelling from details', async () => {
     render(<App />);
 

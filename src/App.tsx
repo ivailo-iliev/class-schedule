@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bootstrapNativeSession, getProfile, onNativeAuthStateChange } from './lib/session';
-import { ensurePrivateManifest, removePrivateManifest, useOnlineStatus } from './lib/pwa';
+import { useOnlineStatus } from './lib/network';
 import type { Booking, DaySchedule, Profile, Room } from './lib/types';
 import BookingDetails from './components/BookingDetails';
 import BookingForm from './components/BookingForm';
@@ -82,12 +82,9 @@ export default function App() {
       if (session) {
         const nextProfile = getProfile();
         setProfile(nextProfile);
-        const profileId = nextProfile?.id;
-        if (profileId) ensurePrivateManifest(profileId);
         setState('connected');
       } else {
         setProfile(null);
-        removePrivateManifest();
         setState('unavailable');
       }
     });
@@ -104,8 +101,6 @@ export default function App() {
       if (!session) return;
       const nextProfile = getProfile();
       setProfile(nextProfile);
-      const profileId = nextProfile?.id;
-      if (profileId) ensurePrivateManifest(profileId);
       setState('connected');
     }).catch(() => {
       setState('unavailable');

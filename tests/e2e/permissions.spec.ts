@@ -185,14 +185,8 @@ async function openPersonalLink(page: import('@playwright/test').Page, token: st
 
 test.describe.configure({ mode: 'serial' });
 
-test('teacher A keeps a native session and sees both occupied rooms', async ({ page, context }, testInfo) => {
+test('teacher A keeps a native session and sees both occupied rooms', async ({ page }, testInfo) => {
   const fixture = setFor(testInfo.project.name);
-  let installCookie = '';
-  page.on('response', async (response) => {
-    if (response.url().endsWith('/api/access')) {
-      installCookie = (await response.headerValue('set-cookie')) ?? '';
-    }
-  });
   await openPersonalLink(page, fixture.teacherA.token);
   await page.locator('input[type="date"]').fill(fixture.day);
   await expect(page.getByText(`${testInfo.project.name} B Class`)).toBeVisible();
@@ -251,25 +245,11 @@ test('teacher A keeps a native session and sees both occupied rooms', async ({ p
   await expect(page.getByRole('heading', { name: 'Daily schedule' })).toBeVisible();
   await expect(page.getByText('Open your personal access link')).toHaveCount(0);
 
-  const cookies = await context.cookies(appOrigin);
-  const cookieHeader = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ') || installCookie.split(';', 1)[0];
-  const manifestApi = await request.newContext({ baseURL: appOrigin });
-  try {
-    const manifest = await manifestApi.get(`/manifest.webmanifest?profile=${fixture.teacherA.id}`, {
-      headers: { cookie: cookieHeader },
-    });
-    expect(manifest.status()).toBe(200);
-    const body = await manifest.json() as { start_url: string; id: string; short_name: string };
-    expect(body).toMatchObject({ id: '/', start_url: '/', short_name: `E2E ${testInfo.project.name} Teacher A` });
-    expect(JSON.stringify(body)).not.toContain(fixture.teacherA.token);
-
-    const mismatch = await manifestApi.get(`/manifest.webmanifest?profile=${fixture.teacherB.id}`, {
-      headers: { cookie: cookieHeader },
-    });
-    expect(mismatch.status()).toBe(403);
-  } finally {
-    await manifestApi.dispose();
-  }
+  const manifest = await page.request.get('/manifest.webmanifest');
+  expect(manifest.status()).toBe(200);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
+  await expect(manifest).toBeOK();
+  await expect(manifest).toHaveHeader('content-type', /manifest\+json/);
 
   const writeApi = await request.newContext({ baseURL: state.apiUrl });
   try {

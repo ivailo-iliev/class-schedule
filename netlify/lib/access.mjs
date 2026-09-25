@@ -161,8 +161,6 @@ export async function handleAccessRequest(request, options = {}) {
       expires_at: session.expires_at,
       user: session.user,
       profile: { id: profile.id, name: profile.name, role: profile.role },
-    }, {
-      'set-cookie': `__Host-install=${body.token}; Path=/; Max-Age=600; Secure; HttpOnly; SameSite=Strict`,
     });
   } catch {
     return invalid(401);

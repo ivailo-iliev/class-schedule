@@ -82,9 +82,7 @@ describe('native browser session', () => {
 
     expect(result).toBe(session);
     expect(auth.refreshSession).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith('/api/profile', {
-      headers: { authorization: 'Bearer access-token' },
-    });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   test('restores the teacher profile from a persisted native session', async () => {
@@ -108,18 +106,21 @@ describe('native browser session', () => {
     expect(from).toHaveBeenCalledWith('profiles');
   });
 
-  test('looks up the profile server-side when an older session has no profile metadata', async () => {
+  test('looks up the profile through RLS when an older session has no profile metadata', async () => {
     const auth = authStub(session);
-    createClient.mockReturnValue({ auth } as unknown as SupabaseClient);
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
-      id: 'profile-id', name: 'Teacher', role: 'teacher',
-    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const maybeSingle = vi.fn(async () => ({
+      data: { id: 'profile-id', name: 'Teacher', role: 'teacher' },
+      error: null,
+    }));
+    const eq = vi.fn(() => ({ maybeSingle }));
+    const select = vi.fn(() => ({ eq }));
+    const from = vi.fn(() => ({ select }));
+    createClient.mockReturnValue({ auth, from } as unknown as SupabaseClient);
 
-    await bootstrapNativeSession({ hash: '', origin: window.location.origin }, fetchImpl);
+    await bootstrapNativeSession({ hash: '', origin: window.location.origin });
 
-    expect(fetchImpl).toHaveBeenCalledWith('/api/profile', {
-      headers: { authorization: 'Bearer access-token' },
-    });
+    expect(from).toHaveBeenCalledWith('profiles');
+    expect(eq).toHaveBeenCalledWith('auth_user_id', 'auth-user');
     expect(getProfile()).toEqual({ id: 'profile-id', name: 'Teacher', role: 'teacher' });
   });
 
