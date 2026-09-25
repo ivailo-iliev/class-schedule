@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bootstrapNativeSession, getProfile, onNativeAuthStateChange } from './lib/session';
-import { useOnlineStatus } from './lib/pwa';
+import { useOnlineStatus } from './lib/network';
 import type { Booking, DaySchedule, Profile, Room } from './lib/types';
 import BookingDetails from './components/BookingDetails';
 import BookingForm from './components/BookingForm';
@@ -81,6 +81,7 @@ export default function App() {
       if (!mounted) return;
       if (session) {
         const nextProfile = getProfile();
+        if (!nextProfile) return;
         setProfile(nextProfile);
         setState('connected');
       } else {

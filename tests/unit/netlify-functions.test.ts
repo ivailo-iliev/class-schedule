@@ -1,7 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 
 const handleAccessRequest = vi.hoisted(() => vi.fn());
-
 vi.mock('../../netlify/lib/access.mjs', () => ({ handleAccessRequest }));
 
 import accessFunction, { config as accessConfig } from '../../netlify/functions/access.mjs';
@@ -34,8 +33,7 @@ describe('Netlify function boundaries', () => {
     expect(await response.json()).toEqual({ status });
   });
 
-
-  test('uses default Netlify endpoints behind the public-route redirects', async () => {
+  test('uses the default access endpoint behind the public route redirect', async () => {
     handleAccessRequest.mockResolvedValueOnce(result(400));
     await accessFunction(
       new Request('https://class-admin.netlify.app/api/access', {
@@ -53,6 +51,5 @@ describe('Netlify function boundaries', () => {
       body: '{"token":"x"}',
       clientIp: '198.51.100.10',
     }));
-
   });
 });

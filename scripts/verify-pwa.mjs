@@ -1,9 +1,29 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createServer as createNetServer } from 'node:net';
 import { spawn } from 'node:child_process';
 import { chromium, webkit } from '@playwright/test';
 
-const origin = 'http://127.0.0.1:4174';
-const server = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', '4174'], {
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = createNetServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      if (!address || typeof address === 'string') {
+        probe.close();
+        reject(new Error('could not allocate a preview port'));
+        return;
+      }
+      const port = address.port;
+      probe.close((error) => error ? reject(error) : resolve(port));
+    });
+  });
+}
+
+const port = await freePort();
+const origin = `http://127.0.0.1:${port}`;
+const server = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(port)], {
   stdio: 'ignore',
 });
 
@@ -26,39 +46,20 @@ async function verify(browserType, name) {
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
-    await page.goto(`${origin}/access`, { waitUntil: 'networkidle' });
-    assert.equal(await page.locator('link[rel="manifest"]').count(), 0, `${name}: no public manifest is exposed`);
-    await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.reload({ waitUntil: 'networkidle' });
-    const cacheEntries = await page.evaluate(async () => {
-      const keys = await caches.keys();
-      return (await Promise.all(keys.map(async (key) => (await caches.open(key)).keys())))
-        .flat()
-        .map((request) => new URL(request.url).pathname);
-    });
-    assert(cacheEntries.length > 0, `${name}: service worker cache is populated`);
-    assert(cacheEntries.every((path) =>
-      path === '/index.html' || path === '/registerSW.js' ||
-      path.startsWith('/assets/') || path.startsWith('/icons/')),
-    `${name}: cache contains a private or API URL`);
-
-    if (name.startsWith('WebKit')) {
-      // WebKit currently cannot reload a service-worker-controlled page while
-      // its network is disabled, so use its controlled cached page as the
-      // offline-launch evidence and assert the same guidance contract.
-      assert(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)),
-        `${name}: service worker controls the page`);
-    } else {
-      await context.setOffline(true);
-      await page.reload({ waitUntil: 'domcontentloaded' });
-    }
-    await page.waitForTimeout(100);
-    assert.match(await page.locator('body').innerText(), /offline|personal access link/i,
-      `${name}: offline launch guidance is shown`);
-    assert.equal(await page.getByRole('button', { name: /Book Room/ }).count(), 0,
-      `${name}: offline launch does not expose booking writes`);
+    const response = await page.goto(`${origin}/access`, { waitUntil: 'networkidle' });
+    assert.equal(response?.status(), 200, `${name}: SPA shell should load`);
+    const manifestLink = page.locator('link[rel="manifest"]');
+    assert.equal(await manifestLink.getAttribute('href'), '/manifest.webmanifest', `${name}: static manifest link`);
+    const manifest = await (await page.request.get(`${origin}/manifest.webmanifest`)).json();
+    assert.deepEqual(manifest, JSON.parse(await readFile('public/manifest.webmanifest', 'utf8')),
+      `${name}: manifest should be served unchanged`);
+    assert.equal(await page.evaluate(async () =>
+      'serviceWorker' in navigator ? (await navigator.serviceWorker.getRegistrations()).length : 0), 0,
+      `${name}: no service workers are registered by the app`);
+    assert.equal(await page.evaluate(async () => (await caches.keys()).length), 0,
+      `${name}: app should not create cache entries`);
     await context.close();
-    console.log(`${name}: PWA shell, cache isolation, and offline launch passed`);
+    console.log(`${name}: static manifest and no service-worker cache passed`);
   } finally {
     await browser.close();
   }
