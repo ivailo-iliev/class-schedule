@@ -1,23 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   cancelBooking as cancelBookingApi,
   editBooking as editBookingApi,
+  getBookingDetails as getBookingDetailsApi,
   getMyClasses,
 } from '../lib/api';
 import { getProfile } from '../lib/session';
-import type { Booking, ClassItem, DaySchedule, Profile, Room } from '../lib/types';
+import type {
+  Booking,
+  BookingDetail,
+  CancelScope,
+  CancellationResult,
+  ClassItem,
+  DaySchedule,
+  Profile,
+  Room,
+} from '../lib/types';
 import BookingForm from './BookingForm';
 
 type ClassLoader = () => Promise<ClassItem[]>;
+type DetailLoader = (id: string) => Promise<BookingDetail>;
 type BookingEditor = (
   id: string,
   expectedVersion: number,
   classId: string,
   room: Room,
-  date: string,
-  hour: number,
+  startsAt: string,
+  endsAt: string,
+  studentDetails: string | null,
 ) => Promise<Booking>;
-type BookingCanceller = (id: string, expectedVersion: number) => Promise<Booking>;
+type BookingCanceller = (
+  id: string,
+  expectedVersion: number,
+  scope: CancelScope,
+) => Promise<CancellationResult | Booking>;
 
 export interface BookingDetailsProps {
   booking: Booking;
@@ -25,19 +42,14 @@ export interface BookingDetailsProps {
   onRefresh: () => Promise<DaySchedule | void> | DaySchedule | void;
   profile?: Profile | null;
   loadClasses?: ClassLoader;
+  loadDetails?: DetailLoader;
   editBooking?: BookingEditor;
   cancelBooking?: BookingCanceller;
   offline?: boolean;
 }
 
 function localDate(instant: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Sofia', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date(instant));
-  const values = Object.fromEntries(parts
-    .filter((part) => part.type !== 'literal')
-    .map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
+  return instant.slice(0, 10);
 }
 
 function readableDate(instant: string): string {
@@ -46,8 +58,14 @@ function readableDate(instant: string): string {
   }).format(new Date(instant));
 }
 
-function hourLabel(booking: Booking): string {
-  return `${booking.hour.toString().padStart(2, '0')}:00`;
+function timeLabel(instant: string | undefined, fallbackHour?: number): string {
+  if (!instant) return `${String(fallbackHour ?? 0).padStart(2, '0')}:00`;
+  if (instant.endsWith('Z')) {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Sofia', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(new Date(instant));
+  }
+  return instant.slice(11, 16);
 }
 
 function roomLabel(room: Room): string {
@@ -55,34 +73,45 @@ function roomLabel(room: Room): string {
 }
 
 function errorMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
   if (!error || typeof error !== 'object') return '';
   const value = error as { code?: unknown; message?: unknown };
   return `${typeof value.code === 'string' ? value.code : ''} ${typeof value.message === 'string' ? value.message : ''}`;
 }
 
-function isConflict(error: unknown): boolean {
-  return error === 'booking_conflict' || /PT409|booking_conflict|stale_booking|version/i.test(errorMessage(error));
-}
-
-function isUnknownOutcome(error: unknown): boolean {
-  if (error instanceof TypeError) return true;
-  return /network|fetch|timeout|timed out|abort/i.test(errorMessage(error));
-}
-
-function isStale(error: unknown): boolean {
-  return /stale_booking|version/i.test(errorMessage(error));
+function mutationError(error: unknown): string {
+  const message = errorMessage(error);
+  if (/booking_forbidden|insufficient_privilege/i.test(message)) return 'You are not authorized to change this booking.';
+  if (/stale_booking|PT409|version/i.test(message)) return 'This booking changed elsewhere. The schedule was refreshed; review it before trying again.';
+  if (/cancelled_booking_read_only/i.test(message)) return 'This booking is already cancelled and cannot be changed.';
+  if (/network|fetch|timeout|abort/i.test(message) || error instanceof TypeError) return 'We could not confirm the change. The schedule was refreshed; review it before trying again.';
+  return 'Unable to change this booking. Please try again.';
 }
 
 function reconcileBooking(current: Booking, updated: Booking, schedule?: DaySchedule): Booking {
   const persisted = schedule?.bookings.find((candidate) => candidate.id === updated.id);
-  const candidate = persisted ?? updated;
+  // Mutation RPCs intentionally return only the safe booking projection. Keep
+  // every returned identity/version/position field authoritative and use the
+  // schedule response only to restore display labels.
   return {
     ...current,
-    ...candidate,
-    className: candidate.className || current.className,
-    teacherName: candidate.teacherName || current.teacherName,
-    teacherId: candidate.teacherId || current.teacherId,
+    ...updated,
+    className: persisted?.className || current.className,
+    teacherName: persisted?.teacherName || current.teacherName,
+    classId: updated.classId || current.classId,
+    teacherId: updated.teacherId || current.teacherId,
+    version: updated.version ?? current.version,
   };
+}
+
+function isCancellationResult(value: CancellationResult | Booking): value is CancellationResult {
+  return 'cancelledCount' in value && 'bookings' in value;
+}
+
+function focusableElements(container: HTMLElement): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )];
 }
 
 export default function BookingDetails({
@@ -91,26 +120,80 @@ export default function BookingDetails({
   onRefresh,
   profile: suppliedProfile,
   loadClasses = getMyClasses,
+  loadDetails = getBookingDetailsApi,
   editBooking = editBookingApi,
   cancelBooking = cancelBookingApi,
   offline = false,
 }: BookingDetailsProps) {
   const profile = suppliedProfile ?? getProfile();
-  const [currentBooking, setCurrentBooking] = useState(booking);
+  const shouldLoadDetails = booking.canEdit && (booking.version === 0 || loadDetails !== getBookingDetailsApi);
+  const [currentBooking, setCurrentBooking] = useState<Booking>(booking);
+  const [detail, setDetail] = useState<BookingDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(shouldLoadDetails);
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [cancelScope, setCancelScope] = useState<CancelScope>('one');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const cancelTriggerRef = useRef<HTMLButtonElement>(null);
+  const confirmationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!confirming) return undefined;
+
+    const confirmation = confirmationRef.current;
+    const parentDialog = cancelTriggerRef.current?.closest('[role="dialog"]') as HTMLElement | null;
+    const previousAriaHidden = parentDialog ? parentDialog.getAttribute('aria-hidden') : null;
+    const previousInert = parentDialog?.hasAttribute('inert') ?? false;
+    if (parentDialog) {
+      parentDialog.setAttribute('aria-hidden', 'true');
+      parentDialog.setAttribute('inert', '');
+      (parentDialog as HTMLElement & { inert?: boolean }).inert = true;
+    }
+    confirmation?.querySelector<HTMLElement>('button:not([disabled])')?.focus();
+
+    return () => {
+      if (parentDialog) {
+        if (previousAriaHidden === null) parentDialog.removeAttribute('aria-hidden');
+        else parentDialog.setAttribute('aria-hidden', previousAriaHidden);
+        if (!previousInert) parentDialog.removeAttribute('inert');
+        (parentDialog as HTMLElement & { inert?: boolean }).inert = previousInert;
+      }
+      cancelTriggerRef.current?.focus();
+    };
+  }, [confirming]);
 
   useEffect(() => {
     setCurrentBooking(booking);
-  }, [booking]);
+    setDetail(null);
+    if (!shouldLoadDetails) {
+      setDetailLoading(false);
+      return undefined;
+    }
+    let mounted = true;
+    setDetailLoading(true);
+    void loadDetails(booking.id).then((loaded) => {
+      if (mounted) {
+        setDetail(loaded);
+        setCurrentBooking(loaded);
+      }
+    }).catch(() => {
+      // Keep the public summary visible, but do not invent private fields.
+    }).finally(() => {
+      if (mounted) setDetailLoading(false);
+    });
+    return () => { mounted = false; };
+  }, [booking, loadDetails, shouldLoadDetails]);
 
   const cancelled = currentBooking.cancelledAt !== null;
-  const canEdit = currentBooking.canEdit && !cancelled && !offline;
+  // get_day deliberately carries version 0. Controls are available from a
+  // test/detail projection only, never from an unhydrated safe schedule row.
+  const canManage = currentBooking.canEdit && !cancelled && !offline && (!detailLoading && (detail !== null || currentBooking.version > 0));
+  const hasFutureActive = detail?.hasFutureActive === true;
   const formattedDate = readableDate(currentBooking.startsAt);
-  const formattedHour = hourLabel(currentBooking);
+  const formattedStart = timeLabel(currentBooking.startsAt);
+  const formattedEnd = timeLabel(currentBooking.endsAt, currentBooking.hour + 1);
   const formattedRoom = roomLabel(currentBooking.room);
 
   const refreshSchedule = async (): Promise<{ schedule?: DaySchedule; failed: boolean }> => {
@@ -128,43 +211,79 @@ export default function BookingDetails({
     setError(null);
     setNotice(null);
     try {
-      let updated: Booking;
+      let result: CancellationResult | Booking;
       try {
-        updated = await cancelBooking(currentBooking.id, currentBooking.version);
+        result = await cancelBooking(currentBooking.id, currentBooking.version, cancelScope);
       } catch (reason) {
         const refreshed = await refreshSchedule();
-        setError(isUnknownOutcome(reason)
-          ? `We could not confirm the cancellation. ${refreshed.failed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`
-          : isStale(reason)
-            ? `This booking changed elsewhere. ${refreshed.failed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`
-            : isConflict(reason)
-              ? `This booking conflicts with a newer schedule change. ${refreshed.failed ? 'The schedule refresh failed; ' : 'The schedule was refreshed; '}review it before trying again.`
-              : 'Unable to cancel this booking. Please try again.');
+        setError(`${mutationError(reason)}${refreshed.failed ? ' Schedule refresh failed.' : ''}`);
         return;
       }
+      const count = isCancellationResult(result) ? result.cancelledCount : (result.cancelledAt ? 1 : 0);
+      const updated = isCancellationResult(result) ? result.bookings[0] : result;
       const refreshed = await refreshSchedule();
-      setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed.schedule));
+      if (count === 0) {
+        // An empty mutation result is the idempotent "already cancelled"
+        // outcome. Hide controls immediately, then reload the private
+        // projection for the retained cancellation history; never invent a
+        // timestamp from the empty response.
+        setCurrentBooking((current) => ({ ...current, canEdit: false }));
+        try {
+          const authoritative = await loadDetails(currentBooking.id);
+          setDetail(authoritative);
+          setCurrentBooking({ ...authoritative, canEdit: false });
+        } catch {
+          // The schedule has already been refreshed. Keep the booking
+          // inactive even if the private reload is unavailable.
+        }
+      } else if (updated) {
+        setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed.schedule));
+      }
       setConfirming(false);
-      setNotice(refreshed.failed
-        ? 'Booking cancelled, but the schedule could not be refreshed.'
-        : 'Booking cancelled.');
+      setNotice(count === 0
+        ? 'This booking was already cancelled. The schedule was refreshed.'
+        : `${cancelScope === 'future' ? 'This booking and later bookings were cancelled.' : 'Booking cancelled.'}${refreshed.failed ? ' Schedule refresh failed.' : ''}`);
     } finally {
       setPending(false);
     }
   };
 
-  if (editing && canEdit) {
+  const handleConfirmationKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (!pending) setConfirming(false);
+      return;
+    }
+    if (event.key !== 'Tab' || !confirmationRef.current) return;
+    const focusable = focusableElements(confirmationRef.current);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!first || !last) {
+      event.preventDefault();
+    } else if (event.shiftKey && (document.activeElement === first || document.activeElement === confirmationRef.current)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  if (editing && canManage) {
     return (
       <BookingForm
         date={localDate(currentBooking.startsAt)}
-        hour={currentBooking.hour}
+        startsAt={currentBooking.startsAt}
         room={currentBooking.room}
         existingBooking={currentBooking}
+        editingSeriesLabel={detail ? `${detail.seriesIndex + 1} of series ${detail.seriesId}` : undefined}
         profile={profile}
         loadClasses={loadClasses}
         editBooking={editBooking}
         onRefresh={onRefresh}
         offline={offline}
+        onCancel={() => setEditing(false)}
         onDone={(updated, refreshed, refreshFailed) => {
           if (updated) setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed));
           setEditing(false);
@@ -177,11 +296,13 @@ export default function BookingDetails({
   }
 
   return (
-    <section className="booking-details" aria-label="Booking details">
+    <section className="booking-details" aria-label="Booking details" aria-labelledby="booking-details-title">
       <header className="booking-details__header">
+        <h2 id="booking-details-title">Booking details</h2>
         <button type="button" onClick={onClose} aria-label="Close booking details">×</button>
       </header>
 
+      {detailLoading && <p className="booking-details__message" role="status">Loading authorized booking details…</p>}
       {error && <p className="booking-details__message booking-details__message--error" role="alert">{error}</p>}
       {notice && <p className="booking-details__message booking-details__message--success" role="status">{notice}</p>}
 
@@ -189,10 +310,22 @@ export default function BookingDetails({
         <div><dt>Class</dt><dd>{currentBooking.className}</dd></div>
         <div><dt>Teacher</dt><dd>{currentBooking.teacherName}</dd></div>
         <div><dt>Date</dt><dd>{formattedDate}</dd></div>
-        <div><dt>Hour</dt><dd>{formattedHour}</dd></div>
+        <div><dt>Time</dt><dd>{formattedStart}–{formattedEnd}</dd></div>
         <div><dt>Room</dt><dd>{formattedRoom}</dd></div>
         <div><dt>Type</dt><dd>One booking instance</dd></div>
+        {detail && <div><dt>Series</dt><dd>{detail.seriesIndex + 1} of series {detail.seriesId}</dd></div>}
+        {detail && <div><dt>Student details</dt><dd>{detail.studentDetails || 'None provided'}</dd></div>}
+        {detail && <div><dt>Snapshot amount</dt><dd>{detail.amount === null ? 'Unavailable' : `${detail.currency} ${detail.amount}`}</dd></div>}
       </dl>
+
+      {detail && detail.segments.length > 0 && (
+        <section className="booking-details__snapshot" aria-label="Price breakdown">
+          <h3>Price breakdown</h3>
+          <ul>{detail.segments.map((segment) => <li key={`${segment.starts_at}:${segment.ends_at}`}>
+            {segment.label}: {segment.subtotal} ({segment.starts_at.slice(11, 16)}–{segment.ends_at.slice(11, 16)})
+          </li>)}</ul>
+        </section>
+      )}
 
       {cancelled && (
         <p className="booking-details__history">
@@ -201,12 +334,12 @@ export default function BookingDetails({
         </p>
       )}
 
-      {canEdit && (
+      {canManage && (
         <div className="booking-details__actions">
           <button type="button" onClick={() => { setError(null); setNotice(null); setEditing(true); }} disabled={pending}>
             Edit booking
           </button>
-          <button type="button" onClick={() => { setError(null); setNotice(null); setConfirming(true); }} disabled={pending}>
+          <button ref={cancelTriggerRef} type="button" onClick={() => { setCancelScope('one'); setError(null); setNotice(null); setConfirming(true); }} disabled={pending}>
             Cancel booking
           </button>
         </div>
@@ -218,20 +351,28 @@ export default function BookingDetails({
         </p>
       )}
 
-      {confirming && (
-        <div className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
+      {confirming && typeof document !== 'undefined' && createPortal(
+        <div className="booking-details__confirm-backdrop">
+          <div ref={confirmationRef} className="booking-details__confirm" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title" onKeyDown={handleConfirmationKeyDown}>
           <h3 id="cancel-booking-title">Cancel this booking?</h3>
           <p>
-            Cancel “{currentBooking.className}” on {formattedDate} at {formattedHour} in {formattedRoom}?
-            This cancels one instance only.
+            Cancel “{currentBooking.className}” on {formattedDate} at {formattedStart} in {formattedRoom}?
+            Choose exactly which active occurrences to cancel. Editing always affects this occurrence only.
           </p>
+          <fieldset>
+            <legend>Cancellation scope</legend>
+            <label><input type="radio" name="cancel-scope" checked={cancelScope === 'one'} onChange={() => setCancelScope('one')} disabled={pending} /> Only this occurrence</label>
+            {hasFutureActive && <label><input type="radio" name="cancel-scope" checked={cancelScope === 'future'} onChange={() => setCancelScope('future')} disabled={pending} /> This and later occurrences</label>}
+          </fieldset>
           <div className="booking-details__actions">
             <button type="button" onClick={() => void handleCancel()} disabled={pending || offline}>
               {pending ? 'Cancelling…' : 'Confirm cancellation'}
             </button>
             <button type="button" onClick={() => setConfirming(false)} disabled={pending}>Keep booking</button>
           </div>
-        </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

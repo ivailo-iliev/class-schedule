@@ -4,8 +4,11 @@ import { getSupabaseClient, clearSession, isSessionRevokedError } from './sessio
 import type { Database, Json, Tables, TablesInsert } from './database.types';
 import type {
   Booking,
+  BookingDetail,
   BookingOccurrence,
   BookingQuote,
+  CancelScope,
+  CancellationResult,
   ClassItem,
   CreatedBooking,
   CreatedBookingSeries,
@@ -19,6 +22,32 @@ type DayPayload = { date: string; bookings: Array<{ id: string; room: Room; star
 type ClassRow = Pick<Tables<'classes'>, 'id' | 'teacher_id' | 'name' | 'active'>;
 type TeacherProfileRow = Pick<Tables<'profiles'>, 'id' | 'name' | 'role'>;
 
+type BookingDetailPayload = {
+  id: string;
+  series_id: string;
+  series_index: number;
+  teacher_id: string;
+  teacher_name: string;
+  class_id: string;
+  activity_title: string;
+  room: Room;
+  starts_at: string;
+  ends_at: string;
+  student_details: string | null;
+  currency: string;
+  amount: string | null;
+  segments: BookingDetail['segments'];
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  version: number;
+  can_manage: boolean;
+  has_future_active?: boolean;
+};
+
+type MutationBookingPayload = Pick<BookingDetailPayload,
+  'id' | 'class_id' | 'teacher_id' | 'room' | 'starts_at' | 'ends_at' |
+  'cancelled_at' | 'cancelled_by' | 'version'>;
+
 function client() { return getSupabaseClient(); }
 async function fetchOr<T>(operation: () => PromiseLike<SupabaseResult<T>>): Promise<T> {
   const result = await operation();
@@ -30,6 +59,49 @@ function mapScheduleBooking(row: DayPayload['bookings'][number]): Booking {
   return { id: row.id, classId: '', teacherId: '', className: row.activity_title, teacherName: row.teacher_name,
     room: row.room, startsAt: row.starts_at, endsAt: row.ends_at, hour: Math.floor(minutesOf(row.starts_at) / 60),
     cancelledAt: null, version: 0, canEdit: row.can_manage };
+}
+
+function mapBookingDetail(row: BookingDetailPayload): BookingDetail {
+  return {
+    id: row.id,
+    classId: row.class_id,
+    teacherId: row.teacher_id,
+    className: row.activity_title,
+    teacherName: row.teacher_name,
+    room: row.room,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    hour: Math.floor(minutesOf(row.starts_at) / 60),
+    cancelledAt: row.cancelled_at,
+    cancelledBy: row.cancelled_by,
+    version: row.version,
+    canEdit: row.can_manage && row.cancelled_at === null,
+    seriesId: row.series_id,
+    seriesIndex: row.series_index,
+    studentDetails: row.student_details,
+    currency: row.currency,
+    amount: row.amount,
+    segments: Array.isArray(row.segments) ? row.segments : [],
+    hasFutureActive: row.has_future_active === true,
+  };
+}
+
+function mapMutationBooking(row: MutationBookingPayload): Booking {
+  return {
+    id: row.id,
+    classId: row.class_id,
+    teacherId: row.teacher_id,
+    className: '',
+    teacherName: '',
+    room: row.room,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    hour: Math.floor(minutesOf(row.starts_at) / 60),
+    cancelledAt: row.cancelled_at,
+    cancelledBy: row.cancelled_by,
+    version: row.version,
+    canEdit: row.cancelled_at === null,
+  };
 }
 
 export async function getDay(date: string): Promise<DaySchedule> {
@@ -91,11 +163,46 @@ export async function createBookingSeries(
   };
 }
 
-// Detail editing/cancellation is owned by the booking-details workstream. Keep
-// the narrow exports so older callers fail closed instead of bypassing RPCs.
-export async function editBooking(_id: string, _version: number, _classId: string, _room: Room, _date: string, _hour: number): Promise<Booking> {
-  throw new Error('booking_mutation_ui_pending');
+export async function getBookingDetails(id: string): Promise<BookingDetail> {
+  const result = await fetchOr(() => client().rpc('get_booking_details', {
+    p_id: id,
+  }) as unknown as PromiseLike<SupabaseResult<BookingDetailPayload>>);
+  return mapBookingDetail(result);
 }
-export async function cancelBooking(_id: string, _version: number): Promise<Booking> {
-  throw new Error('booking_mutation_ui_pending');
+
+export async function editBooking(
+  id: string,
+  expectedVersion: number,
+  classId: string,
+  room: Room,
+  startsAt: string,
+  endsAt: string,
+  studentDetails: string | null,
+): Promise<Booking> {
+  const result = await fetchOr(() => client().rpc('edit_booking', {
+    p_id: id,
+    p_expected_version: expectedVersion,
+    p_class_id: classId,
+    p_room: room,
+    p_starts_at: startsAt,
+    p_ends_at: endsAt,
+    p_student_details: studentDetails as unknown as string,
+  }) as unknown as PromiseLike<SupabaseResult<MutationBookingPayload>>);
+  return mapMutationBooking(result);
+}
+
+export async function cancelBooking(
+  id: string,
+  expectedVersion: number,
+  scope: CancelScope,
+): Promise<CancellationResult> {
+  const result = await fetchOr(() => client().rpc('cancel_booking', {
+    p_id: id,
+    p_expected_version: expectedVersion,
+    p_scope: scope,
+  }) as unknown as PromiseLike<SupabaseResult<{ bookings: MutationBookingPayload[]; cancelled_count: number }>>);
+  return {
+    bookings: (result.bookings ?? []).map(mapMutationBooking),
+    cancelledCount: result.cancelled_count,
+  };
 }

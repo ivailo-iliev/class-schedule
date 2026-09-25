@@ -17,11 +17,28 @@ export interface Booking {
   hour: number;
   cancelledAt: string | null;
   cancelledBy?: string | null;
+  studentDetails?: string | null;
   version: number;
   canEdit: boolean;
 }
 export interface DaySchedule { date: string; slots: Slot[]; bookings: Booking[]; }
 export interface Profile { id: string; name: string; role: Role; }
+
+export interface BookingDetail extends Booking {
+  seriesId: string;
+  seriesIndex: number;
+  studentDetails: string | null;
+  currency: string;
+  amount: string | null;
+  segments: PriceSegment[];
+  hasFutureActive: boolean;
+}
+
+export type CancelScope = 'one' | 'future';
+export interface CancellationResult {
+  bookings: Booking[];
+  cancelledCount: number;
+}
 
 export interface BookingOccurrence {
   starts_at: string;

@@ -657,6 +657,30 @@ select:focus-visible {
   resize: vertical;
 }
 
+.booking-form__identity {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.35rem;
+  padding: 0.65rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.4rem;
+  background: #f7faff;
+}
+
+.booking-form__identity div {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 0.5rem;
+}
+
+.booking-form__identity dt {
+  font-weight: 700;
+}
+
+.booking-form__identity dd {
+  margin: 0;
+}
+
 .booking-form__mode,
 .booking-form__weekdays {
   display: flex;
@@ -869,11 +893,24 @@ select:focus-visible {
 }
 
 .booking-details__confirm {
-  margin-top: 1rem;
+  width: min(calc(100vw - 2rem), 32rem);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
   padding: 0.85rem;
   border: 1px solid #c28a25;
   border-radius: 0.4rem;
   background: #fff8e6;
+  box-shadow: 0 1rem 3rem rgb(23 32 51 / 30%);
+}
+
+.booking-details__confirm-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(23 32 51 / 45%);
 }
 
 .booking-details__confirm h3 {
@@ -894,6 +931,41 @@ select:focus-visible {
   border: 1px solid #c14c4c;
   background: #fff0f0;
   color: #8c2020;
+}
+
+.booking-details__confirm fieldset {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0 0;
+  padding: 0.7rem;
+  border: 1px solid #e2c77d;
+  border-radius: 0.4rem;
+}
+
+.booking-details__confirm label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.booking-details__snapshot {
+  margin: 1rem 0;
+  padding: 0.8rem;
+  border: 1px solid #d7e1ef;
+  border-radius: 0.5rem;
+  background: #f7faff;
+}
+
+.booking-details__snapshot h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.booking-details__snapshot ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.2rem;
 }
 
 .booking-details__message--success {
