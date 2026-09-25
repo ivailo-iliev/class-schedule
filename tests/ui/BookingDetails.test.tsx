@@ -115,6 +115,49 @@ describe('BookingDetails', () => {
     ));
   });
 
+  test('keeps mutation identity and version authoritative while refresh fills labels', async () => {
+    const editBooking = vi.fn(async () => booking({
+      classId: 'class-b',
+      className: '',
+      teacherName: '',
+      room: 'room',
+      version: 9,
+    }));
+    const onRefresh = vi.fn(async () => ({
+      date: '2026-09-15',
+      slots: [],
+      bookings: [booking({
+        classId: '',
+        teacherId: '',
+        className: 'Reconciled class',
+        teacherName: 'Teacher A',
+        room: 'hall',
+        version: 0,
+      })],
+    }));
+    renderDetails({
+      editBooking,
+      onRefresh,
+      loadClasses: vi.fn(async () => [...classes, { id: 'class-b', teacherId: 'teacher-a', name: 'New class', active: true }]),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Class' }), { target: { value: 'class-b' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Room' }), { target: { value: 'room' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
+    await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
+      'booking-1', 3, 'class-b', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
+    ));
+    expect(await screen.findByText('Reconciled class')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit booking' }));
+    expect(await screen.findByRole('combobox', { name: 'Class' })).toHaveValue('class-b');
+    fireEvent.click(screen.getByRole('button', { name: 'Save booking' }));
+    await waitFor(() => expect(editBooking).toHaveBeenLastCalledWith(
+      'booking-1', 9, 'class-b', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
+    ));
+  });
+
   test('confirms cancellation with class, date, hour, and room', async () => {
     const cancelBooking = vi.fn(async () => booking({ cancelledAt: '2026-09-15T12:00:00.000Z' }));
     const onRefresh = vi.fn(async () => undefined);

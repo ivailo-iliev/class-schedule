@@ -72,21 +72,40 @@ describe('booking RPC client contracts', () => {
     expect(rpc).toHaveBeenCalledWith('get_booking_details', { p_id: 'booking-1' });
   });
 
-  test('sends exact local edit payload and returns the private mutation projection', async () => {
+  test('maps the limited edit mutation projection without inventing private detail fields', async () => {
     rpc.mockResolvedValueOnce({ data: {
-      id: 'booking-1', series_id: 'series-1', series_index: 2, teacher_id: 'teacher-1', teacher_name: 'Teacher',
-      class_id: 'class-1', activity_title: 'Yoga', room: 'room', starts_at: '2026-11-02T10:00:00',
-      ends_at: '2026-11-02T11:00:00', student_details: null, currency: 'EUR', amount: '12.00',
-      segments: [], cancelled_at: null, cancelled_by: null, version: 5, can_manage: true, has_future_active: false,
+      id: 'booking-1', class_id: 'class-1', teacher_id: 'teacher-1', room: 'room',
+      starts_at: '2026-11-02T10:00:00', ends_at: '2026-11-02T11:00:00',
+      cancelled_at: null, cancelled_by: null, version: 5,
     }, error: null });
 
     const mutationResult = await editBooking('booking-1', 4, 'class-1', 'room', '2026-11-02T10:00:00', '2026-11-02T11:00:00', null);
     expect(mutationResult).toMatchObject({ startsAt: '2026-11-02T10:00:00', classId: 'class-1', teacherId: 'teacher-1', version: 5 });
     expect(mutationResult).not.toHaveProperty('amount');
     expect(mutationResult).not.toHaveProperty('studentDetails');
+    expect(mutationResult).not.toHaveProperty('seriesId');
     expect(rpc).toHaveBeenCalledWith('edit_booking', {
       p_id: 'booking-1', p_expected_version: 4, p_class_id: 'class-1', p_room: 'room',
       p_starts_at: '2026-11-02T10:00:00', p_ends_at: '2026-11-02T11:00:00', p_student_details: null,
+    });
+  });
+
+  test('maps the limited cancellation projection and preserves the reported count', async () => {
+    rpc.mockResolvedValueOnce({ data: {
+      bookings: [{
+        id: 'booking-1', class_id: 'class-1', teacher_id: 'teacher-1', room: 'hall',
+        starts_at: '2026-11-02T10:00:00', ends_at: '2026-11-02T11:00:00',
+        cancelled_at: '2026-11-01T12:00:00Z', cancelled_by: 'teacher-1', version: 5,
+      }],
+      cancelled_count: 1,
+    }, error: null });
+
+    await expect(cancelBooking('booking-1', 4, 'one')).resolves.toMatchObject({
+      cancelledCount: 1,
+      bookings: [{ id: 'booking-1', classId: 'class-1', teacherId: 'teacher-1', version: 5 }],
+    });
+    expect(rpc).toHaveBeenCalledWith('cancel_booking', {
+      p_id: 'booking-1', p_expected_version: 4, p_scope: 'one',
     });
   });
 
