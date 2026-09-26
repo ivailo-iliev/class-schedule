@@ -106,6 +106,13 @@ describe('BookingForm server-quoted creation', () => {
     expect(screen.getByRole('button', { name: 'Потвърди резервацията' })).toBeEnabled();
   });
 
+  test('uses the dragged grid end time for the initial booking duration', async () => {
+    renderForm({ endsAt: '2026-09-14T10:00:00' });
+
+    expect(await screen.findByRole('combobox', { name: 'Начален час' })).toHaveValue('08:30');
+    expect(screen.getByRole('combobox', { name: 'Краен час' })).toHaveValue('10:00');
+  });
+
   test('materializes recurrence preview and creates exactly the previewed occurrences', async () => {
     const { createBookingSeries, onRefresh } = renderForm();
     await screen.findByText('Общо: €10.00');

@@ -8,7 +8,7 @@ import Classes from './components/Classes';
 import Schedule, { type ScheduleHandle } from './components/Schedule';
 import MonthlyReport from './components/MonthlyReport';
 
-type SlotSelection = { date: string; startsAt: string; hour?: number; room: Room };
+type SlotSelection = { date: string; startsAt: string; endsAt?: string; hour?: number; room: Room };
 
 interface WorkspacePanelProps {
   label: string;
@@ -217,6 +217,7 @@ export default function App() {
           <BookingForm
             date={selectedSlot.date}
             startsAt={selectedSlot.startsAt}
+            endsAt={selectedSlot.endsAt}
             hour={selectedSlot.hour}
             room={selectedSlot.room}
             offline={offline}

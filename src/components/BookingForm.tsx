@@ -41,6 +41,7 @@ export interface BookingFormProps {
   date: string;
   room: Room;
   startsAt?: string;
+  endsAt?: string;
   /** Kept for the details editor and older callers; new creation uses startsAt. */
   hour?: number;
   existingBooking?: Booking;
@@ -191,6 +192,7 @@ export default function BookingForm({
   date: selectedDate,
   room: selectedRoom,
   startsAt: selectedStartsAt,
+  endsAt: selectedEndsAt,
   hour: selectedHour,
   existingBooking,
   editingSeriesLabel,
@@ -213,7 +215,11 @@ export default function BookingForm({
       ? `${String(existingBooking.hour).padStart(2, '0')}:00`
       : timeFromStartsAt(existingBooking.startsAt, existingBooking.hour))
     : timeFromStartsAt(selectedStartsAt, selectedHour);
-  const initialEnd = existingBooking?.endsAt ? existingBooking.endsAt.slice(11, 16) : addMinutes(initialStart, 30);
+  const initialEnd = existingBooking?.endsAt
+    ? existingBooking.endsAt.slice(11, 16)
+    : selectedEndsAt
+      ? selectedEndsAt.slice(11, 16)
+      : addMinutes(initialStart, 30);
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [teachers, setTeachers] = useState<Profile[]>([]);
   const [teacherId, setTeacherId] = useState(existingBooking?.teacherId ?? profile?.id ?? '');
