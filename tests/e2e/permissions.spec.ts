@@ -80,8 +80,8 @@ async function openPersonalLink(page: import('@playwright/test').Page, token: st
   await page.goto(`/access#${token}`);
   await expect(page.getByRole('main', { name: 'График' })).toBeVisible();
   await page.locator('input[type="date"]').fill(day);
-  await expect(page.getByText('Зала')).toBeVisible();
-  await expect(page.getByText('Стая')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Зала', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Стая', exact: true })).toBeVisible();
 }
 
 async function expectDirectBookingsDenied(api: import('@playwright/test').APIRequestContext, token: string) {
