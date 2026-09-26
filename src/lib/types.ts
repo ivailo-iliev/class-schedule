@@ -28,6 +28,7 @@ export interface Profile { id: string; name: string; role: Role; }
 export interface BookingDetail extends Booking {
   seriesId: string;
   seriesIndex: number;
+  seriesTotal: number;
   studentDetails: string | null;
   currency: string;
   amount: string | null;

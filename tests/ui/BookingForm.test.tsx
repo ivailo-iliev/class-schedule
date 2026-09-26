@@ -62,8 +62,8 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof BookingForm>>
   const createBookingSeries = vi.fn(async (_classId: string, _room: 'hall' | 'room', _details: string | null, occurrences: BookingOccurrence[]) => createdFor(occurrences));
   const onRefresh = vi.fn(async () => undefined);
   render(<BookingForm
-    date="2026-09-14"
-    startsAt="2026-09-14T08:30:00"
+    date="2026-09-28"
+    startsAt="2026-09-28T08:30:00"
     room="hall"
     profile={teacher}
     loadClasses={vi.fn(async () => classes)}
@@ -77,18 +77,19 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof BookingForm>>
 }
 
 describe('BookingForm server-quoted creation', () => {
-  test('offers only 24-hour half-hour choices for the time pickers and omits the creation description', async () => {
+  test('offers only half-hour choices from 08:00 through 22:00 and omits the creation description', async () => {
     renderForm();
     const start = await screen.findByRole('combobox', { name: 'Начален час' });
     const end = screen.getByRole('combobox', { name: 'Краен час' });
 
     for (const picker of [start, end]) {
       const choices = Array.from(picker.querySelectorAll('option'), (option) => option.value);
-      expect(choices).toHaveLength(48);
-      expect(choices[0]).toBe('00:00');
-      expect(choices.at(-1)).toBe('23:30');
-      expect(choices.every((choice) => choice.length === 5 && (choice.endsWith(':00') || choice.endsWith(':30')) && Number(choice.slice(0, 2)) >= 0 && Number(choice.slice(0, 2)) < 24)).toBe(true);
+      expect(choices).toHaveLength(29);
+      expect(choices[0]).toBe('08:00');
+      expect(choices.at(-1)).toBe('22:00');
+      expect(choices.every((choice) => choice.length === 5 && (choice.endsWith(':00') || choice.endsWith(':30')) && Number(choice.slice(0, 2)) >= 8 && Number(choice.slice(0, 2)) <= 22)).toBe(true);
     }
+    expect(screen.getByLabelText('Дата на резервацията')).toHaveAttribute('min', expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
     expect(start).toHaveValue('08:30');
     expect(end).toHaveValue('09:00');
     expect(screen.queryByText('Преди потвърждението ще получите ценова оферта от сървъра.')).not.toBeInTheDocument();
@@ -98,7 +99,7 @@ describe('BookingForm server-quoted creation', () => {
   test('quotes exact local half-hour occurrences and shows segment pricing', async () => {
     const { quoteBooking } = renderForm();
     await waitFor(() => expect(quoteBooking).toHaveBeenCalledWith('class-a', 'hall', [
-      { starts_at: '2026-09-14T08:30:00', ends_at: '2026-09-14T09:00:00' },
+      { starts_at: '2026-09-28T08:30:00', ends_at: '2026-09-28T09:00:00' },
     ]));
     expect(await screen.findByText('Общо: €10.00')).toBeInTheDocument();
     expect(screen.getByText(/Standard/)).toBeInTheDocument();
@@ -107,7 +108,7 @@ describe('BookingForm server-quoted creation', () => {
   });
 
   test('uses the dragged grid end time for the initial booking duration', async () => {
-    renderForm({ endsAt: '2026-09-14T10:00:00' });
+    renderForm({ endsAt: '2026-09-28T10:00:00' });
 
     expect(await screen.findByRole('combobox', { name: 'Начален час' })).toHaveValue('08:30');
     expect(screen.getByRole('combobox', { name: 'Краен час' })).toHaveValue('10:00');
@@ -125,10 +126,10 @@ describe('BookingForm server-quoted creation', () => {
     await waitFor(() => expect(createBookingSeries).toHaveBeenCalledTimes(1));
     const occurrences = createBookingSeries.mock.calls[0]![3];
     expect(occurrences).toEqual([
-      { starts_at: '2026-09-14T08:30:00', ends_at: '2026-09-14T09:00:00' },
-      { starts_at: '2026-09-15T08:30:00', ends_at: '2026-09-15T09:00:00' },
-      { starts_at: '2026-09-21T08:30:00', ends_at: '2026-09-21T09:00:00' },
-      { starts_at: '2026-09-22T08:30:00', ends_at: '2026-09-22T09:00:00' },
+      { starts_at: '2026-09-28T08:30:00', ends_at: '2026-09-28T09:00:00' },
+      { starts_at: '2026-09-29T08:30:00', ends_at: '2026-09-29T09:00:00' },
+      { starts_at: '2026-10-05T08:30:00', ends_at: '2026-10-05T09:00:00' },
+      { starts_at: '2026-10-06T08:30:00', ends_at: '2026-10-06T09:00:00' },
     ]);
     expect(createBookingSeries.mock.calls[0]!.slice(0, 3)).toEqual(['class-a', 'hall', null]);
     expect(onRefresh).toHaveBeenCalledTimes(1);

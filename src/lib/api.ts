@@ -51,6 +51,7 @@ type BookingDetailPayload = {
   version: number;
   can_manage: boolean;
   has_future_active?: boolean;
+  series_total?: number;
 };
 
 type MutationBookingPayload = Pick<BookingDetailPayload,
@@ -116,6 +117,9 @@ function mapSlotPrice(row: unknown): SlotPrice | null {
 }
 
 function mapBookingDetail(row: BookingDetailPayload): BookingDetail {
+  const seriesTotal = typeof row.series_total === 'number' && Number.isInteger(row.series_total) && row.series_total > 0
+    ? row.series_total
+    : row.series_index + 1;
   return {
     id: row.id,
     classId: row.class_id,
@@ -132,6 +136,7 @@ function mapBookingDetail(row: BookingDetailPayload): BookingDetail {
     canEdit: row.can_manage && row.cancelled_at === null,
     seriesId: row.series_id,
     seriesIndex: row.series_index,
+    seriesTotal,
     studentDetails: row.student_details,
     currency: row.currency,
     amount: row.amount,

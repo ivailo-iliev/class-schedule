@@ -65,8 +65,10 @@ const ROOMS: readonly { id: Room; label: string }[] = [
   { id: 'hall', label: 'Зала' },
   { id: 'room', label: 'Стая' },
 ];
-const TIME_OPTIONS: readonly string[] = Array.from({ length: 48 }, (_, index) => {
-  const totalMinutes = index * 30;
+const BOOKING_START_MINUTES = 8 * 60;
+const BOOKING_END_MINUTES = 22 * 60;
+const TIME_OPTIONS: readonly string[] = Array.from({ length: (BOOKING_END_MINUTES - BOOKING_START_MINUTES) / 30 + 1 }, (_, index) => {
+  const totalMinutes = BOOKING_START_MINUTES + index * 30;
   return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
 });
 const WEEKDAYS: readonly { value: number; label: string }[] = [
@@ -86,6 +88,11 @@ function validDate(date: string): boolean {
   const [year, month, day] = date.split('-').map(Number);
   const value = new Date(Date.UTC(year!, month! - 1, day!));
   return value.getUTCFullYear() === year && value.getUTCMonth() === month! - 1 && value.getUTCDate() === day;
+}
+
+function todayDate(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 function isoWeekday(date: string): number {
@@ -135,8 +142,13 @@ export function buildOccurrences(
   if (!validDate(date) || (mode === 'recurring' && !validDate(weekStart))) {
     return { occurrences: [], error: 'Изберете валидна дата.' };
   }
-  if (!validTime(startTime) || !validTime(endTime) || minutes(endTime) <= minutes(startTime)) {
-    return { occurrences: [], error: 'Началният и крайният час трябва да са различни и да са в един и същи ден. Използвайте интервали от 30 минути.' };
+  const minimumDate = mode === 'recurring' ? mondayOf(todayDate()) : todayDate();
+  const requestedDate = mode === 'recurring' ? weekStart : date;
+  if (requestedDate < minimumDate) {
+    return { occurrences: [], error: 'Датата на резервацията не може да бъде в миналото.' };
+  }
+  if (!validTime(startTime) || !validTime(endTime) || minutes(startTime) < BOOKING_START_MINUTES || minutes(endTime) > BOOKING_END_MINUTES || minutes(endTime) <= minutes(startTime)) {
+    return { occurrences: [], error: 'Началният и крайният час трябва да са между 08:00 и 22:00, да са различни и да са в един и същи ден. Използвайте интервали от 30 минути.' };
   }
   if (mode === 'one-off') {
     return {
@@ -209,7 +221,9 @@ export default function BookingForm({
 }: BookingFormProps) {
   const profile = suppliedProfile ?? getProfile();
   const editing = Boolean(existingBooking);
-  const initialDate = existingBooking?.startsAt.slice(0, 10) ?? selectedDate;
+  const minimumDate = todayDate();
+  const requestedDate = existingBooking?.startsAt.slice(0, 10) ?? selectedDate;
+  const initialDate = existingBooking ? requestedDate : (requestedDate < minimumDate ? minimumDate : requestedDate);
   const initialStart = existingBooking
     ? (existingBooking.startsAt.endsWith('Z')
       ? `${String(existingBooking.hour).padStart(2, '0')}:00`
@@ -242,6 +256,9 @@ export default function BookingForm({
   const [success, setSuccess] = useState<string | null>(null);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const requestId = useState({ value: 0 })[0];
+  const timeOptions = editing
+    ? Array.from(new Set([...TIME_OPTIONS, initialStart, initialEnd])).sort()
+    : TIME_OPTIONS;
 
   useEffect(() => {
     let mounted = true;
@@ -416,7 +433,7 @@ export default function BookingForm({
                 <label><input type="radio" name="booking-mode" value="recurring" checked={mode === 'recurring'} onChange={() => setMode('recurring')} disabled={pending || offline} /> Повтарящо се</label>
               </fieldset>
               <label htmlFor="booking-date">{mode === 'recurring' ? 'Начална седмица (понеделник)' : 'Дата на резервацията'}</label>
-              <input id="booking-date" type="date" value={mode === 'recurring' ? weekStart : date} onChange={(event) => { setDate(event.target.value); setWeekStart(mondayOf(event.target.value)); }} disabled={pending || offline} required />
+              <input id="booking-date" type="date" min={mode === 'recurring' ? mondayOf(minimumDate) : minimumDate} value={mode === 'recurring' ? weekStart : date} onChange={(event) => { const minimumAllowed = mode === 'recurring' ? mondayOf(minimumDate) : minimumDate; const nextDate = event.target.value < minimumAllowed ? minimumAllowed : event.target.value; setDate(nextDate); setWeekStart(mondayOf(nextDate)); }} disabled={pending || offline} required />
               {mode === 'recurring' && (
                 <>
                   <fieldset className="booking-form__weekdays">
@@ -431,11 +448,11 @@ export default function BookingForm({
           )}
           <label htmlFor="booking-start">Начален час</label>
           <select id="booking-start" value={startTime} onChange={(event) => setStartTime(event.target.value)} disabled={pending || offline} required>
-            {TIME_OPTIONS.map((time) => <option key={time} value={time}>{time}</option>)}
+            {timeOptions.map((time) => <option key={time} value={time}>{time}</option>)}
           </select>
           <label htmlFor="booking-end">Краен час</label>
           <select id="booking-end" value={endTime} onChange={(event) => setEndTime(event.target.value)} disabled={pending || offline} required>
-            {TIME_OPTIONS.map((time) => <option key={time} value={time}>{time}</option>)}
+            {timeOptions.map((time) => <option key={time} value={time}>{time}</option>)}
           </select>
           <label htmlFor="booking-room">Зала</label>
           <select id="booking-room" value={room} onChange={(event) => setRoom(event.target.value as Room)} disabled={pending || offline}>

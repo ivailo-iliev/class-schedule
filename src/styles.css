@@ -284,6 +284,10 @@ select:focus-visible {
   user-select: none;
 }
 
+.room-toggle:first-of-type {
+  border-radius: 0.6rem 0 0 0.6rem;
+}
+
 .room-toggle + .room-toggle {
   border-left: 1px solid #e6ecf4;
   border-radius: 0 0.6rem 0.6rem 0;
@@ -438,10 +442,12 @@ select:focus-visible {
   position: absolute;
   top: 0.35rem;
   right: 0.45rem;
+  left: 0.45rem;
   color: #6b7a92;
   font-size: 0.66rem;
   font-weight: 650;
   line-height: 1;
+  text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
@@ -1426,6 +1432,17 @@ select:focus-visible {
 .report-table td:nth-child(7) {
   color: #132a54;
   font-weight: 750;
+}
+
+.report-table__stacked,
+.report-table__secondary {
+  display: block;
+}
+
+.report-table__secondary {
+  margin-top: 0.15rem;
+  color: #6b7a92;
+  font-size: 0.75rem;
 }
 
 .report-table__cancelled td,

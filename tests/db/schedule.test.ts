@@ -9,20 +9,24 @@ const CLASS_E = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const CLASS_S = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const HALL_BOOKING = '90000000-0000-0000-0000-000000000001';
 const CANCELLED_BOOKING = '90000000-0000-0000-0000-000000000002';
+const SERIES_BOOKING = '90000000-0000-0000-0000-000000000003';
+const SERIES_ID = '91000000-0000-0000-0000-000000000001';
 
 async function insertScheduleFixtures() {
   const client = await db();
   try {
     await client.query(
       `insert into public.bookings
-        (id, class_id, teacher_id, room, starts_at, ends_at, student_details,
+        (id, series_id, series_index, class_id, teacher_id, room, starts_at, ends_at, student_details,
          calculated_amount, price_breakdown)
        values
-        ($1, $2, $3, 'hall'::public.room, '2026-11-02T08:30'::timestamp,
+        ($1, $7, 0, $2, $3, 'hall'::public.room, '2026-11-02T08:30'::timestamp,
          '2026-11-02T10:00'::timestamp, 'Private child detail', 15, '[{"label":"private rate"}]'::jsonb),
-        ($4, $5, $6, 'room'::public.room, '2026-11-02T10:00'::timestamp,
-         '2026-11-02T10:30'::timestamp, 'Cancelled child detail', 5, '[{"label":"private rate"}]'::jsonb)`,
-      [HALL_BOOKING, CLASS_E, ELEONORA, CANCELLED_BOOKING, CLASS_S, SILVIA],
+        ($4, default, default, $5, $6, 'room'::public.room, '2026-11-02T10:00'::timestamp,
+         '2026-11-02T10:30'::timestamp, 'Cancelled child detail', 5, '[{"label":"private rate"}]'::jsonb),
+        ($8, $7, 1, $2, $3, 'hall'::public.room, '2026-11-03T08:30'::timestamp,
+         '2026-11-03T10:00'::timestamp, 'Second child detail', 15, '[{"label":"private rate"}]'::jsonb)`,
+      [HALL_BOOKING, CLASS_E, ELEONORA, CANCELLED_BOOKING, CLASS_S, SILVIA, SERIES_ID, SERIES_BOOKING],
     );
     await client.query(
       `update public.bookings set cancelled_at = statement_timestamp()
@@ -37,7 +41,7 @@ afterAll(async () => {
   const client = await db();
   try {
     await client.query('delete from public.bookings where id = any($1::uuid[])', [
-      [HALL_BOOKING, CANCELLED_BOOKING],
+      [HALL_BOOKING, CANCELLED_BOOKING, SERIES_BOOKING],
     ]);
   } finally {
     client.release();
@@ -109,6 +113,7 @@ describe('safe authoritative daily schedule RPCs', () => {
         ends_at: '2026-11-02T10:00:00',
         student_details: 'Private child detail',
         amount: '15.00',
+        series_total: 2,
       });
     });
 

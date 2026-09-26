@@ -24,8 +24,8 @@ const rows: MonthReportRow[] = [{
 describe('reportRowsToCsv', () => {
   test('serializes exactly the supplied authorized rows and preserves CSV quoting', () => {
     expect(reportRowsToCsv(rows)).toBe([
-      'Дата,Начало,Край,Продължителност (минути),Зала,Учител,Дейност,Статус,Цена при запазване,Разбивка на цената,Дължима сума,Дата на отмяна',
-      '2026-11-05,2026-11-05 09:00,2026-11-05 10:30,90,Зала,"Ana, Teacher","Piano ""Advanced""",Активна,15.00,"[{""starts_at"":""09:00"",""ends_at"":""10:00"",""rule_id"":null,""label"":""weekday"",""hourly_rate"":""10.00"",""subtotal"":""10.00""}]",15.00,',
+      'Дата,Начало,Край,Продължителност (минути),Дейност,Зала,Учител,Статус,Цена,Разбивка на цената,Дължима сума,Дата на отмяна',
+      '2026-11-05,2026-11-05 09:00,2026-11-05 10:30,90,"Piano ""Advanced""",Зала,"Ana, Teacher",Активна,15.00,"[{""starts_at"":""09:00"",""ends_at"":""10:00"",""rule_id"":null,""label"":""weekday"",""hourly_rate"":""10.00"",""subtotal"":""10.00""}]",15.00,',
     ].join('\r\n'));
   });
 });

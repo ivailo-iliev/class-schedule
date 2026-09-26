@@ -65,11 +65,11 @@ describe('booking RPC client contracts', () => {
       id: 'booking-1', series_id: 'series-1', series_index: 2, teacher_id: 'teacher-1', teacher_name: 'Teacher',
       class_id: 'class-1', activity_title: 'Yoga', room: 'hall', starts_at: '2026-11-02T08:30:00',
       ends_at: '2026-11-02T09:30:00', student_details: 'Student', currency: 'EUR', amount: '10.00',
-      segments: [], cancelled_at: null, cancelled_by: null, version: 4, can_manage: true, has_future_active: true,
+      segments: [], cancelled_at: null, cancelled_by: null, version: 4, can_manage: true, has_future_active: true, series_total: 10,
     }, error: null });
 
     await expect(getBookingDetails('booking-1')).resolves.toMatchObject({
-      id: 'booking-1', studentDetails: 'Student', amount: '10.00', hasFutureActive: true, canEdit: true,
+      id: 'booking-1', studentDetails: 'Student', amount: '10.00', hasFutureActive: true, seriesTotal: 10, canEdit: true,
     });
     expect(rpc).toHaveBeenCalledWith('get_booking_details', { p_id: 'booking-1' });
   });

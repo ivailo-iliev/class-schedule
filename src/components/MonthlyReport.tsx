@@ -18,7 +18,11 @@ function localDateTime(value: string): string {
 }
 
 function timeRangeLabel(row: MonthReportRow): string {
-  return `${localDateTime(row.startsAt).slice(11)}–${localDateTime(row.endsAt).slice(11)} (${row.durationMinutes} мин.)`;
+  return `${localDateTime(row.startsAt).slice(11)}–${localDateTime(row.endsAt).slice(11)}`;
+}
+
+function weekdayLabel(date: string): string {
+  return new Intl.DateTimeFormat('bg-BG', { weekday: 'long' }).format(new Date(`${date}T12:00:00Z`));
 }
 
 function roomLabel(room: MonthReportRow['room']): string {
@@ -61,16 +65,21 @@ function RowTable({ rows }: { rows: MonthReportRow[] }) {
         <thead>
           <tr>
             <th scope="col">Дата</th><th scope="col">Час</th>
-            <th scope="col">Зала</th><th scope="col">Дейност</th><th scope="col">Статус</th>
-            <th scope="col">Цена при запазване</th><th scope="col">За плащане</th>
+            <th scope="col">Дейност</th><th scope="col">Зала</th><th scope="col">Статус</th>
+            <th scope="col">Цена</th><th scope="col">За плащане</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} className={row.cancelled ? 'report-table__cancelled' : undefined}>
-              <td>{row.bookingDate}</td>
-              <td>{timeRangeLabel(row)}</td>
-              <td>{roomLabel(row.room)}</td>
+              <td>
+                <span className="report-table__stacked">{row.bookingDate}</span>
+                <span className="report-table__secondary">{weekdayLabel(row.bookingDate)}</span>
+              </td>
+              <td aria-label={`${timeRangeLabel(row)} (${row.durationMinutes} мин.)`}>
+                <span className="report-table__stacked">{timeRangeLabel(row)}</span>
+                <span className="report-table__secondary">{row.durationMinutes} мин.</span>
+              </td>
               <td>
                 <strong>{row.activityTitle}</strong>
                 {row.priceBreakdown.length > 0 && (
@@ -85,6 +94,7 @@ function RowTable({ rows }: { rows: MonthReportRow[] }) {
                   </div>
                 )}
               </td>
+              <td>{roomLabel(row.room)}</td>
               <td>{row.cancelled ? 'Отменена' : 'Активна'}</td>
               <td>{formatAmount(row.calculatedAmount, row.currency)}</td>
               <td>{formatAmount(row.effectiveAmountDue, row.currency)}</td>

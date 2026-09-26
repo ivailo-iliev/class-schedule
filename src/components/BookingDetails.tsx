@@ -280,7 +280,7 @@ export default function BookingDetails({
         startsAt={currentBooking.startsAt}
         room={currentBooking.room}
         existingBooking={currentBooking}
-        editingSeriesLabel={detail ? `Занимание ${detail.seriesIndex + 1}` : undefined}
+        editingSeriesLabel={detail ? `Занимание ${detail.seriesIndex + 1} от ${detail.seriesTotal}` : undefined}
         profile={profile}
         loadClasses={loadClasses}
         editBooking={editBooking}
@@ -316,7 +316,7 @@ export default function BookingDetails({
         <div><dt>Час</dt><dd>{formattedStart}–{formattedEnd}</dd></div>
         <div><dt>Зала</dt><dd>{formattedRoom}</dd></div>
         <div><dt>Тип</dt><dd>{detail && (detail.seriesIndex > 0 || detail.hasFutureActive) ? 'Повтарящо се' : 'Еднократно'}</dd></div>
-        {detail && <div><dt>Модул</dt><dd>Занимание {detail.seriesIndex + 1}</dd></div>}
+        {detail && <div><dt>Модул</dt><dd>Занимание {detail.seriesIndex + 1} от {detail.seriesTotal}</dd></div>}
         {detail && <div><dt>Бележки за ученика</dt><dd>{detail.studentDetails || 'Няма добавени бележки'}</dd></div>}
         {detail && <div><dt>Цена при запазване</dt><dd>{detail.amount === null ? 'Не е налична' : formatAmount(detail.amount, detail.currency)}</dd></div>}
       </dl>

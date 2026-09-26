@@ -34,6 +34,7 @@ function detail(overrides: Partial<BookingDetail> = {}): BookingDetail {
     currency: 'EUR',
     amount: '12.00',
     segments: [],
+    seriesTotal: 10,
     hasFutureActive: false,
     ...overrides,
   };
@@ -67,7 +68,7 @@ describe('BookingDetails', () => {
     expect(screen.getByRole('heading', { name: 'Резервация' })).toBeInTheDocument();
     expect(screen.getByText('Повтарящо се')).toBeInTheDocument();
     expect(screen.getByText('Модул', { selector: 'dt' })).toBeInTheDocument();
-    expect(screen.getByText('Занимание 2')).toBeInTheDocument();
+    expect(screen.getByText('Занимание 2 от 10')).toBeInTheDocument();
     expect(screen.queryByText('series-1')).not.toBeInTheDocument();
     expect(screen.getByText('Цена при запазване', { selector: 'dt' })).toBeInTheDocument();
   });
@@ -351,7 +352,7 @@ describe('BookingDetails', () => {
 
     expect(await screen.findByRole('heading', { name: 'Промяна на резервация' })).toBeInTheDocument();
     expect(screen.getByText('Teacher A')).toBeInTheDocument();
-    expect(screen.getByText('Занимание 2')).toBeInTheDocument();
+    expect(screen.getByText('Занимание 2 от 10')).toBeInTheDocument();
     expect(screen.queryByText('series-1')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Занимание' })).toHaveValue('class-a');
     expect(screen.queryByRole('combobox', { name: 'Teacher' })).not.toBeInTheDocument();

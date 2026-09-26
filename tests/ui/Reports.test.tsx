@@ -83,7 +83,12 @@ describe('MonthlyReport', () => {
     expect(screen.queryByText('Месец на отчета')).not.toBeInTheDocument();
     expect(api.getMyMonthReport).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/));
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
-    expect(screen.getAllByText('09:00–10:30 (90 мин.)')).toHaveLength(2);
+    expect(within(screen.getByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      'Дата', 'Час', 'Дейност', 'Зала', 'Статус', 'Цена', 'За плащане',
+    ]);
+    expect(screen.getAllByText('09:00–10:30')).toHaveLength(2);
+    expect(screen.getAllByText('90 мин.')).toHaveLength(2);
+    expect(screen.getAllByText('четвъртък')).toHaveLength(2);
     expect(screen.queryByText('Разбивка на цената')).not.toBeInTheDocument();
     expect(screen.getByText('Activity a-cancelled')).toBeInTheDocument();
     expect(screen.queryByText('Teacher B')).not.toBeInTheDocument();
@@ -91,7 +96,7 @@ describe('MonthlyReport', () => {
     expect(screen.getAllByText('€10.00').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Експортирай видимите редове като CSV' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Отчет за печат' })).toHaveClass('report-print-area');
-    expect(screen.getByText('Цена при запазване')).toBeInTheDocument();
+    expect(screen.getByText('Цена')).toBeInTheDocument();
   });
 
   test('admin fetches all teachers, filters server-returned rows, and exposes combined total', async () => {
@@ -142,7 +147,9 @@ describe('MonthlyReport', () => {
     const amountDueCard = within(summary).getByText('Дължима сума').closest('div');
     expect(amountDueCard?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Дължима сума€10.00');
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
-    expect(screen.getAllByText('09:00–10:30 (90 мин.)')).toHaveLength(2);
+    expect(screen.getAllByText('09:00–10:30')).toHaveLength(2);
+    expect(screen.getAllByText('90 мин.')).toHaveLength(2);
+    expect(screen.getAllByText('четвъртък')).toHaveLength(2);
     expect(screen.getByText('Activity a-cancelled')).toBeInTheDocument();
     expect(screen.queryByText('Activity b-active')).not.toBeInTheDocument();
     expect(screen.queryByText('Activity browser-only')).not.toBeInTheDocument();
@@ -182,5 +189,10 @@ describe('MonthlyReport', () => {
     const narrowStyles = Array.from(narrowRule?.cssRules ?? []).filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
     expect(narrowStyles.find((rule) => rule.selectorText === '.report-summary')?.style.gap).toBe('0.4rem');
     expect(narrowStyles.find((rule) => rule.selectorText === '.report-summary__card')?.style.padding).toBe('0.6rem 0.7rem');
+
+    const priceRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText === '.empty-slot__price') as CSSStyleRule | undefined;
+    const hallToggleRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText === '.room-toggle:first-of-type') as CSSStyleRule | undefined;
+    expect(priceRule?.style.textAlign).toBe('right');
+    expect(hallToggleRule?.style.borderRadius).toBe('0.6rem 0 0 0.6rem');
   });
 });
