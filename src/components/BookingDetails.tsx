@@ -7,6 +7,7 @@ import {
   getMyClasses,
 } from '../lib/api';
 import { getProfile } from '../lib/session';
+import { formatAmount, groupPriceSegments } from '../lib/price-breakdown';
 import type {
   Booking,
   BookingDetail,
@@ -196,6 +197,7 @@ export default function BookingDetails({
   const formattedStart = timeLabel(currentBooking.startsAt);
   const formattedEnd = timeLabel(currentBooking.endsAt, currentBooking.hour + 1);
   const formattedRoom = roomLabel(currentBooking.room);
+  const groupedSegments = detail ? groupPriceSegments(detail.segments) : [];
 
   const refreshSchedule = async (): Promise<{ schedule?: DaySchedule; failed: boolean }> => {
     try {
@@ -316,14 +318,14 @@ export default function BookingDetails({
         <div><dt>Тип</dt><dd>{detail && (detail.seriesIndex > 0 || detail.hasFutureActive) ? 'Повтарящо се' : 'Еднократно'}</dd></div>
         {detail && <div><dt>Модул</dt><dd>Занимание {detail.seriesIndex + 1} от модул {detail.seriesId}</dd></div>}
         {detail && <div><dt>Бележки за ученика</dt><dd>{detail.studentDetails || 'Няма добавени бележки'}</dd></div>}
-        {detail && <div><dt>Цена при запазване</dt><dd>{detail.amount === null ? 'Не е налична' : `${detail.currency} ${detail.amount}`}</dd></div>}
+        {detail && <div><dt>Цена при запазване</dt><dd>{detail.amount === null ? 'Не е налична' : formatAmount(detail.amount, detail.currency)}</dd></div>}
       </dl>
 
       {detail && detail.segments.length > 0 && (
         <section className="booking-details__snapshot" aria-label="Разбивка на цената">
           <h3>Разбивка на цената</h3>
-          <ul>{detail.segments.map((segment) => <li key={`${segment.starts_at}:${segment.ends_at}`}>
-            {segment.label}: {segment.subtotal} ({segment.starts_at.slice(11, 16)}–{segment.ends_at.slice(11, 16)})
+          <ul>{groupedSegments.map((segment, index) => <li key={`${segment.rule_id ?? segment.label}:${segment.starts_at}:${index}`}>
+            {segment.count > 1 ? `${segment.count}x ` : ''}{segment.label}: {formatAmount(segment.subtotal, detail.currency)} ({segment.starts_at.slice(11, 16)}–{segment.ends_at.slice(11, 16)})
           </li>)}</ul>
         </section>
       )}

@@ -108,6 +108,21 @@ describe('MonthlyReport', () => {
     expect(screen.queryByText('Activity a-active')).not.toBeInTheDocument();
   });
 
+  test('groups repeated tariff segments and shows the grouped euro total', async () => {
+    const grouped = row('grouped', 'teacher-a', 'Teacher A', '15.00');
+    grouped.priceBreakdown = [
+      { starts_at: '09:00', ends_at: '09:30', rule_id: 'weekday', label: 'Стандартна тарифа делник', hourly_rate: '10.00', subtotal: '5.00' },
+      { starts_at: '09:30', ends_at: '10:00', rule_id: 'weekday', label: 'Стандартна тарифа делник', hourly_rate: '10.00', subtotal: '5.00' },
+      { starts_at: '10:00', ends_at: '10:30', rule_id: 'weekday', label: 'Стандартна тарифа делник', hourly_rate: '10.00', subtotal: '5.00' },
+    ];
+    api.getMyMonthReport.mockResolvedValueOnce({ ...teacherReport, rows: [grouped] });
+
+    render(<MonthlyReport profile={profile('teacher')} />);
+
+    expect(await screen.findByText('3x Стандартна тарифа делник: €15.00')).toBeInTheDocument();
+    expect(screen.queryByText(/2x Стандартна тарифа делник/)).not.toBeInTheDocument();
+  });
+
   test('exports exactly the filtered RPC rows, prints, and ignores browser-state rows', async () => {
     localStorage.setItem('report-rows', JSON.stringify([row('browser-only', 'teacher-b', 'Teacher B', '999.00')]));
     const createObjectURL = vi.fn(() => 'blob:monthly-report');

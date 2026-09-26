@@ -70,6 +70,23 @@ describe('BookingDetails', () => {
     expect(screen.getByText('Цена при запазване', { selector: 'dt' })).toBeInTheDocument();
   });
 
+  test('groups repeated tariff segments and formats their total in euros', async () => {
+    const label = 'Стандартна тарифа делник 08:30–17:00';
+    renderDetails({
+      booking: booking({ version: 0 }),
+      loadDetails: vi.fn(async () => detail({
+        segments: [
+          { starts_at: '2026-09-15T08:30:00', ends_at: '2026-09-15T09:00:00', rule_id: 'weekday', label, hourly_rate: '10.00', subtotal: '5.00' },
+          { starts_at: '2026-09-15T09:00:00', ends_at: '2026-09-15T09:30:00', rule_id: 'weekday', label, hourly_rate: '10.00', subtotal: '5.00' },
+        ],
+      })),
+    });
+
+    expect(await screen.findByText(`2x ${label}: €10.00 (08:30–09:30)`)).toBeInTheDocument();
+    expect(screen.getByText('€12.00')).toBeInTheDocument();
+    expect(screen.queryByText(/08:30–09:00/)).not.toBeInTheDocument();
+  });
+
   test('shows another teacher booking as readonly', () => {
     renderDetails({ booking: booking({ canEdit: false, teacherId: 'teacher-b', teacherName: 'Teacher B' }) });
 
@@ -311,7 +328,7 @@ describe('BookingDetails', () => {
     renderDetails({ booking: booking({ version: 0 }), loadDetails, cancelBooking, onRefresh });
 
     expect(await screen.findByText('Private student note')).toBeInTheDocument();
-    expect(screen.getByText('EUR 12.00')).toBeInTheDocument();
+    expect(screen.getByText('€12.00')).toBeInTheDocument();
     expect(loadDetails).toHaveBeenCalledWith('booking-1');
     fireEvent.click(screen.getByRole('button', { name: 'Отмени резервацията' }));
     const future = screen.getByLabelText('Това и следващите занимания');

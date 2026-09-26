@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getAdminMonthReport, getMyMonthReport, getTeachers } from '../lib/api';
+import { formatAmount, groupPriceSegments } from '../lib/price-breakdown';
 import { reportRowsToCsv } from '../lib/report-csv';
 import type { AdminMonthReport, MonthReportRow, MyMonthReport, Profile } from '../lib/types';
 import Icon from './Icon';
@@ -10,13 +11,6 @@ type ReportData = MyMonthReport | AdminMonthReport;
 function currentMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatAmount(value: string, currency = 'EUR'): string {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return `${currency} ${value}`;
-  if (currency === 'EUR') return `€${amount.toFixed(2)}`;
-  return `${currency} ${amount.toFixed(2)}`;
 }
 
 function localDateTime(value: string): string {
@@ -80,9 +74,9 @@ function RowTable({ rows }: { rows: MonthReportRow[] }) {
                   <div className="report-breakdown">
                     <span>Разбивка на цената</span>
                     <ul>
-                      {row.priceBreakdown.map((segment, index) => (
-                        <li key={`${row.id}-${segment.rule_id ?? 'segment'}-${index}`}>
-                          {segment.label}: {formatAmount(segment.subtotal, row.currency)}
+                      {groupPriceSegments(row.priceBreakdown).map((segment, index) => (
+                        <li key={`${row.id}-${segment.rule_id ?? segment.label}-${segment.starts_at}-${index}`}>
+                          {segment.count > 1 ? `${segment.count}x ` : ''}{segment.label}: {formatAmount(segment.subtotal, row.currency)}
                         </li>
                       ))}
                     </ul>
