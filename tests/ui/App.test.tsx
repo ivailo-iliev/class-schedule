@@ -21,6 +21,7 @@ describe('App schedule integration', () => {
     render(<App />);
     expect(await screen.findByRole('button', { name: 'График' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Занимания' })).toBeInTheDocument();
+    expect(screen.getByText('Teacher')).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Зала' })).toBeInTheDocument();
     expect(mocks.getDay).toHaveBeenCalledTimes(1);
   });

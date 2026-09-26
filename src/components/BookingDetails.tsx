@@ -280,7 +280,7 @@ export default function BookingDetails({
         startsAt={currentBooking.startsAt}
         room={currentBooking.room}
         existingBooking={currentBooking}
-        editingSeriesLabel={detail ? `Занимание ${detail.seriesIndex + 1} от модул ${detail.seriesId}` : undefined}
+        editingSeriesLabel={detail ? `Занимание ${detail.seriesIndex + 1}` : undefined}
         profile={profile}
         loadClasses={loadClasses}
         editBooking={editBooking}
@@ -302,7 +302,7 @@ export default function BookingDetails({
     <section className="booking-details" aria-label="Резервация" aria-labelledby="booking-details-title">
       <header className="booking-details__header">
         <h2 id="booking-details-title">Резервация</h2>
-        <button type="button" onClick={onClose} aria-label="Затвори подробностите за резервацията">×</button>
+        <button className="workspace-panel__close" type="button" onClick={onClose} aria-label="Затвори подробностите за резервацията">×</button>
       </header>
 
       {detailLoading && <p className="booking-details__message" role="status">Зареждат се разрешените подробности за резервацията…</p>}
@@ -316,7 +316,7 @@ export default function BookingDetails({
         <div><dt>Час</dt><dd>{formattedStart}–{formattedEnd}</dd></div>
         <div><dt>Зала</dt><dd>{formattedRoom}</dd></div>
         <div><dt>Тип</dt><dd>{detail && (detail.seriesIndex > 0 || detail.hasFutureActive) ? 'Повтарящо се' : 'Еднократно'}</dd></div>
-        {detail && <div><dt>Модул</dt><dd>Занимание {detail.seriesIndex + 1} от модул {detail.seriesId}</dd></div>}
+        {detail && <div><dt>Модул</dt><dd>Занимание {detail.seriesIndex + 1}</dd></div>}
         {detail && <div><dt>Бележки за ученика</dt><dd>{detail.studentDetails || 'Няма добавени бележки'}</dd></div>}
         {detail && <div><dt>Цена при запазване</dt><dd>{detail.amount === null ? 'Не е налична' : formatAmount(detail.amount, detail.currency)}</dd></div>}
       </dl>

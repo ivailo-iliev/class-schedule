@@ -469,7 +469,7 @@ export default function BookingForm({
             </section>
           )}
           <div className="booking-form__actions">
-            <button type="submit" disabled={confirmDisabled}>{pending ? 'Запазване…' : editing ? 'Запази промените' : 'Потвърди резервацията'}</button>
+            <button type="submit" disabled={confirmDisabled}>{pending ? 'Запазване…' : 'Запази'}</button>
             <button type="button" onClick={() => onCancel ? onCancel() : onDone()} disabled={pending}>Отказ</button>
           </div>
         </form>

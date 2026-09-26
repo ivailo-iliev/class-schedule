@@ -125,6 +125,7 @@ select:focus-visible {
 
 .teacher-identity {
   display: inline-flex;
+  max-width: 35vw;
   min-width: 0;
   align-items: center;
   gap: 0.45rem;
@@ -133,6 +134,11 @@ select:focus-visible {
   font-size: 0.85rem;
   font-weight: 650;
   white-space: nowrap;
+}
+
+.teacher-identity > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .teacher-identity__dot {
@@ -156,7 +162,7 @@ select:focus-visible {
   top: 4.25rem;
   z-index: 5;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem 1rem;
   padding: 0.5rem 0 0.85rem;
@@ -166,6 +172,8 @@ select:focus-visible {
 
 .date-controls {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   align-items: center;
   gap: 0.15rem;
   padding: 0.2rem;
@@ -249,6 +257,7 @@ select:focus-visible {
 
 .room-controls {
   display: inline-flex;
+  flex: none;
   min-height: 48px;
   align-items: stretch;
   margin: 0;
@@ -265,7 +274,9 @@ select:focus-visible {
   align-items: center;
   gap: 0.4rem;
   padding: 0 0.7rem;
+  border: 0;
   border-radius: 0.6rem;
+  background: transparent;
   color: #2b3d5d;
   font-size: 0.82rem;
   font-weight: 650;
@@ -283,11 +294,10 @@ select:focus-visible {
   color: #1556bf;
 }
 
-.room-toggle input {
-  width: 1rem;
-  height: 1rem;
-  margin: 0;
-  accent-color: #2563eb;
+.room-toggle--pressed {
+  background: #e6efff;
+  color: #1556bf;
+  box-shadow: inset 0 0 0 1px #b9cff2;
 }
 
 .schedule-loading,
@@ -413,6 +423,15 @@ select:focus-visible {
   touch-action: none;
   user-select: none;
   transition: background 140ms ease, color 140ms ease;
+}
+
+/* Keep touch scrolling active everywhere except the small booking handle. */
+.schedule-grid__cell > .empty-slot--handle {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  margin: auto;
+  border-radius: 0.55rem;
 }
 
 .empty-slot__price {
@@ -558,7 +577,7 @@ select:focus-visible {
   }
 
   .date-controls {
-    width: 100%;
+    width: auto;
   }
 
   .date-controls label,
@@ -630,6 +649,14 @@ select:focus-visible {
   border-bottom: 1px solid #e3e9f2;
 }
 
+.class-add__name {
+  display: flex;
+  flex: 1 1 18rem;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
 .class-add input,
 .class-add select,
 .class-rename-form input {
@@ -647,7 +674,11 @@ select:focus-visible {
 }
 
 .class-add select {
-  flex: 0 1 12rem;
+  flex: 1 1 12rem;
+}
+
+.class-add__name input {
+  min-width: 0;
 }
 
 .class-add input::placeholder {
@@ -818,6 +849,8 @@ select:focus-visible {
 .booking-form select,
 .booking-form textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 44px;
   padding: 0.55rem 0.65rem;
   border: 1px solid #9da9bc;
@@ -828,6 +861,16 @@ select:focus-visible {
 .booking-form textarea {
   min-height: 5rem;
   resize: vertical;
+}
+
+.booking-form input[type="date"] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: clip;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .booking-form__identity {
@@ -987,6 +1030,7 @@ select:focus-visible {
 }
 
 .booking-details {
+  position: relative;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -1197,9 +1241,11 @@ select:focus-visible {
 
 .report-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem 1rem;
+  min-width: 0;
 }
 
 .report-actions label {
@@ -1215,6 +1261,9 @@ select:focus-visible {
 
 .report-actions input,
 .report-actions select {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
   min-height: 40px;
   padding: 0 0.6rem;
   border: 1px solid #c9d5e6;
@@ -1361,21 +1410,20 @@ select:focus-visible {
 
 .report-table td:nth-child(1),
 .report-table td:nth-child(2),
-.report-table td:nth-child(3),
-.report-table td:nth-child(7),
-.report-table td:nth-child(8) {
+.report-table td:nth-child(6),
+.report-table td:nth-child(7) {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
+.report-table th:nth-child(6),
 .report-table th:nth-child(7),
-.report-table th:nth-child(8),
-.report-table td:nth-child(7),
-.report-table td:nth-child(8) {
+.report-table td:nth-child(6),
+.report-table td:nth-child(7) {
   text-align: right;
 }
 
-.report-table td:nth-child(8) {
+.report-table td:nth-child(7) {
   color: #132a54;
   font-weight: 750;
 }
@@ -1485,6 +1533,8 @@ select:focus-visible {
   top: 0.75rem;
   right: 0.75rem;
   min-height: 2.25rem;
+  width: 44px;
+  height: 44px;
   padding: 0 0.65rem;
   border: 1px solid #cbd7e7;
   border-radius: 0.5rem;
@@ -1506,7 +1556,47 @@ select:focus-visible {
   }
 
   .teacher-identity > span:last-child {
-    display: none;
+    display: inline;
+  }
+
+  .schedule-date-bar {
+    gap: 0.35rem;
+  }
+
+  .date-controls {
+    gap: 0;
+    padding: 0.15rem;
+  }
+
+  .date-controls button {
+    min-width: 40px;
+  }
+
+  .date-controls .date-picker {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .date-picker__display {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.76rem;
+  }
+
+  .room-controls {
+    min-height: 44px;
+    padding: 0.15rem;
+  }
+
+  .room-toggle {
+    padding-inline: 0.45rem;
+    font-size: 0.74rem;
+  }
+
+  .class-add--admin select,
+  .class-add--admin .class-add__name {
+    flex-basis: 100%;
   }
 
   .workspace-nav__item {

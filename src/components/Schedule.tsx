@@ -90,6 +90,7 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
     if (!canBook || (event.button !== 0 && event.pointerType !== 'touch')) return;
     event.preventDefault();
     skipClickRef.current = false;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     setDragSelection({ room, startIndex: index, endIndex: index, pointerId: event.pointerId });
   };
   const updateDrag = (event: ReactPointerEvent<HTMLButtonElement>, room: Room, index: number) => {
@@ -109,6 +110,16 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   const cancelDrag = (event: ReactPointerEvent<HTMLElement>) => {
     if (dragSelection?.pointerId === event.pointerId) setDragSelection(null);
   };
+  const moveDragFromPointer = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!dragSelection || dragSelection.pointerId !== event.pointerId) return;
+    const element = typeof document.elementFromPoint === 'function'
+      ? document.elementFromPoint(event.clientX, event.clientY)
+      : event.target;
+    const target = element instanceof Element ? element.closest<HTMLButtonElement>('.empty-slot') : null;
+    if (!target || target.dataset.room !== dragSelection.room) return;
+    const index = Number(target.dataset.slotIndex);
+    if (Number.isInteger(index)) updateDrag(event as ReactPointerEvent<HTMLButtonElement>, dragSelection.room, index);
+  };
   return <main className="schedule-shell" aria-label="График">
     <p className="visually-hidden">Свързано</p>
     <header className="schedule-date-bar"><div className="date-controls" aria-label="Управление на датата в графика">
@@ -116,10 +127,10 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
       <label className="date-picker"><span className="visually-hidden">Дата в графика</span><span className="date-picker__display" aria-hidden="true">{displayDate(date)}</span><input type="date" aria-label="Дата в графика" value={date} onChange={(event) => selectDate(event.target.value)} /></label>
       <button type="button" onClick={() => selectDate(shiftDate(date, 1))} aria-label="Следващ ден" title="Следващ ден"><Icon name="chevronRight" /></button>
       <button type="button" onClick={() => void load(date).catch(() => undefined)} aria-label="Обнови графика" title="Обнови графика"><Icon name="refresh" /></button>
-    </div><fieldset className="room-controls" aria-label="Показване на помещенията"><legend className="visually-hidden">Показване на помещенията</legend>{ROOMS.map((room) => <label className="room-toggle" key={room.id}><input type="checkbox" checked={visibleRooms.includes(room.id)} onChange={() => toggleRoom(room.id)} /><span>{room.label}</span></label>)}</fieldset></header>
+    </div><fieldset className="room-controls" aria-label="Показване на помещенията"><legend className="visually-hidden">Показване на помещенията</legend>{ROOMS.map((room) => <button type="button" className={`room-toggle${visibleRooms.includes(room.id) ? ' room-toggle--pressed' : ''}`} key={room.id} aria-pressed={visibleRooms.includes(room.id)} onClick={() => toggleRoom(room.id)}>{room.label}</button>)}</fieldset></header>
     {Boolean(error) && <p className="schedule-message schedule-message--inline" role="alert"><strong>Графикът може да не е актуален.</strong> Свободните часове ще се показват само за преглед, докато графикът не бъде обновен.</p>}
     {loading && !schedule && <p className="schedule-loading" role="status">Графикът се зарежда…</p>}
-    {schedule && <section className="schedule-grid" role="grid" aria-label={`График за ${displayDate(date)}`} style={{ gridTemplateColumns: `3.6rem repeat(${visibleRoomDefinitions.length}, minmax(0, 1fr))`, gridTemplateRows: `44px repeat(${slots.length}, 3rem)` }} onPointerUp={finishDrag} onPointerCancel={cancelDrag}>
+    {schedule && <section className="schedule-grid" role="grid" aria-label={`График за ${displayDate(date)}`} style={{ gridTemplateColumns: `3.6rem repeat(${visibleRoomDefinitions.length}, minmax(0, 1fr))`, gridTemplateRows: `44px repeat(${slots.length}, 3rem)` }} onPointerMove={moveDragFromPointer} onPointerUp={finishDrag} onPointerCancel={cancelDrag}>
       <div className="schedule-grid__corner" aria-hidden="true">Час</div>{visibleRoomDefinitions.map((room) => <h2 className="schedule-grid__header" key={room.id}>{room.label}</h2>)}
       {slots.flatMap((slot, index) => [<div className="schedule-grid__hour" role="rowheader" key={`${slot.startsAt}:time`} style={{ gridRow: index + 2 }}>{timeLabel(slot.startsAt)}</div>, ...visibleRoomDefinitions.map((room) => {
         const booking = bookingAt(room.id, slot.startsAt); const label = `${room.label} в ${timeLabel(slot.startsAt)}`;
@@ -129,7 +140,9 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
         const priceId = `slot-price-${room.id}-${slot.startsAt.replace(/[^0-9]/g, '')}`;
         return <div className="schedule-grid__cell" role="gridcell" key={`${slot.startsAt}:${room.id}`} style={{ gridColumn: roomColumn(room.id), gridRow: index + 2 }}>{!booking && (canBook ? <button
           type="button"
-          className={`empty-slot${selected ? ' empty-slot--selected' : ''}`}
+          className={`empty-slot empty-slot--handle${selected ? ' empty-slot--selected' : ''}`}
+          data-room={room.id}
+          data-slot-index={index}
           aria-label={`Резервирай ${label}`}
           aria-describedby={price ? priceId : undefined}
           onPointerDown={(event) => beginDrag(event, room.id, index)}

@@ -103,7 +103,7 @@ describe('BookingForm server-quoted creation', () => {
     expect(await screen.findByText('Общо: €10.00')).toBeInTheDocument();
     expect(screen.getByText(/Standard/)).toBeInTheDocument();
     expect(screen.getByText(/Standard.*\/ч/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Потвърди резервацията' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Запази' })).toBeEnabled();
   });
 
   test('uses the dragged grid end time for the initial booking duration', async () => {
@@ -120,7 +120,7 @@ describe('BookingForm server-quoted creation', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Вторник' }));
     fireEvent.change(screen.getByLabelText('Брой седмици'), { target: { value: '2' } });
     await waitFor(() => expect(screen.getByText('4 конкретни занимания')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Потвърди резервацията' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
 
     await waitFor(() => expect(createBookingSeries).toHaveBeenCalledTimes(1));
     const occurrences = createBookingSeries.mock.calls[0]![3];
@@ -142,7 +142,7 @@ describe('BookingForm server-quoted creation', () => {
     }));
     const { createBookingSeries } = renderForm({ quoteBooking });
     expect(await screen.findByText('Преди потвърждение е необходима пълна ценова оферта без конфликти.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Потвърди резервацията' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Запази' })).toBeDisabled();
     expect(createBookingSeries).not.toHaveBeenCalled();
   });
 

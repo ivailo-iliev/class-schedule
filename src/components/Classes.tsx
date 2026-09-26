@@ -189,17 +189,7 @@ export default function Classes({
       <section className="classes-panel" aria-labelledby="class-list-title">
         <h2 id="class-list-title">Занимания</h2>
         <h2 id="add-class-title" className="visually-hidden">Добавяне на занимание</h2>
-        <form className="class-add" aria-labelledby="add-class-title" onSubmit={handleCreate}>
-          <label htmlFor="new-class-name" className="visually-hidden">Име на заниманието</label>
-          <input
-            id="new-class-name"
-            value={className}
-            maxLength={100}
-            placeholder="Ново занимание"
-            onChange={(event) => setClassName(event.target.value)}
-            aria-describedby="class-name-help"
-          />
-          <p id="class-name-help" className="visually-hidden">Използвайте от 1 до 100 знака.</p>
+        <form className={`class-add${isAdmin ? ' class-add--admin' : ''}`} aria-labelledby="add-class-title" onSubmit={handleCreate}>
           {isAdmin && (
             <>
               <label htmlFor="class-owner" className="visually-hidden">Отговорен учител</label>
@@ -217,9 +207,21 @@ export default function Classes({
               </select>
             </>
           )}
-          <button type="submit" className="icon-button icon-button--primary" disabled={pendingAction === 'create'} aria-busy={pendingAction === 'create'} aria-label="Добави занимание" title="Добави занимание">
-            <Icon name="plus" />
-          </button>
+          <div className="class-add__name">
+            <label htmlFor="new-class-name" className="visually-hidden">Име на заниманието</label>
+            <input
+              id="new-class-name"
+              value={className}
+              maxLength={100}
+              placeholder="Ново занимание"
+              onChange={(event) => setClassName(event.target.value)}
+              aria-describedby="class-name-help"
+            />
+            <p id="class-name-help" className="visually-hidden">Използвайте от 1 до 100 знака.</p>
+            <button type="submit" className="icon-button icon-button--primary" disabled={pendingAction === 'create'} aria-busy={pendingAction === 'create'} aria-label="Добави занимание" title="Добави занимание">
+              <Icon name="plus" />
+            </button>
+          </div>
         </form>
         {loading && <p role="status">Заниманията се зареждат…</p>}
         {!loading && visibleClasses.length === 0 && (

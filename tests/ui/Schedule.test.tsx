@@ -26,6 +26,7 @@ describe('Schedule screen', () => {
     const start = await screen.findByRole('button', { name: 'Резервирай Зала в 08:30' });
     const middle = screen.getByRole('button', { name: 'Резервирай Зала в 09:00' });
     const end = screen.getByRole('button', { name: 'Резервирай Зала в 09:30' });
+    expect(start).toHaveClass('empty-slot--handle');
     fireEvent.pointerDown(start, { button: 0, pointerId: 7, pointerType: 'mouse' });
     fireEvent.pointerEnter(middle, { pointerId: 7, pointerType: 'mouse' });
     fireEvent.pointerEnter(end, { pointerId: 7, pointerType: 'mouse' });
@@ -41,6 +42,21 @@ describe('Schedule screen', () => {
       hour: 8,
       room: 'hall',
     });
+  });
+
+  test('selects a multi-slot booking with a touch pointer move', async () => {
+    const onSelectSlot = vi.fn();
+    const loadSchedule = async (date: string) => ({ date, slots: daySlots(date), bookings: [] });
+    render(<Schedule initialDate="2026-09-27" loadSchedule={loadSchedule} onSelectSlot={onSelectSlot} />);
+
+    const start = await screen.findByRole('button', { name: 'Резервирай Зала в 08:30' });
+    const end = screen.getByRole('button', { name: 'Резервирай Зала в 09:30' });
+    fireEvent.pointerDown(start, { button: 0, pointerId: 8, pointerType: 'touch' });
+    fireEvent.pointerMove(end, { pointerId: 8, pointerType: 'touch' });
+
+    expect(end).toHaveClass('empty-slot--selected');
+    fireEvent.pointerUp(end, { pointerId: 8, pointerType: 'touch' });
+    expect(onSelectSlot).toHaveBeenCalledWith(expect.objectContaining({ endsAt: '2026-09-27T10:00:00' }));
   });
 
   test('does not offer unknown availability as free after an initial load failure', async () => {
@@ -76,30 +92,39 @@ describe('Schedule screen', () => {
     expect(screen.queryByText(/€\d/)).not.toBeInTheDocument();
   });
 
-  test('groups persistent room visibility choices and hides unchecked columns', async () => {
+  test('uses pressed room buttons and hides unpressed columns', async () => {
     const loadSchedule = async (date: string) => ({ date, slots: daySlots(date), bookings: [] });
     const firstRender = render(<Schedule initialDate="2026-09-27" loadSchedule={loadSchedule} />);
 
     expect(await screen.findByRole('heading', { name: 'Зала' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Зала' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Стая' })).toBeChecked();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Стая' }));
+    expect(screen.getByRole('button', { name: 'Зала' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Стая' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Стая' }));
     expect(screen.queryByRole('heading', { name: 'Стая' })).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem('schedule-visible-rooms')!)).toEqual(['hall']);
 
     firstRender.unmount();
     const secondRender = render(<Schedule initialDate="2026-09-27" loadSchedule={loadSchedule} />);
     expect(await screen.findByRole('heading', { name: 'Зала' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Зала' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Стая' })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Зала' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Стая' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByRole('heading', { name: 'Стая' })).not.toBeInTheDocument();
 
     secondRender.unmount();
     localStorage.setItem('schedule-visible-rooms', JSON.stringify(['room']));
     render(<Schedule initialDate="2026-09-27" loadSchedule={loadSchedule} />);
     expect(await screen.findByRole('heading', { name: 'Стая' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Зала' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Зала' }));
     expect(screen.getByRole('button', { name: 'Резервирай Зала в 08:30' }).parentElement).toHaveStyle({ gridColumn: '2' });
     expect(screen.getByRole('button', { name: 'Резервирай Стая в 08:30' }).parentElement).toHaveStyle({ gridColumn: '3' });
+  });
+
+  test('keeps the date and room controls in the schedule toolbar', async () => {
+    const loadSchedule = async (date: string) => ({ date, slots: [], bookings: [] });
+    render(<Schedule initialDate="2026-09-27" loadSchedule={loadSchedule} />);
+
+    await screen.findByRole('button', { name: 'Зала' });
+    expect(screen.getByRole('banner')).toHaveClass('schedule-date-bar');
+    expect(screen.getByLabelText('Дата в графика')).toBeInTheDocument();
   });
 });
