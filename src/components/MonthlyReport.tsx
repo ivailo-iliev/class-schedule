@@ -72,7 +72,6 @@ function RowTable({ rows }: { rows: MonthReportRow[] }) {
                 <strong>{row.activityTitle}</strong>
                 {row.priceBreakdown.length > 0 && (
                   <div className="report-breakdown">
-                    <span>Разбивка на цената</span>
                     <ul>
                       {groupPriceSegments(row.priceBreakdown).map((segment, index) => (
                         <li key={`${row.id}-${segment.rule_id ?? segment.label}-${segment.starts_at}-${index}`}>
