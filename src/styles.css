@@ -247,6 +247,49 @@ select:focus-visible {
   background: #f4f7fc;
 }
 
+.room-controls {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: stretch;
+  margin: 0;
+  padding: 0.2rem;
+  border: 1px solid #d6e0ee;
+  border-radius: 0.8rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(26 60 108 / 6%);
+}
+
+.room-toggle {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.7rem;
+  border-radius: 0.6rem;
+  color: #2b3d5d;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+  user-select: none;
+}
+
+.room-toggle + .room-toggle {
+  border-left: 1px solid #e6ecf4;
+  border-radius: 0 0.6rem 0.6rem 0;
+}
+
+.room-toggle:hover {
+  background: #eff5ff;
+  color: #1556bf;
+}
+
+.room-toggle input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
 .schedule-loading,
 .schedule-message {
   margin: 1rem 0;
@@ -364,11 +407,25 @@ select:focus-visible {
 }
 
 .empty-slot {
+  position: relative;
   background: transparent;
   color: #58749d;
   touch-action: none;
   user-select: none;
   transition: background 140ms ease, color 140ms ease;
+}
+
+.empty-slot__price {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  color: #6b7a92;
+  font-size: 0.66rem;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .empty-slot:hover,

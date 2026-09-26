@@ -14,9 +14,13 @@ describe('getDay', () => {
     rpc.mockResolvedValueOnce({ data: {
       date: '2026-11-02',
       bookings: [{ id: 'b1', room: 'hall', starts_at: '2026-11-02T08:30:00', ends_at: '2026-11-02T09:00:00', teacher_name: 'Елеонора', activity_title: 'Йога', can_manage: true }],
+      slot_prices: [{ starts_at: '2026-11-02T08:30:00', price: '5.00', currency: 'EUR' }],
     }, error: null });
 
-    await expect(getDay('2026-11-02')).resolves.toMatchObject({ bookings: [{ id: 'b1', startsAt: '2026-11-02T08:30:00', endsAt: '2026-11-02T09:00:00' }] });
+    await expect(getDay('2026-11-02')).resolves.toMatchObject({
+      bookings: [{ id: 'b1', startsAt: '2026-11-02T08:30:00', endsAt: '2026-11-02T09:00:00' }],
+      slotPrices: [{ startsAt: '2026-11-02T08:30:00', price: '5.00', currency: 'EUR' }],
+    });
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenCalledWith('get_day', { p_date: '2026-11-02' });
   });

@@ -19,10 +19,15 @@ import type {
   MyMonthReport,
   Profile,
   Room,
+  SlotPrice,
 } from './types';
 
 type SupabaseResult<T> = { data: T | null; error: PostgrestError | null };
-type DayPayload = { date: string; bookings: Array<{ id: string; room: Room; starts_at: string; ends_at: string; teacher_name: string; activity_title: string; can_manage: boolean }> };
+type DayPayload = {
+  date: string;
+  bookings: Array<{ id: string; room: Room; starts_at: string; ends_at: string; teacher_name: string; activity_title: string; can_manage: boolean }>;
+  slot_prices?: unknown[];
+};
 type ClassRow = Pick<Tables<'classes'>, 'id' | 'teacher_id' | 'name' | 'active'>;
 type TeacherProfileRow = Pick<Tables<'profiles'>, 'id' | 'name' | 'role'>;
 
@@ -103,6 +108,13 @@ function mapScheduleBooking(row: DayPayload['bookings'][number]): Booking {
     cancelledAt: null, version: 0, canEdit: row.can_manage };
 }
 
+function mapSlotPrice(row: unknown): SlotPrice | null {
+  if (!row || typeof row !== 'object') return null;
+  const value = row as { starts_at?: unknown; price?: unknown; currency?: unknown };
+  if (typeof value.starts_at !== 'string' || typeof value.price !== 'string' || value.price.trim() === '' || typeof value.currency !== 'string') return null;
+  return { startsAt: value.starts_at, price: value.price, currency: value.currency };
+}
+
 function mapBookingDetail(row: BookingDetailPayload): BookingDetail {
   return {
     id: row.id,
@@ -170,7 +182,14 @@ function mapMonthReportRow(row: MonthReportRowPayload): MonthReportRow {
 export async function getDay(date: string): Promise<DaySchedule> {
   const result = await fetchOr(() => client().rpc('get_day', { p_date: date }) as unknown as PromiseLike<SupabaseResult<DayPayload>>);
   if (result.date !== date || !Array.isArray(result.bookings)) throw new Error('invalid_day_response');
-  return { date, slots: daySlots(date), bookings: result.bookings.map(mapScheduleBooking) };
+  return {
+    date,
+    slots: daySlots(date),
+    bookings: result.bookings.map(mapScheduleBooking),
+    slotPrices: (Array.isArray(result.slot_prices) ? result.slot_prices : [])
+      .map(mapSlotPrice)
+      .filter((price): price is SlotPrice => price !== null),
+  };
 }
 
 export async function getMyClasses(): Promise<ClassItem[]> {

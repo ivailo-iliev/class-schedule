@@ -4,6 +4,7 @@ export type Room = 'hall' | 'room';
 export type Role = 'teacher' | 'admin';
 
 export interface Slot { startsAt: string; }
+export interface SlotPrice { startsAt: string; price: string; currency: string; }
 export interface ClassItem { id: string; teacherId: string; name: string; active: boolean; }
 export interface Booking {
   id: string;
@@ -21,7 +22,7 @@ export interface Booking {
   version: number;
   canEdit: boolean;
 }
-export interface DaySchedule { date: string; slots: Slot[]; bookings: Booking[]; }
+export interface DaySchedule { date: string; slots: Slot[]; bookings: Booking[]; slotPrices?: SlotPrice[]; }
 export interface Profile { id: string; name: string; role: Role; }
 
 export interface BookingDetail extends Booking {

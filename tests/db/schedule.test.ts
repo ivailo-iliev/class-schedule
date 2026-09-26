@@ -3,6 +3,7 @@ import { asAuthenticated, db } from './helpers';
 
 const ELEONORA = '11111111-1111-1111-1111-111111111111';
 const SILVIA = '22222222-2222-2222-2222-222222222222';
+const GALYA = '44444444-4444-4444-4444-444444444444';
 const ADMIN = '33333333-3333-3333-3333-333333333333';
 const CLASS_E = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const CLASS_S = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
@@ -62,8 +63,23 @@ describe('safe authoritative daily schedule RPCs', () => {
           activity_title: 'Morning Yoga',
           can_manage: true,
         }],
+        slot_prices: expect.arrayContaining([
+          { starts_at: '2026-11-02T08:30:00', price: '5.00', currency: 'EUR' },
+        ]),
       });
+      expect(schedule.slot_prices).toHaveLength(23);
       expect(JSON.stringify(schedule)).not.toMatch(/Private child detail|private rate|student_details|amount|segments/i);
+    });
+  });
+
+  test('keeps the schedule readable when a slot has no configured price', async () => {
+    await asAuthenticated({ sub: GALYA, role: 'authenticated' }, async (client) => {
+      const { rows } = await client.query(`select public.get_day('2026-11-01'::date) as schedule`);
+      const schedule = rows[0].schedule;
+      expect(schedule.date).toBe('2026-11-01');
+      expect(schedule.slot_prices).not.toEqual(expect.arrayContaining([
+        { starts_at: '2026-11-01T08:30:00', price: expect.any(String), currency: 'EUR' },
+      ]));
     });
   });
 
