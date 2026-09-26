@@ -84,7 +84,7 @@ describe('MonthlyReport', () => {
     expect(api.getMyMonthReport).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/));
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
     expect(screen.getAllByText('90 мин.')).toHaveLength(2);
-    expect(screen.getByText('Разбивка на цената')).toBeInTheDocument();
+    expect(screen.queryByText('Разбивка на цената')).not.toBeInTheDocument();
     expect(screen.getByText('Activity a-cancelled')).toBeInTheDocument();
     expect(screen.queryByText('Teacher B')).not.toBeInTheDocument();
     expect(screen.getAllByText('Отменена').length).toBeGreaterThan(0);
