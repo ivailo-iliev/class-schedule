@@ -145,13 +145,13 @@ export default function App() {
   };
 
   if (state === 'loading') {
-    return <main className="access-screen"><section className="access-card"><p className="eyebrow">График на класовете</p><h1>Подготвя се работното пространство</h1><p>Свързване…</p></section></main>;
+    return <main className="access-screen"><section className="access-card"><p className="eyebrow">График на заниманията</p><h1>Подготвя се работното пространство</h1><p>Свързване…</p></section></main>;
   }
   if (state === 'unavailable') {
     return (
       <main className="access-screen">
         <section className="access-card">
-          <p className="eyebrow">График на класовете</p>
+          <p className="eyebrow">График на заниманията</p>
           <h1>Работно пространство за учители</h1>
           <p>{offline
             ? 'Няма връзка с интернет. Свържете се отново, преди да отворите личната си връзка за достъп.'
@@ -179,7 +179,7 @@ export default function App() {
               aria-current={activeView === 'classes' ? 'page' : undefined}
               onClick={() => setActiveView('classes')}
             >
-              Моите класове
+              Занимания
             </button>
             <button
               type="button"
@@ -187,7 +187,7 @@ export default function App() {
               aria-current={activeView === 'report' ? 'page' : undefined}
               onClick={() => setActiveView('report')}
             >
-              {profile?.role === 'admin' ? 'Администраторски отчет' : 'Месечен отчет'}
+              Отчети
             </button>
           </nav>
           <div className="teacher-identity">
@@ -230,7 +230,7 @@ export default function App() {
         </WorkspacePanel>
       )}
       {selectedBooking && (
-        <WorkspacePanel label="Подробности за резервацията" onClose={closeBookingPanel}>
+        <WorkspacePanel label="Резервация" onClose={closeBookingPanel}>
           <BookingDetails
             booking={selectedBooking}
             onClose={closeBookingPanel}

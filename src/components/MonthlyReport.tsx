@@ -64,7 +64,7 @@ function RowTable({ rows }: { rows: MonthReportRow[] }) {
           <tr>
             <th scope="col">Дата</th><th scope="col">Час</th><th scope="col">Продължителност</th>
             <th scope="col">Зала</th><th scope="col">Дейност</th><th scope="col">Статус</th>
-            <th scope="col">Запазена цена</th><th scope="col">За плащане</th>
+            <th scope="col">Цена при запазване</th><th scope="col">За плащане</th>
           </tr>
         </thead>
         <tbody>
@@ -139,25 +139,15 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
   }, [isAdmin, month, teacherId]); // teacherOptions intentionally only affects the first admin load.
 
   const rows = useMemo(() => reportRows(report), [report]);
-  const title = isAdmin ? 'Администраторски отчет' : 'Месечен отчет';
   const reportMonth = report?.month ?? month;
   const adminReport = isAdmin && report && 'teachers' in report ? report : null;
   const teacherReport = !isAdmin && report && 'rows' in report ? report : null;
 
   return (
     <main className="report-shell">
-      <div className="report-header">
-        <div>
-          <p className="eyebrow">Отчет за използването</p>
-          <h1>{title}</h1>
-          <p className="report-intro">Подробности за разрешените резервации и дължимите суми. Отменените резервации се отчитат като €0,00.</p>
-        </div>
-      </div>
-
       <div className="report-toolbar">
         <div className="report-actions">
-          <label htmlFor="report-month">Месец на отчета</label>
-          <input id="report-month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
+          <input id="report-month" type="month" aria-label="Избор на месец" value={month} onChange={(event) => setMonth(event.target.value)} />
           {isAdmin && (
             <label htmlFor="report-teacher">Филтрирай по учител
               <select id="report-teacher" value={teacherId ?? ''} onChange={(event) => setTeacherId(event.target.value || null)}>
@@ -178,7 +168,7 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
       {error && <div className="report-message report-message--error" role="alert">{error}</div>}
       {loading && <p className="report-message" role="status">Отчетът се зарежда…</p>}
       {!loading && !error && report && (
-        <section className="report-print-area" aria-label="Месечен отчет за печат">
+        <section className="report-print-area" aria-label="Отчет за печат">
           {teacherReport && <SummaryCards reservationCount={teacherReport.reservationCount} cancelledCount={teacherReport.cancelledCount} totalDue={teacherReport.totalDue} />}
           {adminReport && (
             <>

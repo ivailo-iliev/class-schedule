@@ -20,16 +20,16 @@ describe('App schedule integration', () => {
   test('renders the schedule navigation in Bulgarian', async () => {
     render(<App />);
     expect(await screen.findByRole('button', { name: 'График' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Моите класове' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Занимания' })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Зала' })).toBeInTheDocument();
     expect(mocks.getDay).toHaveBeenCalledTimes(1);
   });
 
   test('shows the teacher report destination and only calls the teacher report RPC', async () => {
     render(<App />);
-    expect(await screen.findByRole('button', { name: 'Месечен отчет' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Месечен отчет' }));
-    expect(await screen.findByRole('heading', { name: 'Месечен отчет' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Отчети' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отчети' }));
+    expect(await screen.findByLabelText('Обобщение на отчета')).toBeInTheDocument();
     await waitFor(() => expect(mocks.getMyMonthReport).toHaveBeenCalled());
     expect(mocks.getAdminMonthReport).not.toHaveBeenCalled();
   });
@@ -37,10 +37,9 @@ describe('App schedule integration', () => {
   test('shows the administrator destination only for admins and calls the admin report RPC', async () => {
     mocks.profile.mockReturnValue({ id: 'admin', name: 'Admin', role: 'admin' });
     render(<App />);
-    expect(await screen.findByRole('button', { name: 'Администраторски отчет' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Месечен отчет' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Администраторски отчет' }));
-    expect(await screen.findByRole('heading', { name: 'Администраторски отчет' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Отчети' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отчети' }));
+    expect(await screen.findByText('Обща сума в касата')).toBeInTheDocument();
     await waitFor(() => expect(mocks.getAdminMonthReport).toHaveBeenCalled());
     expect(mocks.getMyMonthReport).not.toHaveBeenCalled();
   });

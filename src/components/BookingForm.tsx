@@ -64,6 +64,10 @@ const ROOMS: readonly { id: Room; label: string }[] = [
   { id: 'hall', label: 'Зала' },
   { id: 'room', label: 'Стая' },
 ];
+const TIME_OPTIONS: readonly string[] = Array.from({ length: 48 }, (_, index) => {
+  const totalMinutes = index * 30;
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+});
 const WEEKDAYS: readonly { value: number; label: string }[] = [
   { value: 1, label: 'Понеделник' },
   { value: 2, label: 'Вторник' },
@@ -145,7 +149,7 @@ export function buildOccurrences(
     return { occurrences: [], error: 'Изберете поне един ден от седмицата и период от 1 до 52 седмици.' };
   }
   const count = countWeeks * selected.length;
-  if (count > MAX_OCCURRENCES) return { occurrences: [], error: 'Повтарящата се резервация може да съдържа най-много 104 занятия.' };
+  if (count > MAX_OCCURRENCES) return { occurrences: [], error: 'Повтарящата се резервация може да съдържа най-много 104 занимания.' };
   const occurrences: BookingOccurrence[] = [];
   for (let week = 0; week < countWeeks; week += 1) {
     for (const day of selected) {
@@ -252,7 +256,7 @@ export default function BookingForm({
       setClassId((current) => items.some((item) => item.id === current)
         ? current : (items.some((item) => item.id === existingBooking?.classId) ? existingBooking!.classId : ''));
     };
-    void load().catch(() => { if (mounted) setError('Активните класове не могат да бъдат заредени. Опитайте отново.'); })
+    void load().catch(() => { if (mounted) setError('Активните занимания не могат да бъдат заредени. Опитайте отново.'); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [loadClasses, loadTeachers, profile?.role]);
@@ -290,7 +294,7 @@ export default function BookingForm({
       }).catch((reason) => {
         if (requestId.value !== currentRequest) return;
         setQuote(null);
-        setQuoteError(isConflict(reason) ? 'Едно или повече занятия съвпадат с друга резервация в графика.' : 'Не може да бъде получена ценова оферта.');
+        setQuoteError(isConflict(reason) ? 'Едно или повече занимания съвпадат с друга резервация в графика.' : 'Не може да бъде получена ценова оферта.');
       }).finally(() => {
         if (requestId.value === currentRequest) setQuoteLoading(false);
       });
@@ -371,19 +375,19 @@ export default function BookingForm({
     <section className="booking-form" aria-labelledby="booking-form-title">
       <header>
         <h2 id="booking-form-title">{editing ? 'Промяна на резервация' : 'Резервиране на зала'}</h2>
-        <p>{editing ? 'Променяте само това занятие.' : 'Преди потвърждението ще получите ценова оферта от сървъра.'}</p>
+        {editing && <p>Променяте само това занимание.</p>}
       </header>
       {error && <p className="booking-form__message booking-form__message--error" role="alert">{error}</p>}
       {success && <p className="booking-form__message booking-form__message--success" role="status">{success}</p>}
-      {loading && <p role="status">Активните класове се зареждат…</p>}
-      {noClasses && <p className="booking-form__message" role="status">Създайте активен клас, преди да резервирате зала.</p>}
+      {loading && <p role="status">Активните занимания се зареждат…</p>}
+      {noClasses && <p className="booking-form__message" role="status">Създайте активно занимание, преди да резервирате зала.</p>}
       {offline && <p className="booking-form__message booking-form__message--offline" role="alert">Няма връзка с интернет. Промените по резервациите са изключени до възстановяване на връзката.</p>}
       {!loading && !noClasses && (
         <form onSubmit={handleSubmit}>
           {editing && existingBooking && (
             <dl className="booking-form__identity" aria-label="Информация за резервацията">
               <div><dt>Учител</dt><dd>{existingBooking.teacherName}</dd></div>
-              <div><dt>Серия</dt><dd>{editingSeriesLabel ?? 'Избрано занятие от серията'}</dd></div>
+              <div><dt>Модул</dt><dd>{editingSeriesLabel ?? 'Избрано занимание от модула'}</dd></div>
             </dl>
           )}
           {profile?.role === 'admin' && !editing && (
@@ -394,7 +398,7 @@ export default function BookingForm({
               </select>
             </>
           )}
-          <label htmlFor="booking-class">Клас</label>
+          <label htmlFor="booking-class">Занимание</label>
           <select id="booking-class" value={classId} onChange={(event) => setClassId(event.target.value)} disabled={pending || offline}>
             {availableClasses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
@@ -420,9 +424,13 @@ export default function BookingForm({
             </>
           )}
           <label htmlFor="booking-start">Начален час</label>
-          <input id="booking-start" type="time" step={1800} value={startTime} onChange={(event) => setStartTime(event.target.value)} disabled={pending || offline} required />
+          <select id="booking-start" value={startTime} onChange={(event) => setStartTime(event.target.value)} disabled={pending || offline} required>
+            {TIME_OPTIONS.map((time) => <option key={time} value={time}>{time}</option>)}
+          </select>
           <label htmlFor="booking-end">Краен час</label>
-          <input id="booking-end" type="time" step={1800} value={endTime} onChange={(event) => setEndTime(event.target.value)} disabled={pending || offline} required />
+          <select id="booking-end" value={endTime} onChange={(event) => setEndTime(event.target.value)} disabled={pending || offline} required>
+            {TIME_OPTIONS.map((time) => <option key={time} value={time}>{time}</option>)}
+          </select>
           <label htmlFor="booking-room">Зала</label>
           <select id="booking-room" value={room} onChange={(event) => setRoom(event.target.value as Room)} disabled={pending || offline}>
             {ROOMS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
@@ -439,13 +447,13 @@ export default function BookingForm({
               {!quoteLoading && !quoteError && generated.error && <p className="booking-form__message booking-form__message--error" role="alert">{generated.error}</p>}
               {!quoteLoading && !quoteError && !generated.error && quote && (
                 <>
-                  <p>{quote.occurrences.length} {quote.occurrences.length === 1 ? 'конкретно занятие' : 'конкретни занятия'}</p>
+                  <p>{quote.occurrences.length} {quote.occurrences.length === 1 ? 'конкретно занимание' : 'конкретни занимания'}</p>
                   <ul className="booking-form__occurrences">
                     {quote.occurrences.map((occurrence) => <li key={`${occurrence.occurrence_index}:${occurrence.starts_at}`}>
                       <strong>{occurrence.starts_at.slice(0, 10)} {displayTime(occurrence.starts_at)}–{displayTime(occurrence.ends_at)}</strong>
                       <span>{occurrence.duration_minutes} минути · {money(occurrence.amount)}</span>
                       {occurrence.segments.length > 0 && <ul>{occurrence.segments.map((segment) => <li key={`${segment.starts_at}:${segment.ends_at}`}>{displayTime(segment.starts_at)}–{displayTime(segment.ends_at)} · {segment.label} · {money(segment.hourly_rate)}/ч · {money(segment.subtotal)}</li>)}</ul>}
-                      {occurrence.conflicts.length > 0 && <span role="alert">Това занятие съвпада с друга резервация.</span>}
+                      {occurrence.conflicts.length > 0 && <span role="alert">Това занимание съвпада с друга резервация.</span>}
                     </li>)}
                   </ul>
                   <p className="booking-form__total"><strong>Общо: {money(quote.total_amount)}</strong></p>

@@ -77,6 +77,24 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof BookingForm>>
 }
 
 describe('BookingForm server-quoted creation', () => {
+  test('offers only 24-hour half-hour choices for the time pickers and omits the creation description', async () => {
+    renderForm();
+    const start = await screen.findByRole('combobox', { name: 'Начален час' });
+    const end = screen.getByRole('combobox', { name: 'Краен час' });
+
+    for (const picker of [start, end]) {
+      const choices = Array.from(picker.querySelectorAll('option'), (option) => option.value);
+      expect(choices).toHaveLength(48);
+      expect(choices[0]).toBe('00:00');
+      expect(choices.at(-1)).toBe('23:30');
+      expect(choices.every((choice) => choice.length === 5 && (choice.endsWith(':00') || choice.endsWith(':30')) && Number(choice.slice(0, 2)) >= 0 && Number(choice.slice(0, 2)) < 24)).toBe(true);
+    }
+    expect(start).toHaveValue('08:30');
+    expect(end).toHaveValue('09:00');
+    expect(screen.queryByText('Преди потвърждението ще получите ценова оферта от сървъра.')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Занимание' })).toBeInTheDocument();
+  });
+
   test('quotes exact local half-hour occurrences and shows segment pricing', async () => {
     const { quoteBooking } = renderForm();
     await waitFor(() => expect(quoteBooking).toHaveBeenCalledWith('class-a', 'hall', [
@@ -94,7 +112,7 @@ describe('BookingForm server-quoted creation', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Повтарящо се' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Вторник' }));
     fireEvent.change(screen.getByLabelText('Брой седмици'), { target: { value: '2' } });
-    await waitFor(() => expect(screen.getByText('4 конкретни занятия')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('4 конкретни занимания')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Потвърди резервацията' }));
 
     await waitFor(() => expect(createBookingSeries).toHaveBeenCalledTimes(1));

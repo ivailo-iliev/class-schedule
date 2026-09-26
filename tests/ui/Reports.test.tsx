@@ -76,7 +76,11 @@ describe('MonthlyReport', () => {
 
   test('teacher loads only personal report rows, cancelled totals, and print/export controls', async () => {
     render(<MonthlyReport profile={profile('teacher')} />);
-    expect(await screen.findByRole('heading', { name: 'Месечен отчет' })).toBeInTheDocument();
+    expect(await screen.findByText('Activity a-active')).toBeInTheDocument();
+    expect(screen.getByLabelText('Избор на месец')).toHaveAttribute('type', 'month');
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+    expect(screen.queryByText('Отчет за използването')).not.toBeInTheDocument();
+    expect(screen.queryByText('Месец на отчета')).not.toBeInTheDocument();
     expect(api.getMyMonthReport).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/));
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
     expect(screen.getAllByText('90 мин.')).toHaveLength(2);
@@ -86,12 +90,13 @@ describe('MonthlyReport', () => {
     expect(screen.getAllByText('Отменена').length).toBeGreaterThan(0);
     expect(screen.getAllByText('€10.00').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Експортирай видимите редове като CSV' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Месечен отчет за печат' })).toHaveClass('report-print-area');
+    expect(screen.getByRole('region', { name: 'Отчет за печат' })).toHaveClass('report-print-area');
+    expect(screen.getByText('Цена при запазване')).toBeInTheDocument();
   });
 
   test('admin fetches all teachers, filters server-returned rows, and exposes combined total', async () => {
     render(<MonthlyReport profile={profile('admin')} />);
-    expect(await screen.findByRole('heading', { name: 'Администраторски отчет' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Teacher A' })).toBeInTheDocument();
     expect(api.getAdminMonthReport).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), null);
     expect(screen.getByRole('heading', { name: 'Teacher A' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Teacher B' })).toBeInTheDocument();
@@ -113,7 +118,7 @@ describe('MonthlyReport', () => {
     const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
 
     render(<MonthlyReport profile={profile('admin')} />);
-    expect(await screen.findByRole('heading', { name: 'Администраторски отчет' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Teacher A' })).toBeInTheDocument();
     fireEvent.change(screen.getByRole('combobox', { name: 'Филтрирай по учител' }), { target: { value: 'teacher-a' } });
     await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), 'teacher-a'));
 

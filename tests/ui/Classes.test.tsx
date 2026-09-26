@@ -38,6 +38,15 @@ function renderClasses(
 }
 
 describe('Classes screen', () => {
+  test('uses the new activity terminology and omits the page title and description', async () => {
+    renderClasses();
+
+    expect(await screen.findByText('Pilates')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Занимания' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Моите класове' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Управлявайте имената на класовете, които използвате при резервация на зали.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Добави занимание' })).toBeInTheDocument();
+  });
   test('shows only the teacher own classes as editable rows', async () => {
     renderClasses(teacher, [
       classItem(),
@@ -55,9 +64,9 @@ describe('Classes screen', () => {
       classItem({ id, ...changes }));
     renderClasses(teacher, [], { createClass: create, updateClass: update });
 
-    await screen.findByText(/Все още нямате класове/i);
-    fireEvent.change(screen.getByLabelText('Име на класа'), { target: { value: '  Dance  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Добави клас' }));
+    await screen.findByText(/Все още нямате занимания/i);
+    fireEvent.change(screen.getByLabelText('Име на заниманието'), { target: { value: '  Dance  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави занимание' }));
     await waitFor(() => expect(create).toHaveBeenCalledWith('Dance', undefined));
     expect(await screen.findByText('Dance')).toBeInTheDocument();
 
@@ -71,15 +80,15 @@ describe('Classes screen', () => {
   test('validates whitespace-only and overlong names before saving', async () => {
     const create = vi.fn(async (name: string) => classItem({ name }));
     renderClasses(teacher, [], { createClass: create });
-    await screen.findByText(/Все още нямате класове/i);
+    await screen.findByText(/Все още нямате занимания/i);
 
-    fireEvent.change(screen.getByLabelText('Име на класа'), { target: { value: '   ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Добави клас' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Въведете име на клас.');
+    fireEvent.change(screen.getByLabelText('Име на заниманието'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави занимание' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Въведете име на занимание.');
     expect(create).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText('Име на класа'), { target: { value: 'x'.repeat(101) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Добави клас' }));
+    fireEvent.change(screen.getByLabelText('Име на заниманието'), { target: { value: 'x'.repeat(101) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави занимание' }));
     expect(screen.getByRole('alert')).toHaveTextContent('до 100 знака');
     expect(create).not.toHaveBeenCalled();
   });
@@ -91,9 +100,9 @@ describe('Classes screen', () => {
     await screen.findByText('Pilates');
 
     fireEvent.click(screen.getByRole('button', { name: 'Архивирай Pilates' }));
-    expect(screen.getByRole('dialog')).toHaveTextContent('Вече планираните резервации за този клас ще останат');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Вече планираните резервации за това занимание ще останат');
     expect(update).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Архивирай класа' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Архивирай заниманието' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith('class-1', { active: false }));
     expect(await screen.findByText('Архивиран')).toBeInTheDocument();
 
@@ -109,8 +118,8 @@ describe('Classes screen', () => {
     expect(screen.getByRole('option', { name: 'Teacher A' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Teacher B' })).toBeInTheDocument();
     fireEvent.change(screen.getByRole('combobox', { name: 'Отговорен учител' }), { target: { value: teacherB.id } });
-    fireEvent.change(screen.getByLabelText('Име на класа'), { target: { value: 'Stretching' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Добави клас' }));
+    fireEvent.change(screen.getByLabelText('Име на заниманието'), { target: { value: 'Stretching' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави занимание' }));
     await waitFor(() => expect(create).toHaveBeenCalledWith('Stretching', teacherB.id));
 
     renderedAdmin.unmount();

@@ -23,8 +23,8 @@ export interface ClassesProps {
 
 function validateName(value: string): string | null {
   const name = value.trim();
-  if (!name) return 'Въведете име на клас.';
-  if (name.length > 100) return 'Името на класа трябва да е до 100 знака.';
+  if (!name) return 'Въведете име на занимание.';
+  if (name.length > 100) return 'Името на заниманието трябва да е до 100 знака.';
   return null;
 }
 
@@ -34,8 +34,8 @@ function sortClasses(items: ClassItem[]): ClassItem[] {
 
 function actionError(action: 'load' | 'save'): string {
   return action === 'load'
-    ? 'Класовете не могат да бъдат заредени. Опитайте отново.'
-    : 'Класът не може да бъде запазен. Опитайте отново.';
+    ? 'Заниманията не могат да бъдат заредени. Опитайте отново.'
+    : 'Заниманието не може да бъде запазено. Опитайте отново.';
 }
 
 export default function Classes({
@@ -112,7 +112,7 @@ export default function Classes({
       return;
     }
     if (isAdmin && !selectedTeacherId) {
-      setError('Изберете учител, към когото принадлежи този клас.');
+      setError('Изберете учител, към когото принадлежи това занимание.');
       return;
     }
     setPendingAction('create');
@@ -122,7 +122,7 @@ export default function Classes({
       const created = await createClass(className.trim(), isAdmin ? selectedTeacherId : undefined);
       applyReturnedClass(created);
       setClassName('');
-      setNotice(`Класът „${created.name}“ е създаден.`);
+      setNotice(`Заниманието „${created.name}“ е създадено.`);
     } catch {
       setError(actionError('save'));
     } finally {
@@ -156,7 +156,7 @@ export default function Classes({
       const updated = await updateClass(item.id, { name: editingName.trim() });
       applyReturnedClass(updated);
       cancelRename();
-      setNotice(`Името на класа „${updated.name}“ е променено.`);
+      setNotice(`Името на заниманието „${updated.name}“ е променено.`);
     } catch {
       setError(actionError('save'));
     } finally {
@@ -172,7 +172,7 @@ export default function Classes({
       const updated = await updateClass(item.id, { active });
       applyReturnedClass(updated);
       setArchiveCandidate(null);
-      setNotice(active ? `Класът „${updated.name}“ е възстановен.` : `Класът „${updated.name}“ е архивиран.`);
+      setNotice(active ? `Заниманието „${updated.name}“ е възстановено.` : `Заниманието „${updated.name}“ е архивирано.`);
     } catch {
       setError(actionError('save'));
     } finally {
@@ -181,25 +181,21 @@ export default function Classes({
   };
 
   return (
-    <main className="classes-shell" aria-labelledby="classes-title">
-      <header className="classes-header">
-        <h1 id="classes-title">Моите класове</h1>
-        <p>Управлявайте имената на класовете, които използвате при резервация на зали.</p>
-      </header>
+    <main className="classes-shell" aria-labelledby="class-list-title">
 
       {error && <p className="classes-message classes-message--error" role="alert">{error}</p>}
       {notice && <p className="classes-message classes-message--success" role="status">{notice}</p>}
 
       <section className="classes-panel" aria-labelledby="class-list-title">
-        <h2 id="class-list-title">Класове</h2>
-        <h2 id="add-class-title" className="visually-hidden">Добавяне на клас</h2>
+        <h2 id="class-list-title">Занимания</h2>
+        <h2 id="add-class-title" className="visually-hidden">Добавяне на занимание</h2>
         <form className="class-add" aria-labelledby="add-class-title" onSubmit={handleCreate}>
-          <label htmlFor="new-class-name" className="visually-hidden">Име на класа</label>
+          <label htmlFor="new-class-name" className="visually-hidden">Име на заниманието</label>
           <input
             id="new-class-name"
             value={className}
             maxLength={100}
-            placeholder="Нов клас"
+            placeholder="Ново занимание"
             onChange={(event) => setClassName(event.target.value)}
             aria-describedby="class-name-help"
           />
@@ -221,21 +217,21 @@ export default function Classes({
               </select>
             </>
           )}
-          <button type="submit" className="icon-button icon-button--primary" disabled={pendingAction === 'create'} aria-busy={pendingAction === 'create'} aria-label="Добави клас" title="Добави клас">
+          <button type="submit" className="icon-button icon-button--primary" disabled={pendingAction === 'create'} aria-busy={pendingAction === 'create'} aria-label="Добави занимание" title="Добави занимание">
             <Icon name="plus" />
           </button>
         </form>
-        {loading && <p role="status">Класовете се зареждат…</p>}
+        {loading && <p role="status">Заниманията се зареждат…</p>}
         {!loading && visibleClasses.length === 0 && (
-          <p role="status">Все още нямате класове. Създайте клас, преди да направите резервация.</p>
+          <p role="status">Все още нямате занимания. Създайте занимание, преди да направите резервация.</p>
         )}
         {!loading && visibleClasses.length > 0 && (
-          <ul className="class-list" aria-label="Списък с класове">
+          <ul className="class-list" aria-label="Списък със занимания">
             {visibleClasses.map((item) => (
               <li className={`class-row${item.active ? '' : ' class-row--archived'}`} key={item.id}>
                 {editingId === item.id ? (
                   <form className="class-rename-form" onSubmit={(event) => void saveRename(event, item)}>
-                    <label htmlFor={`rename-${item.id}`} className="visually-hidden">Име на класа</label>
+                    <label htmlFor={`rename-${item.id}`} className="visually-hidden">Име на заниманието</label>
                     <input
                       id={`rename-${item.id}`}
                       aria-label={`Преименувай ${item.name}`}
@@ -294,17 +290,17 @@ export default function Classes({
       {archiveCandidate && (
         <section className="classes-confirm" role="dialog" aria-modal="true" aria-labelledby="archive-title">
           <h2 id="archive-title">Да архивираме ли „{archiveCandidate.name}“?</h2>
-          <p>Вече планираните резервации за този клас ще останат. Архивирането спира само създаването на нови резервации.</p>
+          <p>Вече планираните резервации за това занимание ще останат. Архивирането спира само създаването на нови резервации.</p>
           <div className="class-row__actions">
             <button
               type="button"
               onClick={() => void changeActive(archiveCandidate, false)}
               disabled={pendingAction === `archive:${archiveCandidate.id}`}
             >
-              Архивирай класа
+              Архивирай заниманието
             </button>
             <button type="button" onClick={() => setArchiveCandidate(null)}>
-              Остави класа
+              Остави заниманието
             </button>
           </div>
         </section>

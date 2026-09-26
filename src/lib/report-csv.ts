@@ -10,7 +10,7 @@ const localDateTime = (value: string): string => value.replace('T', ' ').slice(0
 export function reportRowsToCsv(rows: MonthReportRow[]): string {
   const header = [
     'Дата', 'Начало', 'Край', 'Продължителност (минути)', 'Зала', 'Учител', 'Дейност',
-    'Статус', 'Запазена цена', 'Разбивка на цената', 'Дължима сума', 'Дата на отмяна',
+    'Статус', 'Цена при запазване', 'Разбивка на цената', 'Дължима сума', 'Дата на отмяна',
   ];
   const lines = rows.map((row) => [
     row.bookingDate,

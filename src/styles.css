@@ -175,8 +175,37 @@ select:focus-visible {
   box-shadow: 0 1px 2px rgb(26 60 108 / 6%);
 }
 
-.date-controls label {
-  display: flex;
+.date-controls .date-picker {
+  position: relative;
+  display: grid;
+  min-width: 12rem;
+  min-height: 44px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 0.6rem;
+  cursor: pointer;
+}
+
+.date-picker__display {
+  color: #2b3d5d;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.date-picker input[type="date"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.date-picker:focus-within {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .date-controls button,
@@ -207,23 +236,15 @@ select:focus-visible {
   border-radius: 0 0.6rem 0.6rem 0;
 }
 
-.date-controls input {
+.date-controls input:not([type="date"]) {
   width: 9.6rem;
   padding: 0 0.5rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
-.date-controls input:hover {
+.date-picker:hover {
   background: #f4f7fc;
-}
-
-.selected-date {
-  margin: 0;
-  color: #2b3d5d;
-  font-size: 0.95rem;
-  font-weight: 700;
-  text-transform: capitalize;
 }
 
 .schedule-loading,

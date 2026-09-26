@@ -12,7 +12,7 @@ export interface ScheduleHandle { refresh: () => Promise<DaySchedule | undefined
 
 function today(): string { return new Date().toISOString().slice(0, 10); }
 function shiftDate(date: string, days: number): string { const value = new Date(`${date}T12:00:00Z`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); }
-function displayDate(date: string): string { return new Intl.DateTimeFormat('bg-BG', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`)); }
+function displayDate(date: string): string { return new Intl.DateTimeFormat('bg-BG', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`)); }
 function timeLabel(local: string): string { return local.slice(11, 16); }
 function classHue(id: string): number { let hash = 0; for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0; return (hash % 12) * 30; }
 
@@ -45,10 +45,10 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
     <p className="visually-hidden">Свързано</p>
     <header className="schedule-date-bar"><div className="date-controls" aria-label="Управление на датата в графика">
       <button type="button" onClick={() => selectDate(shiftDate(date, -1))} aria-label="Предишен ден" title="Предишен ден"><Icon name="chevronLeft" /></button>
-      <label><span className="visually-hidden">Дата в графика</span><input type="date" value={date} onChange={(event) => selectDate(event.target.value)} /></label>
+      <label className="date-picker"><span className="visually-hidden">Дата в графика</span><span className="date-picker__display" aria-hidden="true">{displayDate(date)}</span><input type="date" aria-label="Дата в графика" value={date} onChange={(event) => selectDate(event.target.value)} /></label>
       <button type="button" onClick={() => selectDate(shiftDate(date, 1))} aria-label="Следващ ден" title="Следващ ден"><Icon name="chevronRight" /></button>
       <button type="button" onClick={() => void load(date).catch(() => undefined)} aria-label="Обнови графика" title="Обнови графика"><Icon name="refresh" /></button>
-    </div><p className="selected-date">{displayDate(date)}</p></header>
+    </div></header>
     {Boolean(error) && <p className="schedule-message schedule-message--inline" role="alert"><strong>Графикът може да не е актуален.</strong> Свободните часове ще се показват само за преглед, докато графикът не бъде обновен.</p>}
     {loading && !schedule && <p className="schedule-loading" role="status">Графикът се зарежда…</p>}
     {schedule && <section className="schedule-grid" role="grid" aria-label={`График за ${displayDate(date)}`} style={{ gridTemplateRows: `44px repeat(${slots.length}, 3rem)` }}>

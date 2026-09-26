@@ -243,7 +243,7 @@ export default function BookingDetails({
       setConfirming(false);
       setNotice(count === 0
         ? 'Тази резервация вече е била отменена. Графикът е обновен.'
-        : `${cancelScope === 'future' ? 'Това и следващите занятия от серията са отменени.' : 'Резервацията е отменена.'}${refreshed.failed ? ' Графикът не можа да бъде обновен.' : ''}`);
+        : `${cancelScope === 'future' ? 'Това и следващите занимания от модула са отменени.' : 'Резервацията е отменена.'}${refreshed.failed ? ' Графикът не можа да бъде обновен.' : ''}`);
     } finally {
       setPending(false);
     }
@@ -278,7 +278,7 @@ export default function BookingDetails({
         startsAt={currentBooking.startsAt}
         room={currentBooking.room}
         existingBooking={currentBooking}
-        editingSeriesLabel={detail ? `Занятие ${detail.seriesIndex + 1} от серия ${detail.seriesId}` : undefined}
+        editingSeriesLabel={detail ? `Занимание ${detail.seriesIndex + 1} от модул ${detail.seriesId}` : undefined}
         profile={profile}
         loadClasses={loadClasses}
         editBooking={editBooking}
@@ -297,9 +297,9 @@ export default function BookingDetails({
   }
 
   return (
-    <section className="booking-details" aria-label="Подробности за резервацията" aria-labelledby="booking-details-title">
+    <section className="booking-details" aria-label="Резервация" aria-labelledby="booking-details-title">
       <header className="booking-details__header">
-        <h2 id="booking-details-title">Подробности за резервацията</h2>
+        <h2 id="booking-details-title">Резервация</h2>
         <button type="button" onClick={onClose} aria-label="Затвори подробностите за резервацията">×</button>
       </header>
 
@@ -308,15 +308,15 @@ export default function BookingDetails({
       {notice && <p className="booking-details__message booking-details__message--success" role="status">{notice}</p>}
 
       <dl className="booking-details__list">
-        <div><dt>Клас</dt><dd>{currentBooking.className}</dd></div>
+        <div><dt>Занимание</dt><dd>{currentBooking.className}</dd></div>
         <div><dt>Учител</dt><dd>{currentBooking.teacherName}</dd></div>
         <div><dt>Дата</dt><dd>{formattedDate}</dd></div>
         <div><dt>Час</dt><dd>{formattedStart}–{formattedEnd}</dd></div>
         <div><dt>Зала</dt><dd>{formattedRoom}</dd></div>
-        <div><dt>Тип</dt><dd>Едно занятие</dd></div>
-        {detail && <div><dt>Серия</dt><dd>Занятие {detail.seriesIndex + 1} от серия {detail.seriesId}</dd></div>}
+        <div><dt>Тип</dt><dd>{detail && (detail.seriesIndex > 0 || detail.hasFutureActive) ? 'Повтарящо се' : 'Еднократно'}</dd></div>
+        {detail && <div><dt>Модул</dt><dd>Занимание {detail.seriesIndex + 1} от модул {detail.seriesId}</dd></div>}
         {detail && <div><dt>Бележки за ученика</dt><dd>{detail.studentDetails || 'Няма добавени бележки'}</dd></div>}
-        {detail && <div><dt>Запазена сума</dt><dd>{detail.amount === null ? 'Не е налична' : `${detail.currency} ${detail.amount}`}</dd></div>}
+        {detail && <div><dt>Цена при запазване</dt><dd>{detail.amount === null ? 'Не е налична' : `${detail.currency} ${detail.amount}`}</dd></div>}
       </dl>
 
       {detail && detail.segments.length > 0 && (
@@ -354,12 +354,12 @@ export default function BookingDetails({
           <h3 id="cancel-booking-title">Да отменим ли тази резервация?</h3>
           <p>
             Да отменим ли „{currentBooking.className}“ на {formattedDate} в {formattedStart} в {formattedRoom}?
-            Изберете кои активни занятия да бъдат отменени. Промяната засяга само това занятие.
+            Изберете кои активни занимания да бъдат отменени. Промяната засяга само това занимание.
           </p>
           <fieldset>
             <legend>Обхват на отмяната</legend>
-            <label><input type="radio" name="cancel-scope" checked={cancelScope === 'one'} onChange={() => setCancelScope('one')} disabled={pending} /> Само това занятие</label>
-            {hasFutureActive && <label><input type="radio" name="cancel-scope" checked={cancelScope === 'future'} onChange={() => setCancelScope('future')} disabled={pending} /> Това и следващите занятия</label>}
+            <label><input type="radio" name="cancel-scope" checked={cancelScope === 'one'} onChange={() => setCancelScope('one')} disabled={pending} /> Само това занимание</label>
+            {hasFutureActive && <label><input type="radio" name="cancel-scope" checked={cancelScope === 'future'} onChange={() => setCancelScope('future')} disabled={pending} /> Това и следващите занимания</label>}
           </fieldset>
           <div className="booking-details__actions">
             <button type="button" onClick={() => void handleCancel()} disabled={pending || offline}>
