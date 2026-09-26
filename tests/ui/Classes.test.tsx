@@ -126,4 +126,17 @@ describe('Classes screen', () => {
     renderClasses(teacher, [classItem()], { teachers: [teacher, teacherB] });
     expect(screen.queryByRole('combobox', { name: 'Отговорен учител' })).not.toBeInTheDocument();
   });
+
+  test('places the teacher selector before a name field with its add button beside it', async () => {
+    renderClasses(admin, [], { teachers: [teacher, teacherB] });
+
+    const form = screen.getByRole('form', { name: 'Добавяне на занимание' });
+    const teacherSelect = screen.getByRole('combobox', { name: 'Отговорен учител' });
+    const nameInput = screen.getByLabelText('Име на заниманието');
+    const addButton = screen.getByRole('button', { name: 'Добави занимание' });
+
+    expect(form).toHaveClass('class-add--admin');
+    expect(teacherSelect.compareDocumentPosition(nameInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(nameInput.parentElement).toBe(addButton.parentElement);
+  });
 });

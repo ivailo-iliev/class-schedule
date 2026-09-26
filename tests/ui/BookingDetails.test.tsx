@@ -67,6 +67,8 @@ describe('BookingDetails', () => {
     expect(screen.getByRole('heading', { name: 'Резервация' })).toBeInTheDocument();
     expect(screen.getByText('Повтарящо се')).toBeInTheDocument();
     expect(screen.getByText('Модул', { selector: 'dt' })).toBeInTheDocument();
+    expect(screen.getByText('Занимание 2')).toBeInTheDocument();
+    expect(screen.queryByText('series-1')).not.toBeInTheDocument();
     expect(screen.getByText('Цена при запазване', { selector: 'dt' })).toBeInTheDocument();
   });
 
@@ -113,7 +115,7 @@ describe('BookingDetails', () => {
     expect(screen.getByText('Избрано занимание от модула')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Занимание' })).toHaveValue('class-a');
     fireEvent.change(screen.getByRole('combobox', { name: 'Зала' }), { target: { value: 'room' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
       'booking-1', 3, 'class-a', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
@@ -135,7 +137,7 @@ describe('BookingDetails', () => {
     expect(await screen.findByRole('heading', { name: 'Промяна на резервация' })).toBeInTheDocument();
     expect(screen.getByText('Teacher B')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Занимание' })).toHaveValue('class-a');
-    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
       'booking-1', 3, 'class-a', 'hall', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
@@ -171,7 +173,7 @@ describe('BookingDetails', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
     fireEvent.change(await screen.findByRole('combobox', { name: 'Занимание' }), { target: { value: 'class-b' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Зала' }), { target: { value: 'room' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
       'booking-1', 3, 'class-b', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
     ));
@@ -179,7 +181,7 @@ describe('BookingDetails', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
     expect(await screen.findByRole('combobox', { name: 'Занимание' })).toHaveValue('class-b');
-    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
     await waitFor(() => expect(editBooking).toHaveBeenLastCalledWith(
       'booking-1', 9, 'class-b', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
     ));
@@ -349,7 +351,8 @@ describe('BookingDetails', () => {
 
     expect(await screen.findByRole('heading', { name: 'Промяна на резервация' })).toBeInTheDocument();
     expect(screen.getByText('Teacher A')).toBeInTheDocument();
-    expect(screen.getByText('Занимание 2 от модул series-1')).toBeInTheDocument();
+    expect(screen.getByText('Занимание 2')).toBeInTheDocument();
+    expect(screen.queryByText('series-1')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Занимание' })).toHaveValue('class-a');
     expect(screen.queryByRole('combobox', { name: 'Teacher' })).not.toBeInTheDocument();
   });

@@ -83,7 +83,7 @@ describe('MonthlyReport', () => {
     expect(screen.queryByText('Месец на отчета')).not.toBeInTheDocument();
     expect(api.getMyMonthReport).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/));
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
-    expect(screen.getAllByText('90 мин.')).toHaveLength(2);
+    expect(screen.getAllByText('09:00–10:30 (90 мин.)')).toHaveLength(2);
     expect(screen.queryByText('Разбивка на цената')).not.toBeInTheDocument();
     expect(screen.getByText('Activity a-cancelled')).toBeInTheDocument();
     expect(screen.queryByText('Teacher B')).not.toBeInTheDocument();
@@ -101,7 +101,8 @@ describe('MonthlyReport', () => {
     expect(screen.getByRole('heading', { name: 'Teacher A' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Teacher B' })).toBeInTheDocument();
     expect(screen.getAllByText('€20.00').length).toBeGreaterThan(0);
-    const filter = screen.getByRole('combobox', { name: 'Филтрирай по учител' });
+    const filter = screen.getByRole('combobox', { name: 'Учител' });
+    expect(screen.queryByText('Филтрирай по учител')).not.toBeInTheDocument();
     fireEvent.change(filter, { target: { value: 'teacher-b' } });
     await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), 'teacher-b'));
     expect(screen.getByText('Activity b-active')).toBeInTheDocument();
@@ -134,14 +135,14 @@ describe('MonthlyReport', () => {
 
     render(<MonthlyReport profile={profile('admin')} />);
     expect(await screen.findByRole('heading', { name: 'Teacher A' })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Филтрирай по учител' }), { target: { value: 'teacher-a' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Учител' }), { target: { value: 'teacher-a' } });
     await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), 'teacher-a'));
 
     const summary = screen.getByLabelText('Обобщение на отчета');
     const amountDueCard = within(summary).getByText('Дължима сума').closest('div');
     expect(amountDueCard?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Дължима сума€10.00');
     expect(screen.getByText('Activity a-active')).toBeInTheDocument();
-    expect(screen.getAllByText('90 мин.')).toHaveLength(2);
+    expect(screen.getAllByText('09:00–10:30 (90 мин.)')).toHaveLength(2);
     expect(screen.getByText('Activity a-cancelled')).toBeInTheDocument();
     expect(screen.queryByText('Activity b-active')).not.toBeInTheDocument();
     expect(screen.queryByText('Activity browser-only')).not.toBeInTheDocument();

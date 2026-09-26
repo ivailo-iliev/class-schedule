@@ -17,6 +17,10 @@ function localDateTime(value: string): string {
   return value.replace('T', ' ').slice(0, 16);
 }
 
+function timeRangeLabel(row: MonthReportRow): string {
+  return `${localDateTime(row.startsAt).slice(11)}–${localDateTime(row.endsAt).slice(11)} (${row.durationMinutes} мин.)`;
+}
+
 function roomLabel(room: MonthReportRow['room']): string {
   return room === 'hall' ? 'Зала' : 'Стая';
 }
@@ -56,7 +60,7 @@ function RowTable({ rows }: { rows: MonthReportRow[] }) {
         <caption className="sr-only">Подробности за разрешените резервации</caption>
         <thead>
           <tr>
-            <th scope="col">Дата</th><th scope="col">Час</th><th scope="col">Продължителност</th>
+            <th scope="col">Дата</th><th scope="col">Час</th>
             <th scope="col">Зала</th><th scope="col">Дейност</th><th scope="col">Статус</th>
             <th scope="col">Цена при запазване</th><th scope="col">За плащане</th>
           </tr>
@@ -65,8 +69,7 @@ function RowTable({ rows }: { rows: MonthReportRow[] }) {
           {rows.map((row) => (
             <tr key={row.id} className={row.cancelled ? 'report-table__cancelled' : undefined}>
               <td>{row.bookingDate}</td>
-              <td>{localDateTime(row.startsAt).slice(11)}–{localDateTime(row.endsAt).slice(11)}</td>
-              <td>{row.durationMinutes} мин.</td>
+              <td>{timeRangeLabel(row)}</td>
               <td>{roomLabel(row.room)}</td>
               <td>
                 <strong>{row.activityTitle}</strong>
@@ -142,12 +145,10 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
         <div className="report-actions">
           <input id="report-month" type="month" aria-label="Избор на месец" value={month} onChange={(event) => setMonth(event.target.value)} />
           {isAdmin && (
-            <label htmlFor="report-teacher">Филтрирай по учител
-              <select id="report-teacher" value={teacherId ?? ''} onChange={(event) => setTeacherId(event.target.value || null)}>
+            <select id="report-teacher" aria-label="Учител" value={teacherId ?? ''} onChange={(event) => setTeacherId(event.target.value || null)}>
                 <option value="">Всички учители</option>
                 {teacherOptions.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
-              </select>
-            </label>
+            </select>
           )}
         </div>
         {!loading && !error && report && (
