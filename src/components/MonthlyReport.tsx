@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { getAdminMonthReport, getMyMonthReport, getTeachers } from '../lib/api';
 import { formatCalendarDate } from '../lib/calendar';
 import { formatAmount, groupPriceSegments } from '../lib/price-breakdown';
@@ -7,6 +7,9 @@ import type { AdminMonthReport, MonthReportRow, MyMonthReport, Profile } from '.
 import Icon from './Icon';
 
 interface MonthlyReportProps { profile: Profile; }
+export interface MonthlyReportHandle {
+  refresh: () => Promise<void | undefined>;
+}
 type ReportData = MyMonthReport | AdminMonthReport;
 
 function currentMonth(): string {
@@ -107,7 +110,7 @@ function RowTable({ rows }: { rows: MonthReportRow[] }) {
   );
 }
 
-export default function MonthlyReport({ profile }: MonthlyReportProps) {
+const MonthlyReport = forwardRef<MonthlyReportHandle, MonthlyReportProps>(function MonthlyReport({ profile }, ref) {
   const [month, setMonth] = useState(currentMonth);
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [teacherOptions, setTeacherOptions] = useState<Profile[]>([]);
@@ -115,35 +118,60 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const isAdmin = profile.role === 'admin';
+  const monthRef = useRef(month);
+  const teacherIdRef = useRef(teacherId);
+  const teacherOptionsRef = useRef(teacherOptions);
+  const mountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+  const refreshInFlight = useRef<Promise<void | undefined> | null>(null);
+  monthRef.current = month;
+  teacherIdRef.current = teacherId;
+  teacherOptionsRef.current = teacherOptions;
 
-  useEffect(() => {
-    let active = true;
+  const loadReport = useCallback(async (nextMonth: string, nextTeacherId: string | null, includeTeachers: boolean): Promise<void> => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
-    const load = async () => {
-      try {
-        if (isAdmin) {
-          const [nextReport, teachers] = await Promise.all([
-            getAdminMonthReport(month, teacherId),
-            teacherOptions.length === 0 ? getTeachers() : Promise.resolve(teacherOptions),
-          ]);
-          if (!active) return;
-          setReport(nextReport);
-          if (teachers.length > 0) setTeacherOptions(teachers);
-          else setTeacherOptions(nextReport.teachers.map(({ teacherId: id, teacherName }) => ({ id, name: teacherName, role: 'teacher' })));
-        } else {
-          const nextReport = await getMyMonthReport(month);
-          if (active) setReport(nextReport);
-        }
-      } catch {
-        if (active) setError('Отчетът не може да бъде зареден. Опитайте отново.');
-      } finally {
-        if (active) setLoading(false);
+    try {
+      if (isAdmin) {
+        const teachersPromise = includeTeachers && teacherOptionsRef.current.length === 0
+          ? getTeachers()
+          : Promise.resolve(teacherOptionsRef.current);
+        const [nextReport, teachers] = await Promise.all([
+          getAdminMonthReport(nextMonth, nextTeacherId),
+          teachersPromise,
+        ]);
+        if (!mountedRef.current || requestId !== requestIdRef.current) return;
+        setReport(nextReport);
+        if (teachers.length > 0) setTeacherOptions(teachers);
+        else setTeacherOptions(nextReport.teachers.map(({ teacherId: id, teacherName }) => ({ id, name: teacherName, role: 'teacher' })));
+      } else {
+        const nextReport = await getMyMonthReport(nextMonth);
+        if (mountedRef.current && requestId === requestIdRef.current) setReport(nextReport);
       }
-    };
-    void load();
-    return () => { active = false; };
-  }, [isAdmin, month, teacherId]); // teacherOptions intentionally only affects the first admin load.
+    } catch {
+      if (mountedRef.current && requestId === requestIdRef.current) setError('Отчетът не може да бъде зареден. Опитайте отново.');
+    } finally {
+      if (mountedRef.current && requestId === requestIdRef.current) setLoading(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void loadReport(month, teacherId, true);
+    return () => { mountedRef.current = false; };
+  }, [isAdmin, loadReport, month, teacherId]);
+
+  const refresh = useCallback((): Promise<void | undefined> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const request = loadReport(monthRef.current, teacherIdRef.current, false).finally(() => {
+      refreshInFlight.current = null;
+    });
+    refreshInFlight.current = request;
+    return request;
+  }, [loadReport]);
+
+  useImperativeHandle(ref, () => ({ refresh }), [refresh]);
 
   const rows = useMemo(() => reportRows(report), [report]);
   const reportMonth = report?.month ?? month;
@@ -162,7 +190,7 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
             </select>
           )}
         </div>
-        {!loading && !error && report && (
+        {!error && report && (
           <div className="report-toolbar__buttons">
             <button type="button" className="icon-button" onClick={() => window.print()} aria-label="Отпечатай отчета" title="Отпечатай отчета"><Icon name="printer" /></button>
             <button type="button" className="icon-button icon-button--primary" onClick={() => downloadCsv(rows, reportMonth)} aria-label="Експортирай видимите редове като CSV" title="Експортирай CSV"><Icon name="download" /></button>
@@ -172,7 +200,7 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
 
       {error && <div className="report-message report-message--error" role="alert">{error}</div>}
       {loading && <p className="report-message" role="status">Отчетът се зарежда…</p>}
-      {!loading && !error && report && (
+      {!error && report && (
         <section className="report-print-area" aria-label="Отчет за печат">
           {teacherReport && <SummaryCards reservationCount={teacherReport.reservationCount} cancelledCount={teacherReport.cancelledCount} totalDue={teacherReport.totalDue} />}
           {adminReport && (
@@ -197,4 +225,6 @@ export default function MonthlyReport({ profile }: MonthlyReportProps) {
 
     </main>
   );
-}
+});
+
+export default MonthlyReport;
