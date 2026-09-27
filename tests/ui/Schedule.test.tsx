@@ -66,6 +66,22 @@ describe('Schedule week cache and views', () => {
     expect(onSelectSlot).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-09-21', room: 'hall', startsAt: '2026-09-21T08:30:00' }));
   });
 
+  test('uses each weekday slot timestamp for week booking, price, and selection', async () => {
+    const onSelectSlot = vi.fn(); const onSelectBooking = vi.fn();
+    const loader = async (date: string) => {
+      const result = weekFor(date); const tuesday = result.days[1]!;
+      tuesday.bookings = [{ id: 'tuesday-booking', classId: 'class', teacherId: 'teacher', className: 'Пилатес', teacherName: 'Ели', room: 'hall', startsAt: '2026-09-22T08:30:00', endsAt: '2026-09-22T10:00:00', hour: 8, cancelledAt: null, version: 1, canEdit: false }];
+      tuesday.slotPrices = [{ startsAt: '2026-09-22T10:00:00', price: '7.00', currency: 'EUR' }]; return result;
+    };
+    render(<Schedule initialDate="2026-09-23" loadSchedule={loader} onSelectSlot={onSelectSlot} onSelectBooking={onSelectBooking} />);
+    await screen.findByRole('button', { name: 'Покажи седмица' }); fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    const booking = await screen.findByRole('button', { name: /Подробности за Пилатес.*вт, 22 сеп.*08:30/i });
+    fireEvent.click(booking); expect(onSelectBooking).toHaveBeenCalledWith(expect.objectContaining({ id: 'tuesday-booking' }));
+    const available = screen.getByRole('button', { name: /Резервирай Зала на вт, 22 сеп.*10:00/i });
+    expect(available).toHaveTextContent('€7.00'); fireEvent.click(available);
+    expect(onSelectSlot).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-09-22', room: 'hall', startsAt: '2026-09-22T10:00:00' }));
+  });
+
   test('keeps price display and vertical multi-slot selection in day mode', async () => {
     const onSelectSlot = vi.fn();
     const loader = async (date: string) => {
@@ -82,7 +98,7 @@ describe('Schedule week cache and views', () => {
     expect(onSelectSlot).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-09-23', endsAt: '2026-09-23T10:00:00', room: 'hall' }));
   });
 
-  test('has sticky grid structures and a grid-only week scroller', async () => {
+  test('uses an app-bar-and-toolbar sticky offset with a grid-only week scroller', async () => {
     render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} />);
     await screen.findByRole('grid');
     expect(screen.getByRole('banner')).toHaveClass('schedule-date-bar');
@@ -91,5 +107,8 @@ describe('Schedule week cache and views', () => {
     expect(grid).toHaveClass('schedule-grid--week');
     expect(grid.parentElement).toHaveClass('schedule-grid-scroll');
     expect(grid.querySelector('.schedule-grid__corner')).toBeTruthy();
+    const shell = grid.closest('.schedule-shell')!;
+    expect(shell).toHaveStyle({ '--schedule-grid-sticky-top': 'calc(var(--app-bar-height) + var(--schedule-toolbar-height))' });
+    expect(grid.querySelector('.schedule-grid__header')).toBeTruthy();
   });
 });

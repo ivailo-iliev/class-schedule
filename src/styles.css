@@ -77,6 +77,8 @@ select:focus-visible {
 }
 
 .app-shell {
+  --app-bar-height: 4.25rem;
+  --schedule-toolbar-height: 4.35rem;
   min-height: 100vh;
 }
 
@@ -150,6 +152,8 @@ select:focus-visible {
 }
 
 .schedule-shell {
+  --app-bar-height: 4.25rem;
+  --schedule-toolbar-height: 4.35rem;
   width: 100%;
   max-width: 76rem;
   margin: 0 auto;
@@ -159,7 +163,7 @@ select:focus-visible {
 
 .schedule-date-bar {
   position: sticky;
-  top: 4.25rem;
+  top: var(--app-bar-height);
   z-index: 5;
   display: flex;
   flex-wrap: nowrap;
@@ -348,8 +352,10 @@ select:focus-visible {
 }
 
 .schedule-grid-scroll {
-  overflow-x: auto;
+  position: relative;
+  overflow: visible;
   border-radius: 0.9rem;
+  isolation: isolate;
 }
 
 .schedule-grid {
@@ -363,7 +369,18 @@ select:focus-visible {
 }
 
 .schedule-grid--week {
-  min-width: calc(3.6rem + 7 * 8.5rem);
+  min-width: 0;
+}
+
+@media (max-width: 800px) {
+  .schedule-grid-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .schedule-grid--week {
+    min-width: calc(3.6rem + 7 * 8.5rem);
+  }
 }
 
 .schedule-grid__corner,
@@ -394,7 +411,7 @@ select:focus-visible {
 
 .schedule-grid__corner {
   position: sticky;
-  top: 0;
+  top: var(--schedule-grid-sticky-top);
   left: 0;
   z-index: 4;
   justify-content: flex-end;
@@ -404,7 +421,7 @@ select:focus-visible {
 
 .schedule-grid__header {
   position: sticky;
-  top: 0;
+  top: var(--schedule-grid-sticky-top);
   z-index: 2;
 }
 
