@@ -1,162 +1,178 @@
 # Release checklist
 
 This checklist is the release handoff for the native-session Class Scheduler.
-It separates evidence actually collected from gates that remain deferred. A
-checkbox is checked only when the command or review named beside it was run.
+A checkbox is checked only when the command, review, or hosted verification
+named beside it was actually completed. Unchecked items are release gates, not
+claims of failure.
 
 ## Release identity
 
 - Application: `class-scheduler`
-- Supabase project ref: `gywnhwgimmtanzvpxwoo`
-- Netlify site: `https://class-admin.netlify.app`
-- Migration: `supabase/migrations/20260913000100_v1.sql`
-- Database model: `public.profiles`, `public.classes`, `public.bookings`, and
-  the private singleton `private.room_rate`.
-- Authentication model: a reusable personal `/access#<token>` link establishes a
-  native Supabase session. The browser and installed PWA use the native
-  session; RLS resolves `auth.uid()`.
+- Supabase project ref: record the approved target in the private deployment
+  handoff; do not commit a production identifier here.
+- Netlify site: record the approved target in the private deployment handoff;
+  use a placeholder when sharing this checklist.
+- Migration baseline: `supabase/migrations/20260913000100_v1.sql`
+- Database model: `public.profiles`, `public.classes`,
+  `public.bookings`, and owner-managed `private.pricing_rules`.
+- Booking times: local `timestamp without time zone` wall-clock values on one
+  calendar date, in 30-minute boundaries. Audit fields are instants.
+- Pricing: EUR rules are selected by trusted database code and snapshotted per
+  booking in `currency`, `calculated_amount`, and `price_breakdown`.
+- Authentication: a reusable fragment link at `https://<site-origin>/#<token>`
+  is exchanged through `/api/access` for a native Supabase session. RLS binds
+  data access to the active profile.
+- PWA/deployment: static manifest and icons, no service worker or offline cache;
+  `/api/access` is the only application function route.
 
-## Verified local evidence
+## Evidence status
 
-Run from the repository root. The exact output for each command is recorded in
-this task handoff and must be refreshed after a source change.
+Run commands from the repository root. This docs-only change did not run source,
+database, browser, or hosted deployment checks. Refresh each unchecked result
+with the exact output before release; do not copy output from an earlier code
+revision.
 
-- [x] `docker version --format '{{.Server.Version}}'` returned `29.8.0`.
-- [x] `supabase db reset --local` completed and applied the migration and seed.
-- [x] `SUPABASE_DB_URL=... npm run test:db` — `Test Files  8 passed (8)`;
-      `Tests  89 passed (89)`; exit 0.
-- [x] `npm run typecheck` — exit 0.
-- [x] `npm run test:unit` — `Test Files  11 passed (11)`;
-      `Tests  68 passed (68)`; exit 0.
-- [x] `npm run test:e2e` — Chromium and WebKit, 390x844; `8 passed (5.3s)`.
-- [x] `npm run build` — Vite built the static manifest and public assets;
-      public-build safety passed.
-- [x] `npm run test:pwa` — Chromium and WebKit 390x844 static manifest and
-      no-service-worker/cache checks passed.
-- [x] `npm run check:public-build` — `Build looks safe (no detected static
-      secrets)`; exit 0.
-- [x] `npm run auth:smoke` — native session exchange, reusable token, RLS
-      owner write, cross-teacher denial, and deactivation revocation all
-      printed `PASS`; exit 0.
-- [x] `git diff --check` — no output; exit 0.
+### Focused documentation checks completed for this revision
 
-The database rate check is part of the DB suite. `private.room_rate` must have
-one row with a non-negative `room_hour_rate` and a three-letter uppercase
-`currency`. The billing report multiplies uncancelled hours by this current
-rate, includes the currency and money total, and reports cancelled hours
-separately. If the rate preflight returns `missing_current_room_rate`, stop;
-never interpret an empty report as a zero rate.
+- [x] `git diff --check` — run after editing these two documents; no whitespace
+      errors were reported.
+- [x] Documentation reference audit — checked that both documents use the
+      current RPC names, local timestamp model, EUR snapshot fields, fragment
+      link, `/api/access`, static manifest/no-service-worker model, and current
+      `package.json` script names; no obsolete billing or route references
+      remain.
+- [x] Markdown rendering review — reviewed headings, tables, fenced SQL/bash
+      blocks, inline code, and links in both updated documents.
 
-## Supabase owner operations
+### Local and integration checks to run for the release candidate
 
-### Profiles and links
+- [ ] `npm run typecheck` — record the actual exit status and output.
+- [ ] `npm run test:unit` — record the actual Vitest summary.
+- [ ] `SUPABASE_DB_URL=... npm run test:db` — record the actual database test
+      summary, including pricing, snapshot, cancellation, report, and RLS
+      assertions.
+- [ ] `npm run test:e2e` — record the actual Chromium/WebKit phone-flow result.
+- [ ] `npm run build` — verify the static manifest and public assets are built.
+- [ ] `npm run test:pwa` — verify the static manifest and absence of a service
+      worker/cache.
+- [ ] `npm run check:public-build` — record the actual public-build secret scan.
+- [ ] `npm run auth:smoke` — record native-session exchange, reusable fragment
+      access, RLS owner write, cross-teacher denial, and deactivation behavior.
+- [ ] `git status --short` and `git diff --check` — confirm only intentional
+      files and no credentials, tokens, dumps, or generated secrets are present.
 
-Run profile administration in the Supabase SQL Editor as the owner role. The
-application has no profile-admin UI or API.
+## Supabase owner setup
 
-```sql
-insert into public.profiles (name, role) values ('Teacher name', 'teacher');
-select private.issue_access_link('<profile-uuid>');
-```
-
-Copy the returned token once into a private link as
-`https://class-admin.netlify.app/access#<token>`. Do not paste real tokens into
-SQL history shared with the team, source files, logs, tickets, or chat.
-
-To revoke a teacher:
-
-```sql
-update public.profiles set active = false where id = '<profile-uuid>';
-```
-
-To replace a link, issue a new link for the active profile. Reactivating a
-Reactivating a profile does not revive its superseded or revoked link:
+Profiles and pricing are administered by an owner in Supabase, not by an
+application administration screen. Use only synthetic names and placeholders in
+shared evidence:
 
 ```sql
-update public.profiles set active = true where id = '<profile-uuid>';
-select private.issue_access_link('<profile-uuid>');
+insert into public.profiles (name, role)
+values ('Teacher name', 'teacher');
+
+select private.issue_access_link('<active-profile-uuid>');
 ```
 
-### Current room rate
-
-There is one current rate, stored in `private.room_rate`; there is no year
-column and no annual-rate history. Update it with:
+Distribute the returned raw token only as `https://<site-origin>/#<token>`.
+Never place a real token, profile ID, project ref, or credential in this file,
+a ticket, chat, CI output, or a committed fixture. Deactivate an account with:
 
 ```sql
-insert into private.room_rate (room_hour_rate, currency)
-values (20.00, 'BGN')
-on conflict (singleton) do update set room_hour_rate = excluded.room_hour_rate,
-  currency = excluded.currency;
+update public.profiles
+set active = false
+where id = '<active-profile-uuid>';
 ```
 
-Before billing, run:
+Reactivation requires issuing a new link. The `/api/access` function creates or
+restores the native session and the browser clears the fragment after exchange.
+
+Pricing rules are owner-managed in `private.pricing_rules`. Verify the active
+configuration before release and ensure every bookable segment has exactly one
+winning rule at its precedence and priority. Do not grant browser access to the
+private pricing schema or add pricing/profile management UI.
 
 ```sql
-select case when count(*) = 1 then 'current_rate_ready'
-            else 'missing_current_room_rate' end as status
-from private.room_rate;
+select id, teacher_id, weekdays, start_time, end_time,
+       hourly_rate, priority, label, active
+from private.pricing_rules
+where active
+order by teacher_id nulls first, weekdays, start_time nulls first, priority desc, id;
 ```
 
-### Monthly billing, cancellation report, and export
+## Reports, snapshots, and cancellation gates
 
-Use the parameterized SQL in `docs/operations.md` with a local-Sofia,
-start-inclusive/end-exclusive window. The current rate is used for every
-booking date. Cancelled bookings are nonbillable and are reported separately.
-The same document contains the CSV-compatible booking export. Supabase Table
-Editor or the SQL Editor is the reporting surface; the app has no billing or
-export screen.
+- [ ] A teacher can call `get_my_month_report(month)` only for their own
+      authorized rows. Verify reservation/cancellation counts, local calendar
+      month filtering, stored `calculated_amount`/`price_breakdown`, and active
+      total due.
+- [ ] An administrator can call `get_admin_month_report(month, teacher_id)`
+      for all teachers or one selected teacher. Verify per-teacher totals and
+      the combined cashbox total.
+- [ ] A cancelled booking retains its original EUR snapshot and appears in an
+      authorized report with effective amount due equal to EUR 0.
+- [ ] Browser print and client-side CSV export contain exactly the authorized
+      report rows returned by the RPC; no hidden student, price, or other
+      teacher data is exposed.
+- [ ] Quote/create/edit mutation checks use trusted pricing rules and store the
+      server-calculated snapshot. A later rule edit does not rewrite an existing
+      untouched booking.
+- [ ] Local booking boundaries, same-date validation, room/teacher overlap
+      handling, recurring series, and cancellation scopes pass the database and
+      browser tests.
 
-### Restore a paused Free project
-
-In Supabase Dashboard, open the project and select **Resume** on the paused
-project banner. Wait for the project health checks to complete, then verify
-that the app can load a schedule. Free-plan backup and pause limits are subject
-to the current Supabase plan and must be rechecked before production use.
-
-### Backup/export responsibility
-
-Before a risky operational change, the administrator exports the public and
-private schemas with `pg_dump` or the Supabase CLI. Store the resulting backup
-outside the repository and protect it as sensitive data. No scheduled
-keep-alive or application export endpoint is provided.
+The final reports are usage totals derived from booking snapshots. They are not
+payments, balances, settlements, invoices, or a ledger.
 
 ## Deployment and security gates
 
-- [ ] Owner-authorized deployment to the named Netlify site only.
-- [ ] Production response headers read back: CSP, `Referrer-Policy:
-      no-referrer`, `X-Content-Type-Options: nosniff`, and private/no-store
-      headers for the access response.
-- [ ] Production check used only disposable synthetic profiles and bookings;
-      all such data was removed or the profiles were deactivated afterward.
-- [ ] Production build contains only public Vite variables; function secrets
-      are not prefixed `VITE_` and are not present in previews.
-- [ ] Supabase migration was applied through the owner's approved database
-      deployment process; frontend builds do not run migrations.
+- [ ] Owner-authorized deployment targets only the approved Netlify site and
+      Supabase project; record targets privately rather than in this checklist.
+- [ ] Production response headers read back as CSP,
+      `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, and
+      private/no-store for `/api/access`.
+- [ ] Production checks use only disposable synthetic profiles/bookings; remove
+      the data or deactivate the profiles afterward.
+- [ ] The production build contains only public Vite variables. Function secret
+      variables are not prefixed `VITE_` and are absent from deploy previews.
+- [ ] The migration is applied through the owner's approved Supabase deployment
+      process; frontend builds do not run migrations.
+- [ ] `npm run check:public-build` and the built-asset review find no credential,
+      access-token, or private configuration material.
 
-The imported ES256 signing-key design, custom JWT/JWKS configuration, and
-signing-key rotation gate are cancelled by the approved native-session
-revision. There is no signing key to import, recover, or rotate for this
-application. Native Supabase session revocation and profile deactivation are
-the applicable access-revocation controls.
+The cancelled custom signing-key/JWKS design is not part of this release. Native
+Supabase session revocation and active-profile checks are the applicable access
+controls.
 
-## PWA verification matrix
+## PWA and hosted verification matrix
 
 | Gate | Evidence/status |
 |---|---|
-| Phone-first layout at 390x844 | Playwright Chromium/WebKit emulation; record `npm run test:e2e` output. |
-| Static manifest and no service-worker cache | `npm run test:pwa`; record exact output. |
+| Phone-first layout at 390x844 | Deferred until the release candidate; run `npm run test:e2e` and record exact output. |
+| Static manifest and no service-worker cache | Deferred until the release candidate; run `npm run test:pwa` and record exact output. |
 | Offline behavior | Not supported; reconnect before using the network-backed app. |
-| Android Chrome installed launch | Physical-device check deferred to the owner; not claimed here. |
-| iPhone Safari installed launch | Physical-device check deferred to the owner; not claimed here. |
-| Link replacement after rotation | Opening the replacement link is supported; any already-installed app using old persisted state must be reauthenticated/reinstalled as needed. |
+| Android Chrome installed launch | Physical-device owner check deferred; browser emulation is not physical-device evidence. |
+| iPhone Safari installed launch | Physical-device owner check deferred; browser emulation is not physical-device evidence. |
+| Fragment-link reuse and rotation | Integrated browser/DB gate below; record both old-link rejection after rotation and native-session persistence. |
+| Production security headers and access rate limit | Hosted owner check deferred; record read-back responses and the approved test evidence. |
 
-Physical Android/iPhone installation, close/relaunch, storage separation, and
-OS-specific Add to Home Screen behavior are explicitly deferred owner checks.
-Browser-emulated tests are not physical-device evidence.
+## Integrated final browser/database gate
+
+- [ ] Run the final integrated verification against a disposable Supabase project
+      and authorized preview/production candidate. Cover two clean browsers,
+      reusable fragment-link exchange, native-session restoration, link rotation,
+      deactivation, teacher/admin RLS boundaries, local wall-clock dates,
+      pricing quote and immutable snapshot, cancellation effective amount,
+      monthly report scope/totals, browser print/CSV output, security headers,
+      static manifest, and no service worker.
+- [ ] Record exact commands, commit SHA, target environment, test summaries,
+      and hosted read-back evidence in the release handoff. Do not claim this
+      gate passed until that evidence exists.
 
 ## Final sign-off
 
 Do not declare V1 released while a required local test, independent review,
-authorized hosted check, or the owner-deferred device check is represented as
-passed without evidence. Record the final commit hash and exact command output
-in the task handoff; keep secrets, tokens, and database dumps out of git.
+authorized hosted check, or owner-deferred physical-device check is represented
+as passed without evidence. Record the final commit hash and exact command output
+in the private release handoff; keep secrets, tokens, profile identifiers, and
+database dumps out of git.
