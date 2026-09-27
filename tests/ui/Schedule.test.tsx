@@ -90,10 +90,15 @@ describe('Schedule week cache and views', () => {
     render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
     expect(await screen.findByRole('heading', { name: 'Зала' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Стая' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Покажи седмица' })).toBeInTheDocument();
+    const weekAction = screen.getByRole('button', { name: 'Покажи седмица' });
+    expect(weekAction).toBeInTheDocument();
+    expect(weekAction).toHaveAttribute('title', 'Покажи седмица');
+    expect(weekAction.querySelector('svg.icon')).toHaveAttribute('data-icon', 'calendar-month');
     expect(screen.getByText('ср, 23 сеп')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
-    await screen.findByRole('button', { name: 'Покажи ден' });
+    fireEvent.click(weekAction);
+    const dayAction = await screen.findByRole('button', { name: 'Покажи ден' });
+    expect(dayAction).toHaveAttribute('title', 'Покажи ден');
+    expect(dayAction.querySelector('svg.icon')).toHaveAttribute('data-icon', 'calendar-today');
     expect(loader).toHaveBeenCalledTimes(1);
     expect(screen.getAllByRole('heading')).toHaveLength(7);
     expect(screen.getByRole('grid').querySelectorAll('.empty-slot[data-room="hall"]').length).toBeGreaterThan(0);
