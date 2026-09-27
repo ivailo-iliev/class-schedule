@@ -242,6 +242,7 @@ export type Database = {
       quote_booking: {
         Args: {
           p_class_id: string
+          p_exclude_booking_id?: string | null
           p_occurrences: Json
           p_room: Database["public"]["Enums"]["room"]
         }
