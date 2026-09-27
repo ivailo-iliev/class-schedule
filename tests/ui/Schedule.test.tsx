@@ -27,10 +27,10 @@ function expectHorizontalReset(body: HTMLElement, header: HTMLElement) {
   expect(header.style.transform).toMatch(/translateX\(-?0px\)/);
 }
 
-function bookingFor(date: string, id: string, classId: string, hour: number): Booking {
+function bookingFor(date: string, id: string, classId: string, hour: number, className: string): Booking {
   const startsAt = `${date}T${String(hour).padStart(2, '0')}:00:00`;
   const endsAt = `${date}T${String(hour + 1).padStart(2, '0')}:00:00`;
-  return { id, classId, teacherId: 'teacher', className: `Class ${classId}`, teacherName: 'Teacher', room: 'hall', startsAt, endsAt, hour, cancelledAt: null, version: 1, canEdit: false };
+  return { id, classId, teacherId: 'teacher', className, teacherName: 'Teacher', room: 'hall', startsAt, endsAt, hour, cancelledAt: null, version: 1, canEdit: false };
 }
 
 describe('Schedule week cache and views', () => {
@@ -157,10 +157,11 @@ describe('Schedule week cache and views', () => {
     const loader = async (date: string) => {
       const result = weekFor(date);
       const day = result.days.find((item) => item.date === date)!;
+      const sharedClassName = 'Same class name';
       day.bookings = [
-        bookingFor(date, 'booking-a-1', 'class-a', 10),
-        bookingFor(date, 'booking-b', 'class-b', 12),
-        bookingFor(date, 'booking-a-2', 'class-a', 14),
+        bookingFor(date, 'booking-a-1', 'class-a', 10, sharedClassName),
+        bookingFor(date, 'booking-b', 'class-b', 12, sharedClassName),
+        bookingFor(date, 'booking-a-2', 'class-a', 14, sharedClassName),
       ];
       return result;
     };
