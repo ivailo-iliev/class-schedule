@@ -36,6 +36,21 @@ describe('booking RPC client contracts', () => {
     });
   });
 
+  test('adds an exclusion only for an occurrence edit quote', async () => {
+    rpc.mockResolvedValueOnce({ data: {
+      occurrences: [{ ...occurrences[0], occurrence_index: 1, duration_minutes: 60, amount: '10.00', segments: [], conflicts: [] }],
+      total_amount: '10.00',
+    }, error: null });
+
+    await quoteBooking('class-1', 'hall', occurrences, 'booking-1');
+    expect(rpc).toHaveBeenCalledWith('quote_booking', {
+      p_class_id: 'class-1',
+      p_room: 'hall',
+      p_occurrences: occurrences,
+      p_exclude_booking_id: 'booking-1',
+    });
+  });
+
   test('creates without accepting a client amount or quote token and returns authoritative total', async () => {
     rpc.mockResolvedValueOnce({ data: {
       series_id: 'series-1',

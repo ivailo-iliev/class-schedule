@@ -47,6 +47,12 @@ const classes: ClassItem[] = [{
 function renderDetails(overrides: Partial<React.ComponentProps<typeof BookingDetails>> = {}) {
   const onClose = vi.fn();
   const onRefresh = vi.fn(async () => undefined);
+  const quoteBooking = vi.fn(async (_classId: string, _room: 'hall' | 'room', occurrences: Array<{ starts_at: string; ends_at: string }>) => ({
+    total_amount: '10.00',
+    occurrences: occurrences.map((occurrence, index) => ({
+      ...occurrence, occurrence_index: index + 1, duration_minutes: 30, amount: '10.00', conflicts: [], segments: [],
+    })),
+  }));
   render(
     <BookingDetails
       booking={booking()}
@@ -54,10 +60,11 @@ function renderDetails(overrides: Partial<React.ComponentProps<typeof BookingDet
       loadClasses={vi.fn(async () => classes)}
       onClose={onClose}
       onRefresh={onRefresh}
+      quoteBooking={quoteBooking}
       {...overrides}
     />,
   );
-  return { onClose, onRefresh };
+  return { onClose, onRefresh, quoteBooking };
 }
 
 describe('BookingDetails', () => {
@@ -108,21 +115,90 @@ describe('BookingDetails', () => {
   test('allows an owner to edit one instance with its expected version', async () => {
     const editBooking = vi.fn(async () => booking({ room: 'room', version: 4 }));
     const onRefresh = vi.fn(async () => undefined);
-    renderDetails({ editBooking, onRefresh });
+    renderDetails({ editBooking, onRefresh, loadDetails: vi.fn(async () => detail({ room: 'room', version: 4 })) });
 
+    await screen.findByText('Private student note');
     fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
     expect(await screen.findByRole('heading', { name: 'Промяна на резервация' })).toBeInTheDocument();
     expect(screen.getByText('Teacher A')).toBeInTheDocument();
-    expect(screen.getByText('Избрано занимание от модула')).toBeInTheDocument();
+    expect(screen.getByText('Занимание 2 от 10')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Занимание' })).toHaveValue('class-a');
     fireEvent.change(screen.getByRole('combobox', { name: 'Зала' }), { target: { value: 'room' } });
+    await screen.findByText('Общо: €10.00');
     fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
-      'booking-1', 3, 'class-a', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
+      'booking-1', 4, 'class-a', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', 'Private student note',
     ));
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('status')).toHaveTextContent('Резервацията е променена.');
+  });
+
+  test('requotes an editable occurrence with its own id, trims private notes, and replaces its snapshot', async () => {
+    const oldDetail = detail({ studentDetails: 'Old private note', amount: '12.00', segments: [{
+      starts_at: '2026-09-15T18:00:00', ends_at: '2026-09-15T18:30:00', rule_id: 'old', label: 'Old rate', hourly_rate: '24.00', subtotal: '12.00',
+    }] });
+    const freshDetail = detail({ room: 'room', version: 4, studentDetails: 'Fresh private note', amount: '25.00', segments: [{
+      starts_at: '2026-09-15T18:00:00', ends_at: '2026-09-15T18:30:00', rule_id: 'new', label: 'New rate', hourly_rate: '50.00', subtotal: '25.00',
+    }] });
+    const loadDetails = vi.fn().mockResolvedValueOnce(oldDetail).mockResolvedValueOnce(freshDetail);
+    const quoteBooking = vi.fn(async (_classId: string, _room: 'hall' | 'room', occurrences: Array<{ starts_at: string; ends_at: string }>) => ({
+      total_amount: '25.00', occurrences: occurrences.map((occurrence, index) => ({
+        ...occurrence, occurrence_index: index + 1, duration_minutes: 30, amount: '25.00', conflicts: [], segments: [],
+      })),
+    }));
+    const editBooking = vi.fn(async () => booking({ room: 'room', version: 4 }));
+    const onRefresh = vi.fn(async () => ({ date: '2026-09-15', slots: [], bookings: [booking({ room: 'room' })] }));
+    renderDetails({ loadDetails, quoteBooking, editBooking, onRefresh });
+
+    expect(await screen.findByText('Old private note')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
+    const notes = await screen.findByLabelText('Поверителни бележки за ученика (по избор)');
+    expect(notes).toHaveValue('Old private note');
+    await waitFor(() => expect(quoteBooking).toHaveBeenCalledWith('class-a', 'hall', [
+      { starts_at: '2026-09-15T18:00:00', ends_at: '2026-09-15T18:30:00' },
+    ], 'booking-1'));
+    fireEvent.change(notes, { target: { value: '  Fresh private note  ' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Зала' }), { target: { value: 'room' } });
+    await waitFor(() => expect(quoteBooking).toHaveBeenLastCalledWith('class-a', 'room', [
+      { starts_at: '2026-09-15T18:00:00', ends_at: '2026-09-15T18:30:00' },
+    ], 'booking-1'));
+    await screen.findByText('Общо: €25.00');
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
+
+    await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
+      'booking-1', 3, 'class-a', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', 'Fresh private note',
+    ));
+    expect(JSON.stringify(editBooking.mock.calls[0])).not.toMatch(/amount|segments|quote/i);
+    expect(await screen.findByText('Fresh private note')).toBeInTheDocument();
+    expect(screen.getByText('€25.00')).toBeInTheDocument();
+    expect(screen.getByText(/New rate/)).toBeInTheDocument();
+    expect(screen.queryByText('Old private note')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Old rate/)).not.toBeInTheDocument();
+    expect(loadDetails).toHaveBeenCalledTimes(2);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  test('blocks an edit when its debounced replacement quote has a conflict', async () => {
+    const quoteBooking = vi.fn(async (_classId: string, _room: 'hall' | 'room', occurrences: Array<{ starts_at: string; ends_at: string }>) => ({
+      total_amount: '10.00', occurrences: occurrences.map((occurrence, index) => ({
+        ...occurrence, occurrence_index: index + 1, duration_minutes: 30, amount: '10.00',
+        conflicts: [{ date: occurrence.starts_at.slice(0, 10), room: 'room' as const }], segments: [],
+      })),
+    }));
+    const editBooking = vi.fn(async () => booking({ version: 4 }));
+    renderDetails({ quoteBooking, editBooking });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
+    await waitFor(() => expect(quoteBooking).toHaveBeenCalledWith('class-a', 'hall', [
+      { starts_at: '2026-09-15T18:00:00', ends_at: '2026-09-15T18:30:00' },
+    ], 'booking-1'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Зала' }), { target: { value: 'room' } });
+    await waitFor(() => expect(quoteBooking).toHaveBeenLastCalledWith('class-a', 'room', [
+      { starts_at: '2026-09-15T18:00:00', ends_at: '2026-09-15T18:30:00' },
+    ], 'booking-1'));
+    expect(screen.getByRole('button', { name: 'Запази' })).toBeDisabled();
+    expect(editBooking).not.toHaveBeenCalled();
   });
 
   test('renders and pre-populates a stored local DST-boundary booking without timezone conversion', async () => {
@@ -152,6 +228,7 @@ describe('BookingDetails', () => {
     expect(await screen.findByRole('heading', { name: 'Промяна на резервация' })).toBeInTheDocument();
     expect(screen.getByText('Teacher B')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Занимание' })).toHaveValue('class-a');
+    await screen.findByText('Общо: €10.00');
     fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
 
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
@@ -188,6 +265,7 @@ describe('BookingDetails', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
     fireEvent.change(await screen.findByRole('combobox', { name: 'Занимание' }), { target: { value: 'class-b' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Зала' }), { target: { value: 'room' } });
+    await screen.findByText('Общо: €10.00');
     fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
     await waitFor(() => expect(editBooking).toHaveBeenCalledWith(
       'booking-1', 3, 'class-b', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,
@@ -196,6 +274,7 @@ describe('BookingDetails', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
     expect(await screen.findByRole('combobox', { name: 'Занимание' })).toHaveValue('class-b');
+    await screen.findByText('Общо: €10.00');
     fireEvent.click(screen.getByRole('button', { name: 'Запази' }));
     await waitFor(() => expect(editBooking).toHaveBeenLastCalledWith(
       'booking-1', 9, 'class-b', 'room', '2026-09-15T18:00:00', '2026-09-15T18:30:00', null,

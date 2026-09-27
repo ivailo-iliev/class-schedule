@@ -20,7 +20,7 @@ import type {
 
 type ClassLoader = () => Promise<ClassItem[]>;
 type TeacherLoader = () => Promise<Profile[]>;
-type QuoteLoader = (classId: string, room: Room, occurrences: BookingOccurrence[]) => Promise<BookingQuote>;
+type QuoteLoader = (classId: string, room: Room, occurrences: BookingOccurrence[], excludeBookingId?: string) => Promise<BookingQuote>;
 type SeriesCreator = (
   classId: string,
   room: Room,
@@ -152,6 +152,15 @@ export function buildOccurrences(
   return { occurrences, error: null };
 }
 
+function buildEditableOccurrence(date: string, startTime: string, endTime: string): { occurrences: BookingOccurrence[]; error: string | null } {
+  if (!isValidCalendarDate(date) || !validTime(startTime) || !validTime(endTime)
+    || minutes(startTime) < BOOKING_START_MINUTES || minutes(endTime) > BOOKING_END_MINUTES
+    || minutes(endTime) <= minutes(startTime)) {
+    return { occurrences: [], error: 'Изберете валиден начален и краен час в един и същи ден на интервали от 30 минути.' };
+  }
+  return { occurrences: [{ starts_at: localTime(date, minutes(startTime)), ends_at: localTime(date, minutes(endTime)) }], error: null };
+}
+
 function errorText(error: unknown): string {
   if (typeof error === 'string') return error;
   if (!error || typeof error !== 'object') return '';
@@ -220,7 +229,7 @@ export default function BookingForm({
   const [mode, setMode] = useState<'one-off' | 'recurring'>('one-off');
   const [weekdays, setWeekdays] = useState<number[]>([isoWeekday(initialDate)]);
   const [weeks, setWeeks] = useState('1');
-  const [studentDetails, setStudentDetails] = useState('');
+  const [studentDetails, setStudentDetails] = useState(existingBooking?.studentDetails ?? '');
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -269,12 +278,14 @@ export default function BookingForm({
       ? current : (availableClasses[0]?.id ?? ''));
   }, [availableClasses, editing]);
 
-  const generated = useMemo(() => buildOccurrences(mode, date, startTime, endTime, weekStart, weekdays, weeks),
-    [date, endTime, mode, startTime, weekStart, weekdays, weeks]);
+  const generated = useMemo(() => editing
+    ? buildEditableOccurrence(date, startTime, endTime)
+    : buildOccurrences(mode, date, startTime, endTime, weekStart, weekdays, weeks),
+  [date, editing, endTime, mode, startTime, weekStart, weekdays, weeks]);
   const occurrences = generated.occurrences;
 
   useEffect(() => {
-    if (editing || loading || offline || !classId || generated.error) {
+    if (loading || offline || !classId || generated.error) {
       setQuote(null);
       setQuoteError(generated.error);
       setQuoteLoading(false);
@@ -285,7 +296,10 @@ export default function BookingForm({
     setQuoteLoading(true);
     setQuoteError(null);
     const timer = window.setTimeout(() => {
-      void quoteBooking(classId, room, occurrences).then((result) => {
+      const request = editing && existingBooking
+        ? quoteBooking(classId, room, occurrences, existingBooking.id)
+        : quoteBooking(classId, room, occurrences);
+      void request.then((result) => {
         if (requestId.value !== currentRequest) return;
         setQuote(result);
       }).catch((reason) => {
@@ -297,20 +311,18 @@ export default function BookingForm({
       });
     }, QUOTE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [classId, editing, generated.error, loading, offline, occurrences, quoteBooking, requestId, room]);
+  }, [classId, editing, existingBooking?.id, generated.error, loading, offline, occurrences, quoteBooking, requestId, room]);
 
   const quoteInvalid = !quote || quote.occurrences.length !== occurrences.length ||
     quote.occurrences.some((item) => item.amount === null || item.conflicts.length > 0) ||
     quote.total_amount === null;
-  const confirmDisabled = editing
-    ? pending || offline || !classId
-    : pending || offline || loading || !classId || Boolean(generated.error) || quoteLoading || quoteInvalid;
+  const confirmDisabled = pending || offline || loading || !classId || Boolean(generated.error) || quoteLoading || quoteInvalid;
   const noClasses = !editing && !loading && availableClasses.length === 0 && !error;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (editing) {
-      if (!existingBooking || !editBooking || pending) return;
+      if (!existingBooking || !editBooking || confirmDisabled || !quote) return;
       setPending(true); setError(null); setSuccess(null);
       try {
         const updated = await editBooking(
@@ -320,7 +332,7 @@ export default function BookingForm({
           room,
           localTime(date, minutes(startTime)),
           localTime(date, minutes(endTime)),
-          existingBooking.studentDetails ?? null,
+          studentDetails.trim() || null,
         );
         let refreshed: DaySchedule | undefined;
         let failed = false;
@@ -432,12 +444,11 @@ export default function BookingForm({
           <select id="booking-room" value={room} onChange={(event) => setRoom(event.target.value as Room)} disabled={pending || offline}>
             {ROOMS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
-          {!editing && <>
+          <>
             <label htmlFor="booking-student-details">Поверителни бележки за ученика (по избор)</label>
             <textarea id="booking-student-details" maxLength={1000} value={studentDetails} onChange={(event) => setStudentDetails(event.target.value)} disabled={pending || offline} />
-          </>}
-          {!editing && (
-            <section className="booking-form__quote" aria-live="polite" aria-label="Ценова оферта от сървъра">
+          </>
+          <section className="booking-form__quote" aria-live="polite" aria-label="Ценова оферта от сървъра">
               <h3>Преглед на цената</h3>
               {quoteLoading && <p role="status">Изчислява се ценова оферта…</p>}
               {!quoteLoading && quoteError && <p className="booking-form__message booking-form__message--error" role="alert">{quoteError}</p>}
@@ -457,8 +468,7 @@ export default function BookingForm({
                   {quoteInvalid && <p className="booking-form__message booking-form__message--error" role="alert">Преди потвърждение е необходима пълна ценова оферта без конфликти.</p>}
                 </>
               )}
-            </section>
-          )}
+          </section>
           <div className="booking-form__actions">
             <button type="submit" disabled={confirmDisabled}>{pending ? 'Запазване…' : 'Запази'}</button>
             <button type="button" onClick={() => onCancel ? onCancel() : onDone()} disabled={pending}>Отказ</button>
