@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { getWeek } from '../lib/api';
 import { addCalendarDays, localDateOf, localTime, minutesOf, todayCalendarDate } from '../lib/calendar';
 import type { Booking, DaySchedule, Room, SlotPrice, WeekSchedule } from '../lib/types';
@@ -19,11 +19,29 @@ function weekStartOf(date: string) { const weekday = (new Date(`${date}T12:00:00
 function weekContains(weekStart: string, date: string) { return date >= weekStart && date <= addCalendarDays(weekStart, 6); }
 const BG_WEEKDAYS = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const BG_MONTHS = ['ян', 'фев', 'мар', 'апр', 'май', 'юни', 'юли', 'авг', 'сеп', 'окт', 'ное', 'дек'];
+const CLASS_COLOURS = [
+  { background: '#e8f0ff', border: '#87abe6', text: '#173d78', muted: '#355d96' },
+  { background: '#e6f7f1', border: '#75c7aa', text: '#155d49', muted: '#347765' },
+  { background: '#fff1dc', border: '#e8b96b', text: '#7a4710', muted: '#8a591b' },
+  { background: '#f4edff', border: '#b99ae3', text: '#59358c', muted: '#7251a2' },
+  { background: '#ffecef', border: '#e6a0ad', text: '#823341', muted: '#9b5260' },
+  { background: '#e7f7f9', border: '#78c3ca', text: '#125a62', muted: '#36767d' },
+] as const;
 function dateLabel(date: string) { const month = Number(date.slice(5, 7)); const day = Number(date.slice(8, 10)); return `${day} ${BG_MONTHS[month - 1] ?? ''}`; }
 function displayDay(date: string) { const weekday = new Date(`${date}T12:00:00Z`).getUTCDay(); return `${BG_WEEKDAYS[weekday]}, ${dateLabel(date)}`; }
 function displayRange(start: string, end: string) { return `${dateLabel(start)} – ${dateLabel(end)}`; }
 function timeLabel(local: string) { return local.slice(11, 16); }
-function classHue(id: string) { let hash = 0; for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0; return (hash % 12) * 30; }
+function classColourStyle(id: string): CSSProperties {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  const colour = CLASS_COLOURS[hash % CLASS_COLOURS.length]!;
+  return {
+    '--booking-background': colour.background,
+    '--booking-border': colour.border,
+    '--booking-text': colour.text,
+    '--booking-muted-text': colour.muted,
+  } as CSSProperties;
+}
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T { try { const value = window.localStorage.getItem(key); return allowed.includes(value as T) ? value as T : fallback; } catch { return fallback; } }
 function formatSlotPrice(price: SlotPrice) { return price.currency === 'EUR' ? `€${price.price}` : `${price.price} ${price.currency}`; }
 
@@ -110,20 +128,22 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   };
   const navigate = (amount: number) => selectDate(addCalendarDays(date, amount));
   const toggleViewMode = () => { resetHorizontalGrid(); setViewMode((value) => value === 'day' ? 'week' : 'day'); };
-  const columnTemplate = `3.6rem repeat(${days.length * rooms.length}, minmax(0, 1fr))`;
+  const timeColumn = '3.6rem';
+  const columnTemplate = `${timeColumn} repeat(${days.length * rooms.length}, minmax(0, 1fr))`;
+  const gridCoordinates = { '--schedule-grid-time-column': timeColumn, '--schedule-grid-columns': columnTemplate } as CSSProperties;
 
   return <main className={`schedule-shell${viewMode === 'week' ? ' schedule-shell--week' : ''}`} aria-label="График" style={{ '--schedule-grid-sticky-top': 'calc(var(--app-bar-height) + var(--schedule-toolbar-height))' } as React.CSSProperties}><p className="visually-hidden">Свързано</p>
     <header className="schedule-date-bar"><div className="date-controls" aria-label="Управление на графика">
-      <button type="button" onClick={() => navigate(-navStep)} aria-label={viewMode === 'day' ? 'Предишен ден' : 'Предишна седмица'} title={viewMode === 'day' ? 'Предишен ден' : 'Предишна седмица'}><Icon name="chevronLeft" /></button><label className="date-picker"><span className="visually-hidden">Дата в графика</span><span className="date-picker__display" aria-live="polite">{navLabel}</span><input type="date" aria-label="Дата в графика" value={date} onChange={(event) => { if (event.target.value) selectDate(event.target.value); }} /></label><button type="button" onClick={() => navigate(navStep)} aria-label={viewMode === 'day' ? 'Следващ ден' : 'Следваща седмица'} title={viewMode === 'day' ? 'Следващ ден' : 'Следваща седмица'}><Icon name="chevronRight" /></button><button type="button" onClick={toggleViewMode} aria-label={toggleLabel} title={toggleLabel}><Icon name={viewMode === 'day' ? 'week' : 'day'} /></button>
+      <button type="button" onClick={() => navigate(-navStep)} aria-label={viewMode === 'day' ? 'Предишен ден' : 'Предишна седмица'} title={viewMode === 'day' ? 'Предишен ден' : 'Предишна седмица'}><Icon name="chevronLeft" /></button><label className="date-picker"><span className="visually-hidden">Дата в графика</span><span className="date-picker__display" aria-live="polite">{navLabel}</span><input type="date" aria-label="Дата в графика" value={date} onChange={(event) => { if (event.target.value) selectDate(event.target.value); }} /></label><button type="button" onClick={() => navigate(navStep)} aria-label={viewMode === 'day' ? 'Следващ ден' : 'Следваща седмица'} title={viewMode === 'day' ? 'Следващ ден' : 'Следваща седмица'}><Icon name="chevronRight" /></button><button type="button" onClick={toggleViewMode} aria-label={toggleLabel} title={toggleLabel}><Icon name={viewMode === 'day' ? 'calendarToday' : 'calendarMonth'} /></button>
     </div>{viewMode === 'week' && <fieldset className="room-controls" aria-label="Помещение за седмицата"><legend className="visually-hidden">Помещение за седмицата</legend>{ROOMS.map((room) => <button type="button" className={`room-toggle${weekRoom === room.id ? ' room-toggle--pressed' : ''}`} key={room.id} aria-pressed={weekRoom === room.id} onClick={() => setWeekRoom(room.id)}>{room.label}</button>)}</fieldset>}</header>
     {Boolean(error) && <p className="schedule-message schedule-message--inline" role="alert"><strong>Графикът може да не е актуален.</strong> Свободните часове ще се показват само за преглед, докато графикът не бъде обновен.</p>}{loading && (!week || !selectedDay) && <p className="schedule-loading" role="status">Графикът се зарежда…</p>}
-    {days.length > 0 && <section className={`schedule-grid schedule-grid--${viewMode}`} role="grid" aria-label={`График за ${navLabel}`} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={() => setDragSelection(null)}>
+    {days.length > 0 && <section className={`schedule-grid schedule-grid--${viewMode}`} role="grid" aria-label={`График за ${navLabel}`} style={gridCoordinates} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={() => setDragSelection(null)}>
       <div className="schedule-grid__header-clip" style={{ top: 'var(--schedule-grid-sticky-top)' }}><div className="schedule-grid__sticky-header" style={{ gridTemplateColumns: columnTemplate, transform: `translateX(-${gridScrollLeft}px)` }}><div className="schedule-grid__header-spacer" aria-hidden="true" />{days.flatMap((day) => rooms.map((room) => <h2 className="schedule-grid__header" key={`${day.date}:${room.id}`}>{viewMode === 'week' ? displayDay(day.date) : room.label}</h2>))}</div><div className="schedule-grid__corner" aria-hidden="true">Час</div></div>
       <div className="schedule-grid-scroll" ref={gridScrollRef} onScroll={(event) => setGridScrollLeft(event.currentTarget.scrollLeft)}><div className="schedule-grid__body" style={{ gridTemplateColumns: columnTemplate, gridTemplateRows: `repeat(${slots.length}, 3rem)` }}>
       {slots.flatMap((slot, index) => [<div className="schedule-grid__hour" role="rowheader" key={`${slot.startsAt}:time`} style={{ gridRow: index + 1 }}>{timeLabel(slot.startsAt)}</div>, ...days.flatMap((day, dayIndex) => rooms.map((room, roomIndex) => {
         const daySlot = day.slots[index]; if (!daySlot) return null;
         const booking = day.bookings.find((item) => item.room === room.id && item.startsAt <= daySlot.startsAt && item.endsAt > daySlot.startsAt); const label = viewMode === 'week' ? `${room.label} на ${displayDay(day.date)} в ${timeLabel(daySlot.startsAt)}` : `${room.label} в ${timeLabel(daySlot.startsAt)}`; const column = 2 + dayIndex * rooms.length + roomIndex;
-        if (booking?.startsAt === daySlot.startsAt) return <button type="button" className={`booking${booking.canEdit ? ' booking--editable' : ''}`} key={`${day.date}:${daySlot.startsAt}:${room.id}:booking`} style={{ gridColumn: column, gridRow: `${index + 1} / span ${Math.max(1, (minutesOf(booking.endsAt) - minutesOf(booking.startsAt)) / 30)}`, zIndex: 1, '--class-hue': classHue(booking.classId) } as React.CSSProperties} aria-label={`Подробности за ${booking.className} — ${label}`} onClick={() => onSelectBooking?.(booking)}><strong>{booking.className}</strong><span>{booking.teacherName}</span></button>;
+        if (booking?.startsAt === daySlot.startsAt) return <button type="button" className={`booking${booking.canEdit ? ' booking--editable' : ''}`} key={`${day.date}:${daySlot.startsAt}:${room.id}:booking`} style={{ ...classColourStyle(booking.classId), gridColumn: column, gridRow: `${index + 1} / span ${Math.max(1, (minutesOf(booking.endsAt) - minutesOf(booking.startsAt)) / 30)}`, zIndex: 1 }} aria-label={`Подробности за ${booking.className} — ${label}`} onClick={() => onSelectBooking?.(booking)}><strong>{booking.className}</strong><span>{booking.teacherName}</span></button>;
         const selected = dragSelection?.date === day.date && dragSelection.room === room.id && index >= Math.min(dragSelection.startIndex, dragSelection.endIndex) && index <= Math.max(dragSelection.startIndex, dragSelection.endIndex); const price = day.slotPrices?.find((item) => item.startsAt === daySlot.startsAt); const priceId = `slot-price-${day.date}-${room.id}-${index}`;
         return <div className="schedule-grid__cell" role="gridcell" key={`${day.date}:${daySlot.startsAt}:${room.id}`} style={{ gridColumn: column, gridRow: index + 1 }}>{!booking && (canBook ? <button type="button" className={`empty-slot empty-slot--handle${selected ? ' empty-slot--selected' : ''}`} data-date={day.date} data-room={room.id} data-slot-index={index} aria-label={`Резервирай ${label}`} aria-describedby={price ? priceId : undefined} onPointerDown={(event) => beginDrag(event, day, room.id, index)} onPointerEnter={(event) => updateDrag(event, day, room.id, index)} onClick={() => { if (skipClickRef.current) { skipClickRef.current = false; return; } selectRange(day, room.id, index, index, false); }}><Icon name="plus" />{price && <span className="empty-slot__price" id={priceId}>{formatSlotPrice(price)}</span>}</button> : <div className="schedule-grid__unknown" aria-label={`${label} — недостъпно`}>Недостъпно</div>)}</div>;
       }))])}</div></div></section>}
