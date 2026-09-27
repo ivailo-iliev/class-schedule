@@ -89,6 +89,28 @@ describe('Schedule week cache and views', () => {
     expect(screen.queryByRole('button', { name: 'Резервирай Зала на пн, 28 сеп в 08:30' })).not.toBeInTheDocument();
   });
 
+  test('restores accuracy-first pending state when returning to an in-flight adjacent week', async () => {
+    let resolveNext!: (week: WeekSchedule) => void;
+    const next = new Promise<WeekSchedule>((resolve) => { resolveNext = resolve; });
+    const loader = vi.fn().mockResolvedValueOnce(weekFor('2026-09-23')).mockReturnValueOnce(next);
+    render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
+    await screen.findByRole('button', { name: 'Покажи седмица' });
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща седмица' }));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    expect(screen.queryAllByRole('button', { name: /^Резервирай/ })).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Предишна седмица' }));
+    await screen.findByRole('button', { name: 'Резервирай Зала на пн, 21 сеп в 08:30' });
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща седмица' }));
+    expect(loader).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Резервирай/ })).toHaveLength(0));
+
+    resolveNext(weekFor('2026-09-30'));
+    expect(await screen.findByRole('button', { name: 'Резервирай Зала на пн, 28 сеп в 08:30' })).toBeEnabled();
+  });
+
   test('sends the actual weekday and selected room for week slots and rejects a cross-day drag', async () => {
     const onSelectSlot = vi.fn();
     render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} onSelectSlot={onSelectSlot} />);

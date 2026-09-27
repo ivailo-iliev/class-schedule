@@ -42,7 +42,12 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   weekRef.current = week; dateRef.current = date;
   const loadWeek = useCallback((requestedDate: string): Promise<WeekSchedule> => {
     const targetStart = weekStartOf(requestedDate);
-    if (inFlight.current?.weekStart === targetStart) return inFlight.current.promise;
+    if (inFlight.current?.weekStart === targetStart) {
+      // The selected date can leave this target and return before its request settles.
+      // Reusing the request must restore the same accuracy-first pending state as a new load.
+      setLoading(true); setError(null); setAvailabilityFresh(false);
+      return inFlight.current.promise;
+    }
     const request = ++requestId.current;
     setLoading(true); setError(null); setAvailabilityFresh(false);
     const promise = loadSchedule(requestedDate).then((result) => {
