@@ -94,7 +94,7 @@ select:focus-visible {
 
 .app-bar__inner {
   display: flex;
-  width: min(100% - 2rem, 76rem);
+  width: calc(100% - 2rem);
   min-height: 4.25rem;
   align-items: center;
   gap: 1.25rem;
@@ -420,6 +420,7 @@ select:focus-visible {
   display: grid;
   width: 100%;
   min-width: 0;
+  grid-template-columns: var(--schedule-grid-columns);
 }
 
 .schedule-grid__sticky-header {
@@ -479,7 +480,7 @@ select:focus-visible {
 .schedule-grid__corner {
   position: absolute;
   inset: 0 auto auto 0;
-  width: 3.6rem;
+  width: var(--schedule-grid-time-column);
   height: 44px;
   left: 0;
   z-index: 2;
@@ -585,9 +586,12 @@ select:focus-visible {
   line-height: 1.1;
 }
 
-/* Class colour comes from --class-hue (set per booking in Schedule.tsx). */
+/* Schedule supplies a deterministic, classId-keyed set of accessible colour tokens. */
 .booking {
-  --class-hue: 250;
+  --booking-background: #e8f0ff;
+  --booking-border: #87abe6;
+  --booking-text: #173d78;
+  --booking-muted-text: #355d96;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -598,11 +602,11 @@ select:focus-visible {
   margin: 2px 3px;
   padding: 0.45rem 0.6rem;
   overflow: hidden;
-  border: 1px solid oklch(0.84 0.07 var(--class-hue));
+  border: 1px solid var(--booking-border);
   border-radius: 0.55rem;
-  background: oklch(0.95 0.04 var(--class-hue));
-  box-shadow: 0 1px 2px oklch(0.4 0.06 var(--class-hue) / 12%);
-  color: oklch(0.33 0.09 var(--class-hue));
+  background: var(--booking-background);
+  box-shadow: 0 1px 2px rgb(23 61 120 / 12%);
+  color: var(--booking-text);
   font-size: 0.78rem;
   line-height: 1.2;
   text-align: left;
@@ -617,7 +621,7 @@ select:focus-visible {
 }
 
 .booking span {
-  color: oklch(0.45 0.07 var(--class-hue));
+  color: var(--booking-muted-text);
 }
 
 .booking--editable {
@@ -627,8 +631,8 @@ select:focus-visible {
 
 .booking--editable:hover,
 .booking--editable:focus-visible {
-  border-color: oklch(0.72 0.1 var(--class-hue));
-  background: oklch(0.91 0.06 var(--class-hue));
+  border-color: var(--booking-text);
+  background: #fff;
 }
 
 .icon {
