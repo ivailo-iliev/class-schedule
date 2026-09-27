@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -34,8 +36,44 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit
       - run: npm run build
-      - run: npx playwright install --with-deps chromium webkit
-      - run: npm run test:pwa
+      - name: Check whether browser/PWA tests are needed
+        id: pwa_scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE"
+            head="$PR_HEAD"
+          elif [[ "$EVENT_NAME" == "push" && "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]]; then
+            base="$PUSH_BEFORE"
+            head="$CURRENT_SHA"
+          else
+            # Manual runs and unknown ranges run the browser tests.
+            echo 'run_pwa=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --name-only -z "$base" "$head" > "$RUNNER_TEMP/changed-paths"
+          run_pwa=false
+          if [[ ! -s "$RUNNER_TEMP/changed-paths" ]]; then
+            run_pwa=true
+          fi
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              AGENTS.md|README.md|plans/*|docs/*) ;;
+              *) run_pwa=true; break ;;
+            esac
+          done < "$RUNNER_TEMP/changed-paths"
+          echo "run_pwa=$run_pwa" >> "$GITHUB_OUTPUT"
+      - if: ${{ steps.pwa_scope.outputs.run_pwa == 'true' }}
+        run: npx playwright install --with-deps chromium webkit
+      - if: ${{ steps.pwa_scope.outputs.run_pwa == 'true' }}
+        run: npm run test:pwa
 
   full-e2e:
     name: full E2E (manual only)
