@@ -12,7 +12,6 @@ import type {
   ClassItem,
   CreatedBooking,
   CreatedBookingSeries,
-  DaySchedule,
   WeekSchedule,
   AdminMonthReport,
   AdminTeacherMonthReport,
@@ -267,14 +266,6 @@ export async function getWeek(date: string): Promise<WeekSchedule> {
   const result = await fetchOr(() => client().rpc('get_week', { p_date: date }) as unknown as PromiseLike<SupabaseResult<unknown>>);
   if (!isWeekPayload(result, date)) throw new Error('invalid_week_response');
   return mapWeekSchedule(result);
-}
-
-// Temporary compatibility for the existing Schedule caller; remove once it uses getWeek.
-export async function getDay(date: string): Promise<DaySchedule> {
-  const week = await getWeek(date);
-  const day = week.days.find((candidate) => candidate.date === date);
-  if (!day) throw new Error('invalid_day_response');
-  return day;
 }
 
 export async function getMyClasses(): Promise<ClassItem[]> {
