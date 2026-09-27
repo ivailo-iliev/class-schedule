@@ -58,7 +58,7 @@ jobs:
             exit 0
           fi
 
-          git diff --name-only -z "$base" "$head" > "$RUNNER_TEMP/changed-paths"
+          git diff --no-renames --name-only -z "$base" "$head" > "$RUNNER_TEMP/changed-paths"
           run_pwa=false
           if [[ ! -s "$RUNNER_TEMP/changed-paths" ]]; then
             run_pwa=true
