@@ -219,11 +219,13 @@ export async function quoteBooking(
   classId: string,
   room: Room,
   occurrences: BookingOccurrence[],
+  excludeBookingId?: string,
 ): Promise<BookingQuote> {
   return fetchOr(() => client().rpc('quote_booking', {
     p_class_id: classId,
     p_room: room,
     p_occurrences: occurrences as unknown as Json,
+    ...(excludeBookingId ? { p_exclude_booking_id: excludeBookingId } : {}),
   }) as unknown as PromiseLike<SupabaseResult<BookingQuote>>);
 }
 

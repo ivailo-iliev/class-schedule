@@ -8,6 +8,8 @@ const CLASS_E = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const CLASS_G = '77777777-7777-7777-7777-777777777701';
 const CLAIMS_E = { sub: ELEONORA, role: 'authenticated' };
 const CLAIMS_G = { sub: GALYA, role: 'authenticated' };
+const CLAIMS_ADMIN = { sub: '33333333-3333-3333-3333-333333333333', role: 'authenticated' };
+let quoteConflictId: string | undefined;
 
 async function ensureGalyaClass() {
   const client = await db();
@@ -30,8 +32,15 @@ async function expectRejected(client: pg.PoolClient, action: () => Promise<unkno
 }
 
 async function quote(
-  client: pg.PoolClient, classId: string, occurrences: unknown[], room = 'hall',
+  client: pg.PoolClient, classId: string, occurrences: unknown[], room = 'hall', excludeBookingId?: string,
 ) {
+  if (excludeBookingId) {
+    const { rows } = await client.query(
+      'select public.quote_booking($1, $2::public.room, $3::jsonb, $4::uuid) as quote',
+      [classId, room, JSON.stringify(occurrences), excludeBookingId],
+    );
+    return rows[0].quote;
+  }
   const { rows } = await client.query(
     'select public.quote_booking($1, $2::public.room, $3::jsonb) as quote',
     [classId, room, JSON.stringify(occurrences)],
@@ -54,6 +63,7 @@ afterAll(async () => {
   try {
     await client.query('alter table public.bookings disable trigger bookings_guard');
     await client.query('delete from public.bookings where class_id = $1', [CLASS_G]);
+    if (quoteConflictId) await client.query('delete from public.bookings where id = $1', [quoteConflictId]);
     await client.query('delete from public.classes where id = $1', [CLASS_G]);
     await client.query(`delete from private.pricing_rules where label like 'pricing-test-%'`);
     await client.query('alter table public.bookings enable trigger bookings_guard');
@@ -63,6 +73,50 @@ afterAll(async () => {
 });
 
 describe('authoritative booking pricing RPCs', () => {
+  test('allows only an owned active occurrence to be excluded from an edit quote', async () => {
+    await ensureGalyaClass();
+    const occurrence = [{ starts_at: '2026-11-10T09:00:00', ends_at: '2026-11-10T10:00:00' }];
+    let bookingId = '';
+    await asAuthenticated(CLAIMS_G, async (client) => {
+      const created = await create(client, CLASS_G, occurrence, 'room');
+      bookingId = created.bookings[0].id;
+      const selfQuote = await quote(client, CLASS_G, occurrence, 'room', bookingId);
+      expect(selfQuote.occurrences[0].conflicts).toEqual([]);
+      const normalCreationQuote = await quote(client, CLASS_G, occurrence, 'room');
+      expect(normalCreationQuote.occurrences[0].conflicts).not.toEqual([]);
+    });
+
+    const owner = await db();
+    try {
+      const { rows } = await owner.query(
+        `insert into public.bookings(class_id, teacher_id, room, starts_at, ends_at, student_details)
+         values ($1, $2, 'hall'::public.room, $3::timestamp, $4::timestamp, 'other booking') returning id`,
+        [CLASS_E, ELEONORA, occurrence[0].starts_at, occurrence[0].ends_at],
+      );
+      quoteConflictId = rows[0].id;
+    } finally {
+      owner.release();
+    }
+
+    await asAuthenticated(CLAIMS_G, async (client) => {
+      const blocked = await quote(client, CLASS_G, occurrence, 'hall', bookingId);
+      expect(blocked.occurrences[0].conflicts).toHaveLength(1);
+    });
+    await asAuthenticated(CLAIMS_E, async (client) => {
+      await expectRejected(client, () => quote(client, CLASS_E, occurrence, 'room', bookingId), /booking_forbidden/);
+    });
+    await asAuthenticated(CLAIMS_ADMIN, async (client) => {
+      await expectRejected(client, () => quote(client, CLASS_G, occurrence, 'room', quoteConflictId), /booking_teacher_immutable/);
+    });
+    const cleanup = await db();
+    try {
+      await cleanup.query('delete from public.bookings where id = any($1::uuid[])', [[bookingId, quoteConflictId]]);
+      quoteConflictId = undefined;
+    } finally {
+      cleanup.release();
+    }
+  });
+
   test('quotes each half-hour, including the exact €42.50 standard boundary total', async () => {
     await ensureGalyaClass();
     await asAuthenticated(CLAIMS_G, async (client) => {

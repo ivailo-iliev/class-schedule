@@ -5,6 +5,7 @@ import {
   editBooking as editBookingApi,
   getBookingDetails as getBookingDetailsApi,
   getMyClasses,
+  quoteBooking as quoteBookingApi,
 } from '../lib/api';
 import { formatCalendarDate, localDateOf } from '../lib/calendar';
 import { getProfile } from '../lib/session';
@@ -17,6 +18,8 @@ import type {
   ClassItem,
   DaySchedule,
   Profile,
+  BookingOccurrence,
+  BookingQuote,
   Room,
 } from '../lib/types';
 import BookingForm from './BookingForm';
@@ -24,6 +27,7 @@ import Icon from './Icon';
 
 type ClassLoader = () => Promise<ClassItem[]>;
 type DetailLoader = (id: string) => Promise<BookingDetail>;
+type QuoteLoader = (classId: string, room: Room, occurrences: BookingOccurrence[], excludeBookingId?: string) => Promise<BookingQuote>;
 type BookingEditor = (
   id: string,
   expectedVersion: number,
@@ -46,6 +50,7 @@ export interface BookingDetailsProps {
   profile?: Profile | null;
   loadClasses?: ClassLoader;
   loadDetails?: DetailLoader;
+  quoteBooking?: QuoteLoader;
   editBooking?: BookingEditor;
   cancelBooking?: BookingCanceller;
   offline?: boolean;
@@ -113,6 +118,7 @@ export default function BookingDetails({
   profile: suppliedProfile,
   loadClasses = getMyClasses,
   loadDetails = getBookingDetailsApi,
+  quoteBooking = quoteBookingApi,
   editBooking = editBookingApi,
   cancelBooking = cancelBookingApi,
   offline = false,
@@ -273,16 +279,31 @@ export default function BookingDetails({
         editingSeriesLabel={detail ? `Занимание ${detail.seriesIndex + 1} от ${detail.seriesTotal}` : undefined}
         profile={profile}
         loadClasses={loadClasses}
+        quoteBooking={quoteBooking}
         editBooking={editBooking}
         onRefresh={onRefresh}
         offline={offline}
         onCancel={() => setEditing(false)}
         onDone={(updated, refreshed, refreshFailed) => {
-          if (updated) setCurrentBooking(reconcileBooking(currentBooking, updated, refreshed));
+          if (!updated) return;
           setEditing(false);
-          setNotice(refreshFailed
-            ? 'Резервацията е променена, но графикът не можа да бъде обновен.'
-            : 'Резервацията е променена.');
+          // edit_booking intentionally returns no private values. Clear the
+          // old snapshot before reading the new authorized projection.
+          setDetail(null);
+          setDetailLoading(true);
+          void loadDetails(updated.id).then((authoritative) => {
+            setDetail(authoritative);
+            setCurrentBooking(authoritative);
+            setNotice(refreshFailed
+              ? 'Резервацията е променена, но графикът не можа да бъде обновен.'
+              : 'Резервацията е променена.');
+          }).catch(() => {
+            setCurrentBooking((current) => ({
+              ...reconcileBooking(current, updated, refreshed),
+              studentDetails: undefined,
+            }));
+            setError('Резервацията е променена, но разрешените подробности не можаха да бъдат обновени.');
+          }).finally(() => setDetailLoading(false));
         }}
       />
     );
