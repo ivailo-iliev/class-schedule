@@ -12,6 +12,7 @@ type SupabaseResult<T> = { data: T | null; error: unknown | null };
 let client: AuthClient | undefined;
 let bootstrapPromise: Promise<Session | null> | null = null;
 let currentProfile: Profile | null = null;
+let retainedPersonalAccessToken: string | null = null;
 
 export function getSupabaseClient(): AuthClient {
   if (!client) {
@@ -95,6 +96,33 @@ async function activateSession(session: Session, supabase: AuthClient): Promise<
   return null;
 }
 
+function hasPwaInstallCookie(): boolean {
+  return typeof document !== 'undefined' && /(?:^|;\s*)pwa_install=/.test(document.cookie);
+}
+
+async function exchangePwaInstall(fetchImpl: typeof fetch, supabase: AuthClient): Promise<Session | null> {
+  const response = await fetchImpl('/api/access', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error('invalid_access');
+  const payload = await response.json() as Partial<NativeSessionPayload>;
+  if (typeof payload.access_token !== 'string' || typeof payload.refresh_token !== 'string') {
+    throw new Error('invalid_access');
+  }
+
+  const result = await supabase.auth.setSession({
+    access_token: payload.access_token,
+    refresh_token: payload.refresh_token,
+  });
+  if (result.error || !result.data.session) throw result.error ?? new Error('invalid_access');
+  const activeSession = await activateSession(result.data.session, supabase);
+  if (!activeSession) throw new Error('profile_access_denied');
+  return activeSession;
+}
+
 async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fetch): Promise<Session | null> {
   const supabase = getSupabaseClient();
   const token = location.hash.startsWith('#') ? location.hash.slice(1) : '';
@@ -102,6 +130,7 @@ async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fet
   // A personal-link fragment is authoritative, even when a different native
   // session exists in storage. It is removed only after the replacement is live.
   if (/^[0-9a-f]{64}$/.test(token)) {
+    retainedPersonalAccessToken = null;
     const response = await fetchImpl('/api/access', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -120,12 +149,14 @@ async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fet
     if (result.error || !result.data.session) throw result.error ?? new Error('invalid_access');
     const activeSession = await activateSession(result.data.session, supabase);
     if (!activeSession) throw new Error('profile_access_denied');
+    retainedPersonalAccessToken = token;
     clearAccessFragment();
     return activeSession;
   }
 
   const session = await persistedSession(supabase);
-  return session ? activateSession(session, supabase) : null;
+  if (session) return activateSession(session, supabase);
+  return hasPwaInstallCookie() ? exchangePwaInstall(fetchImpl, supabase) : null;
 }
 
 export function bootstrapNativeSession(
@@ -148,6 +179,12 @@ export function getProfile(): Profile | null {
 
 export function getProfileId(): string | null {
   return currentProfile?.id ?? null;
+}
+
+export function preparePwaInstall(): boolean {
+  if (!retainedPersonalAccessToken || typeof document === 'undefined') return false;
+  document.cookie = `pwa_install=${retainedPersonalAccessToken}; Secure; SameSite=Strict; Path=/; Max-Age=600`;
+  return true;
 }
 
 export async function clearSession(): Promise<void> {
@@ -178,6 +215,7 @@ export function resetSessionForTests(): void {
   client = undefined;
   bootstrapPromise = null;
   currentProfile = null;
+  retainedPersonalAccessToken = null;
 }
 
 export function isSessionRevokedError(error: unknown): boolean {

@@ -4,6 +4,7 @@ import {
   bootstrapNativeSession,
   clearSession,
   getProfile,
+  preparePwaInstall,
   resetSessionForTests,
 } from '../../src/lib/session';
 
@@ -51,6 +52,9 @@ describe('native browser session', () => {
     resetSessionForTests();
     vi.clearAllMocks();
     window.history.replaceState(null, '', '/access');
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    document.cookie = 'pwa_install=; Path=/; Max-Age=0';
     vi.stubEnv('VITE_SUPABASE_URL', 'https://supabase.test');
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'publishable-key');
   });
@@ -78,6 +82,57 @@ describe('native browser session', () => {
     expect(state.from).toHaveBeenCalledWith('profiles');
     expect(window.location.hash).toBe('');
     expect(getProfile()).toEqual(profile);
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  test('writes an install-only cookie after a complete fragment activation without browser token storage', async () => {
+    const state = clientStub();
+    createClient.mockReturnValue(state.client);
+    const cookieSetter = vi.spyOn(document, 'cookie', 'set');
+    window.history.replaceState(null, '', `/#${token}`);
+
+    await bootstrapNativeSession(window.location, vi.fn(async () => accessResponse()));
+
+    expect(preparePwaInstall()).toBe(true);
+    expect(cookieSetter).toHaveBeenLastCalledWith(
+      `pwa_install=${token}; Secure; SameSite=Strict; Path=/; Max-Age=600`,
+    );
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  test('does not prepare an install cookie without a retained personal-link token', () => {
+    const cookieSetter = vi.spyOn(document, 'cookie', 'set');
+    cookieSetter.mockClear();
+
+    expect(preparePwaInstall()).toBe(false);
+    expect(cookieSetter).not.toHaveBeenCalled();
+  });
+
+  test('test reset helper clears a retained personal-link token', async () => {
+    const state = clientStub();
+    createClient.mockReturnValue(state.client);
+    window.history.replaceState(null, '', `/#${token}`);
+
+    await bootstrapNativeSession(window.location, vi.fn(async () => accessResponse()));
+    expect(preparePwaInstall()).toBe(true);
+
+    resetSessionForTests();
+    expect(preparePwaInstall()).toBe(false);
+  });
+
+  test('a genuine module reload discards a retained personal-link token', async () => {
+    const state = clientStub();
+    createClient.mockReturnValue(state.client);
+    window.history.replaceState(null, '', `/#${token}`);
+
+    await bootstrapNativeSession(window.location, vi.fn(async () => accessResponse()));
+    expect(preparePwaInstall()).toBe(true);
+
+    vi.resetModules();
+    const reloaded = await import('../../src/lib/session');
+    expect(reloaded.preparePwaInstall()).toBe(false);
   });
 
   test('restores the persisted session and safe profile directly through RLS without a profile endpoint', async () => {
@@ -106,6 +161,49 @@ describe('native browser session', () => {
     expect(state.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(getProfile()).toBeNull();
+  });
+
+  test('bootstraps from a pwa_install cookie only when no persisted session exists', async () => {
+    const state = clientStub();
+    createClient.mockReturnValue(state.client);
+    document.cookie = 'pwa_install=opaque-cookie-value; Path=/';
+    const fetchImpl = vi.fn(async () => accessResponse());
+
+    const result = await bootstrapNativeSession({ hash: '', origin: window.location.origin }, fetchImpl);
+
+    expect(result).toBe(session);
+    expect(fetchImpl).toHaveBeenCalledWith('/api/access', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+      credentials: 'same-origin',
+    });
+    expect(state.auth.setSession).toHaveBeenCalledWith({ access_token: 'access-token', refresh_token: 'refresh-token' });
+    expect(getProfile()).toEqual(profile);
+  });
+
+  test('does not call access when neither a persisted session nor pwa_install cookie exists', async () => {
+    const state = clientStub();
+    createClient.mockReturnValue(state.client);
+    const fetchImpl = vi.fn();
+
+    const result = await bootstrapNativeSession({ hash: '', origin: window.location.origin }, fetchImpl);
+
+    expect(result).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(state.auth.setSession).not.toHaveBeenCalled();
+  });
+
+  test('does not retain a fragment token when profile activation fails', async () => {
+    const state = clientStub(null, null);
+    createClient.mockReturnValue(state.client);
+    window.history.replaceState(null, '', `/#${token}`);
+
+    await expect(bootstrapNativeSession(window.location, vi.fn(async () => accessResponse())))
+      .rejects.toThrow('profile_access_denied');
+
+    expect(preparePwaInstall()).toBe(false);
+    expect(window.location.hash).toBe(`#${token}`);
   });
 
   test('keeps a failed fragment visible and leaves the existing native session untouched', async () => {
