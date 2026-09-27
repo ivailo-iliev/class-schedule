@@ -1,9 +1,14 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from '../../src/App';
 import { addCalendarDays, daySlots } from '../../src/lib/calendar';
 import type { Booking } from '../../src/lib/types';
+
+const appStyles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8');
+let appStyleElement: HTMLStyleElement;
 
 function weekFor(date: string) { const weekday = (new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7; const start = addCalendarDays(date, -weekday); return { weekStart: start, weekEnd: addCalendarDays(start, 6), days: Array.from({ length: 7 }, (_, index) => ({ date: addCalendarDays(start, index), slots: daySlots(addCalendarDays(start, index)), bookings: [] })) }; }
 function bookingFor(date: string): Booking { return { id: 'booking-1', classId: 'class-1', teacherId: 'teacher', className: 'Pilates', teacherName: 'Teacher', room: 'hall', startsAt: `${date}T10:00:00`, endsAt: `${date}T11:00:00`, hour: 10, cancelledAt: null, version: 3, canEdit: true }; }
@@ -12,7 +17,34 @@ vi.mock('../../src/lib/api', () => ({ getWeek: mocks.getWeek, getMyMonthReport: 
 vi.mock('../../src/lib/session', () => ({ bootstrapNativeSession: mocks.bootstrap, onNativeAuthStateChange: mocks.auth, getProfile: mocks.profile }));
 
 describe('App schedule integration', () => {
+  beforeAll(() => {
+    appStyleElement = document.createElement('style');
+    appStyleElement.textContent = appStyles;
+    document.head.append(appStyleElement);
+  });
+
+  afterAll(() => appStyleElement.remove());
+
   beforeEach(() => { mocks.getWeek.mockImplementation(async (date: string) => weekFor(date)); mocks.getMyMonthReport.mockResolvedValue({ month: '2026-11', teacherId: 'teacher', teacherName: 'Teacher', reservationCount: 0, cancelledCount: 0, totalDue: '0.00', rows: [] }); mocks.getAdminMonthReport.mockResolvedValue({ month: '2026-11', teacherId: null, teachers: [], cashboxTotal: '0.00' }); mocks.getTeachers.mockResolvedValue([]); mocks.getMyClasses.mockResolvedValue([{ id: 'class-1', teacherId: 'teacher', name: 'Pilates', active: true }]); mocks.bootstrap.mockResolvedValue({}); mocks.auth.mockReturnValue({ unsubscribe: vi.fn() }); mocks.profile.mockReturnValue({ id: 'teacher', name: 'Teacher', role: 'teacher' }); });
+
+  test('renders the desktop header menu without a bounded inner width', async () => {
+    const previousViewportWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
+    window.dispatchEvent(new Event('resize'));
+    try {
+      render(<App />);
+      await screen.findByRole('button', { name: 'График' });
+      const appBarInner = document.querySelector('.app-bar__inner') as HTMLElement;
+      expect(appBarInner).toBeInTheDocument();
+      expect(getComputedStyle(appBarInner).maxWidth).toBe('none');
+      expect(screen.getByRole('button', { name: 'График' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Занимания' })).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousViewportWidth });
+      window.dispatchEvent(new Event('resize'));
+    }
+  });
+
   test('renders the weekly-backed schedule navigation in Bulgarian', async () => { render(<App />); expect(await screen.findByRole('button', { name: 'График' })).toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Занимания' })).toBeInTheDocument(); expect(screen.getByText('Teacher')).toBeInTheDocument(); expect(await screen.findByRole('heading', { name: 'Зала' })).toBeInTheDocument(); expect(mocks.getWeek).toHaveBeenCalledTimes(1); });
   test('shows the teacher report destination and only calls the teacher report RPC', async () => { render(<App />); fireEvent.click(await screen.findByRole('button', { name: 'Отчети' })); expect(await screen.findByLabelText('Обобщение на отчета')).toBeInTheDocument(); await waitFor(() => expect(mocks.getMyMonthReport).toHaveBeenCalled()); expect(mocks.getAdminMonthReport).not.toHaveBeenCalled(); });
   test('shows the administrator report and calls its RPC', async () => { mocks.profile.mockReturnValue({ id: 'admin', name: 'Admin', role: 'admin' }); render(<App />); fireEvent.click(await screen.findByRole('button', { name: 'Отчети' })); expect(await screen.findByText('Обща сума в касата')).toBeInTheDocument(); await waitFor(() => expect(mocks.getAdminMonthReport).toHaveBeenCalled()); });
