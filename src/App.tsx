@@ -4,9 +4,10 @@ import { useOnlineStatus } from './lib/network';
 import type { Booking, DaySchedule, Profile, Room } from './lib/types';
 import BookingDetails from './components/BookingDetails';
 import BookingForm from './components/BookingForm';
-import Classes from './components/Classes';
+import Classes, { type ClassesHandle } from './components/Classes';
 import Schedule, { type ScheduleHandle } from './components/Schedule';
-import MonthlyReport from './components/MonthlyReport';
+import MonthlyReport, { type MonthlyReportHandle } from './components/MonthlyReport';
+import Icon from './components/Icon';
 
 type SlotSelection = { date: string; startsAt: string; endsAt?: string; hour?: number; room: Room };
 
@@ -72,6 +73,9 @@ export default function App() {
   const [activeView, setActiveView] = useState<'schedule' | 'classes' | 'report'>('schedule');
   const [profile, setProfile] = useState<Profile | null>(() => getProfile());
   const scheduleRef = useRef<ScheduleHandle>(null);
+  const classesRef = useRef<ClassesHandle>(null);
+  const reportRef = useRef<MonthlyReportHandle>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
   const offline = !useOnlineStatus();
 
@@ -124,6 +128,24 @@ export default function App() {
   const refreshSchedule = useCallback((): Promise<DaySchedule | undefined> => {
     return scheduleRef.current?.refresh() ?? Promise.resolve(undefined);
   }, []);
+
+  const refreshCurrentView = useCallback(async () => {
+    if (refreshing) return;
+    const handle = activeView === 'schedule'
+      ? scheduleRef.current
+      : activeView === 'classes'
+        ? classesRef.current
+        : reportRef.current;
+    if (!handle) return;
+    setRefreshing(true);
+    try {
+      await handle.refresh();
+    } catch {
+      // The active view owns its error presentation.
+    } finally {
+      setRefreshing(false);
+    }
+  }, [activeView, refreshing]);
 
   const rememberTrigger = () => {
     lastFocusedElement.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -190,6 +212,17 @@ export default function App() {
               Отчети
             </button>
           </nav>
+          <button
+            type="button"
+            className="app-bar__refresh"
+            onClick={() => { void refreshCurrentView(); }}
+            disabled={refreshing}
+            aria-busy={refreshing}
+            aria-label="Презареди текущия изглед"
+            title="Презареди текущия изглед"
+          >
+            <Icon name="refresh" />
+          </button>
           <div className="teacher-identity">
             <span className="teacher-identity__dot" aria-hidden="true" />
             <span>{profile?.name || 'Учител'}</span>
@@ -210,7 +243,7 @@ export default function App() {
           }}
           offline={offline}
         />
-      ) : activeView === 'classes' ? <Classes profile={profile} /> : <MonthlyReport profile={profile!} />}
+      ) : activeView === 'classes' ? <Classes ref={classesRef} profile={profile} /> : <MonthlyReport ref={reportRef} profile={profile!} />}
 
       {selectedSlot && (
         <WorkspacePanel label="Резервиране на зала" onClose={closeSlotPanel}>
