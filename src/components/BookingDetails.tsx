@@ -185,8 +185,8 @@ export default function BookingDetails({
   }, [booking, loadDetails, shouldLoadDetails]);
 
   const cancelled = currentBooking.cancelledAt !== null;
-  // get_day deliberately carries version 0. Controls are available from a
-  // test/detail projection only, never from an unhydrated safe schedule row.
+  // The safe week schedule deliberately carries version 0. Controls are
+  // available from a test/detail projection only, never from an unhydrated row.
   const canManage = currentBooking.canEdit && !cancelled && !offline && (!detailLoading && (detail !== null || currentBooking.version > 0));
   const hasFutureActive = detail?.hasFutureActive === true;
   const formattedDate = formatCalendarDate(localDateOf(currentBooking.startsAt));
