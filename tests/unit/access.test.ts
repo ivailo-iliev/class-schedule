@@ -49,6 +49,10 @@ function request(body: unknown, headers: Record<string, string> = {}) {
   };
 }
 
+function cookieRequest(cookie: string, body: unknown = {}) {
+  return request(body, { cookie });
+}
+
 const env = {
   APP_ORIGIN: 'https://class-admin.netlify.app',
   SUPABASE_URL: 'http://supabase.test',
@@ -88,6 +92,51 @@ describe('native access exchange', () => {
     const verify = calls.find(call => call.url.endsWith('/auth/v1/verify'))!;
     expect(JSON.parse(verify.init.body as string)).toEqual({ type: 'magiclink', token_hash: 'native-one-time-token' });
     expect(verify.init.headers).toMatchObject({ apikey: 'function-publishable-key', Authorization: 'Bearer function-publishable-key' });
+  });
+
+  test('authenticates with a valid pwa_install cookie and an empty JSON body', async () => {
+    const { calls, fetchImpl } = fetchStub();
+    const result = await handleAccessRequest(cookieRequest(`pwa_install=${token}`), { env, fetchImpl });
+
+    expect(result.status).toBe(200);
+    expect(JSON.parse(result.body)).toMatchObject({ access_token: 'native-access', refresh_token: 'native-refresh' });
+    expect(calls.filter(call => call.url.endsWith('/rpc/resolve_access'))).toHaveLength(1);
+    expect(JSON.parse(calls.find(call => call.url.endsWith('/rpc/resolve_access'))!.init.body as string)).toEqual({
+      p_token_hash: createHash('sha256').update(token).digest('hex'),
+    });
+  });
+
+  test('prefers a valid body token over a different valid pwa_install cookie', async () => {
+    const bodyToken = 'b'.repeat(64);
+    const cookieToken = 'c'.repeat(64);
+    const { calls, fetchImpl } = fetchStub();
+    const result = await handleAccessRequest(
+      cookieRequest(`other=value; pwa_install=${cookieToken}`, { token: bodyToken }),
+      { env, fetchImpl },
+    );
+
+    expect(result.status).toBe(200);
+    expect(JSON.parse(calls.find(call => call.url.endsWith('/rpc/resolve_access'))!.init.body as string)).toEqual({
+      p_token_hash: createHash('sha256').update(bodyToken).digest('hex'),
+    });
+    expect(result.headers['set-cookie']).toBeUndefined();
+  });
+
+  test('expires pwa_install after a successful cookie exchange', async () => {
+    const { fetchImpl } = fetchStub();
+    const result = await handleAccessRequest(cookieRequest(`pwa_install=${token}`), { env, fetchImpl });
+
+    expect(result.status).toBe(200);
+    expect(result.headers['set-cookie']).toBe('pwa_install=; Path=/; Max-Age=0; Secure; SameSite=Strict');
+  });
+
+  test('expires a structurally valid pwa_install cookie when its profile is revoked or unknown', async () => {
+    const { fetchImpl } = fetchStub({ profile: null });
+    const result = await handleAccessRequest(cookieRequest(`pwa_install=${token}`), { env, fetchImpl });
+
+    expect(result.status).toBe(401);
+    expect(JSON.parse(result.body)).toEqual({ error: 'invalid_access' });
+    expect(result.headers['set-cookie']).toBe('pwa_install=; Path=/; Max-Age=0; Secure; SameSite=Strict');
   });
 
   test('creates and links the hidden native user only when the profile is not yet bound', async () => {
