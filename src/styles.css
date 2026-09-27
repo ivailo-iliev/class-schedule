@@ -125,6 +125,40 @@ select:focus-visible {
   color: #fff;
 }
 
+.app-bar__refresh {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: #d7e3f8;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.app-bar__refresh:hover:not(:disabled) {
+  border-color: rgb(255 255 255 / 18%);
+  background: rgb(255 255 255 / 10%);
+  color: #fff;
+}
+
+.app-bar__refresh:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.app-bar__refresh[aria-busy="true"] .icon {
+  animation: app-bar-refresh-spin 900ms linear infinite;
+}
+
+@keyframes app-bar-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
 .teacher-identity {
   display: inline-flex;
   max-width: 35vw;
