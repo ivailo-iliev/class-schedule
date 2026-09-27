@@ -81,7 +81,9 @@ describe('native access exchange', () => {
     });
     expect(result.body).not.toContain(token);
     expect(result.headers['cache-control']).toBe('private, no-store');
-    expect(result.headers['set-cookie']).toBeUndefined();
+    expect(result.headers['set-cookie']).toBe(
+      `pwa_install=${token}; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Strict`,
+    );
     expect(log).not.toHaveBeenCalled();
 
     const rpc = calls.filter(call => call.url.includes('/rpc/'));
@@ -119,7 +121,9 @@ describe('native access exchange', () => {
     expect(JSON.parse(calls.find(call => call.url.endsWith('/rpc/resolve_access'))!.init.body as string)).toEqual({
       p_token_hash: createHash('sha256').update(bodyToken).digest('hex'),
     });
-    expect(result.headers['set-cookie']).toBeUndefined();
+    expect(result.headers['set-cookie']).toBe(
+      `pwa_install=${bodyToken}; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Strict`,
+    );
   });
 
   test('expires pwa_install after a successful cookie exchange', async () => {
@@ -127,7 +131,7 @@ describe('native access exchange', () => {
     const result = await handleAccessRequest(cookieRequest(`pwa_install=${token}`), { env, fetchImpl });
 
     expect(result.status).toBe(200);
-    expect(result.headers['set-cookie']).toBe('pwa_install=; Path=/; Max-Age=0; Secure; SameSite=Strict');
+    expect(result.headers['set-cookie']).toBe('pwa_install=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict');
   });
 
   test('expires a structurally valid pwa_install cookie when its profile is revoked or unknown', async () => {
@@ -136,7 +140,7 @@ describe('native access exchange', () => {
 
     expect(result.status).toBe(401);
     expect(JSON.parse(result.body)).toEqual({ error: 'invalid_access' });
-    expect(result.headers['set-cookie']).toBe('pwa_install=; Path=/; Max-Age=0; Secure; SameSite=Strict');
+    expect(result.headers['set-cookie']).toBe('pwa_install=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict');
   });
 
   test('creates and links the hidden native user only when the profile is not yet bound', async () => {
