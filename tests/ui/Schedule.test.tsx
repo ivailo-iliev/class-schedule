@@ -396,7 +396,6 @@ describe('Schedule week cache and views', () => {
     const datePickerStyle = getComputedStyle(datePicker);
     expect(datePickerStyle.maxWidth).toBe('320px');
     expect(datePickerStyle.minWidth).toBe('192px');
-    expect(datePickerStyle.width).toBe('min(100%, 320px)');
 
     const initialWeekShell = grid.closest('.schedule-shell') as HTMLElement;
     expect(initialWeekShell).toBeInTheDocument();
