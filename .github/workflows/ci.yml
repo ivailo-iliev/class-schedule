@@ -47,7 +47,11 @@ jobs:
           CURRENT_SHA: ${{ github.sha }}
         run: |
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            base="$PR_BASE"
+            # Ignore unrelated commits that landed on base after this PR branched.
+            if ! base="$(git merge-base "$PR_BASE" "$PR_HEAD")"; then
+              echo 'run_pwa=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             head="$PR_HEAD"
           elif [[ "$EVENT_NAME" == "push" && "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]]; then
             base="$PUSH_BEFORE"
@@ -58,7 +62,11 @@ jobs:
             exit 0
           fi
 
-          git diff --no-renames --name-only -z "$base" "$head" > "$RUNNER_TEMP/changed-paths"
+          if ! git diff --no-renames --name-only -z "$base" "$head" > "$RUNNER_TEMP/changed-paths"; then
+            # Missing history must not let browser checks be skipped.
+            echo 'run_pwa=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           run_pwa=false
           if [[ ! -s "$RUNNER_TEMP/changed-paths" ]]; then
             run_pwa=true
