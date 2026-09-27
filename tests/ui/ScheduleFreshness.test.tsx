@@ -21,6 +21,7 @@ describe('accuracy-first weekly schedule refresh', () => {
     await screen.findByText('Йога');
     const first = ref.current!.refresh(); const second = ref.current!.refresh();
     await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    expect(loader).toHaveBeenLastCalledWith('2026-11-02');
     expect(screen.queryByRole('button', { name: 'Резервирай Стая в 10:00' })).not.toBeInTheDocument();
     resolve(weekFor()); await expect(first).resolves.toMatchObject({ date: '2026-11-02' }); await expect(second).resolves.toMatchObject({ date: '2026-11-02' });
     expect(await screen.findByRole('button', { name: 'Резервирай Стая в 10:00' })).toBeEnabled();
