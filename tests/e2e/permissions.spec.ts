@@ -152,8 +152,8 @@ test('rotating a personal link rejects its old fragment without ending an establ
 
   const establishedApi = await request.newContext({ baseURL: state.apiUrl, extraHTTPHeaders: restHeaders(establishedSession) });
   try {
-    const day = await establishedApi.post('/rest/v1/rpc/get_day', { data: { p_date: fixture.day } });
-    expect(day.status()).toBe(200);
+    const week = await establishedApi.post('/rest/v1/rpc/get_week', { data: { p_date: fixture.day } });
+    expect(week.status()).toBe(200);
   } finally {
     await establishedApi.dispose();
   }
@@ -165,10 +165,11 @@ test('enforces safe RPC projections, RLS ownership, and base-table denial', asyn
   const teacherToken = await issuedAccessToken(page);
   const api = await request.newContext({ baseURL: state.apiUrl, extraHTTPHeaders: restHeaders(teacherToken) });
   try {
-    const day = await api.post('/rest/v1/rpc/get_day', { data: { p_date: fixture.day } });
-    expect(day.status()).toBe(200);
-    const schedule = await day.json() as { bookings: Array<Record<string, unknown>> };
-    const visible = schedule.bookings.find((booking) => booking.id === fixture.bookingBId)!;
+    const week = await api.post('/rest/v1/rpc/get_week', { data: { p_date: fixture.day } });
+    expect(week.status()).toBe(200);
+    const schedule = await week.json() as { days: Array<{ date: string, bookings: Array<Record<string, unknown>> }> };
+    const day = schedule.days.find((candidate) => candidate.date === fixture.day)!;
+    const visible = day.bookings.find((booking) => booking.id === fixture.bookingBId)!;
     expect(visible).toMatchObject({ room: 'room', activity_title: `${testInfo.project.name} B Class`, can_manage: false });
     expect(JSON.stringify(schedule)).not.toMatch(/private detail|student_details|calculated_amount|price_breakdown|amount/i);
 
@@ -233,7 +234,7 @@ test('rejects malformed credentials and deactivation blocks an established nativ
     expect(direct.status()).toBe(401);
 
     await deactivateProfile(fixture.teacherA.id);
-    const blocked = await api.post('/rest/v1/rpc/get_day', { data: { p_date: fixture.day } });
+    const blocked = await api.post('/rest/v1/rpc/get_week', { data: { p_date: fixture.day } });
     expect(blocked.status()).toBeGreaterThanOrEqual(400);
   } finally {
     await api.dispose();
