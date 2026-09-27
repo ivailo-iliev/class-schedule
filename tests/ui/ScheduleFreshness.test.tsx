@@ -71,6 +71,28 @@ describe('accuracy-first schedule refresh', () => {
     expect(await screen.findByRole('button', { name: 'Резервирай Стая в 10:00' })).toBeEnabled();
   });
 
+  test('revalidates each visible-window focus and coalesces its duplicate visibility focus', async () => {
+    const loader = vi.fn(async (date: string) => scheduleFor(date));
+    render(<Schedule initialDate="2026-11-02" loadSchedule={loader} />);
+    await screen.findByText('Йога');
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    fireEvent(window, new Event('focus'));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    fireEvent(window, new Event('focus'));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(3));
+
+    setVisibility('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    setVisibility('visible');
+    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('focus'));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(4));
+
+    fireEvent(window, new Event('focus'));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(5));
+  });
+
   test('keeps availability unknown and disabled after a failed refresh', async () => {
     const loader = vi.fn()
       .mockResolvedValueOnce(scheduleFor())
@@ -81,6 +103,24 @@ describe('accuracy-first schedule refresh', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/не е актуален/i);
     expect(screen.queryByRole('button', { name: /Book / })).not.toBeInTheDocument();
+  });
+
+  test('keeps empty slots disabled while a focus refresh is pending and after it fails', async () => {
+    let rejectRefresh!: (reason: Error) => void;
+    const refresh = new Promise<DaySchedule>((_resolve, reject) => { rejectRefresh = reject; });
+    const loader = vi.fn()
+      .mockResolvedValueOnce(scheduleFor())
+      .mockReturnValueOnce(refresh);
+    render(<Schedule initialDate="2026-11-02" loadSchedule={loader} />);
+    await screen.findByText('Йога');
+
+    fireEvent(window, new Event('focus'));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('button', { name: 'Резервирай Стая в 10:00' })).not.toBeInTheDocument();
+
+    rejectRefresh(new Error('offline'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/не е актуален/i);
+    expect(screen.queryByRole('button', { name: 'Резервирай Стая в 10:00' })).not.toBeInTheDocument();
   });
 
   test('loads on date selection and manual refresh', async () => {

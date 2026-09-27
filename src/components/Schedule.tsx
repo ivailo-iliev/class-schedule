@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { getDay } from '../lib/api';
-import { localDateOf, localTime, minutesOf } from '../lib/calendar';
+import { addCalendarDays, formatCalendarDate, localDateOf, localTime, minutesOf, todayCalendarDate } from '../lib/calendar';
 import type { Booking, DaySchedule, Room, SlotPrice } from '../lib/types';
 import Icon from './Icon';
 
@@ -12,9 +12,9 @@ type LoadSchedule = (date: string) => Promise<DaySchedule>;
 export interface ScheduleProps { initialDate?: string; loadSchedule?: LoadSchedule; onSelectSlot?: (selection: SlotSelection) => void; onSelectBooking?: (booking: Booking) => void; offline?: boolean; }
 export interface ScheduleHandle { refresh: () => Promise<DaySchedule | undefined>; }
 
-function today(): string { return new Date().toISOString().slice(0, 10); }
-function shiftDate(date: string, days: number): string { const value = new Date(`${date}T12:00:00Z`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); }
-function displayDate(date: string): string { return new Intl.DateTimeFormat('bg-BG', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`)); }
+function today(): string { return todayCalendarDate(); }
+function shiftDate(date: string, days: number): string { return addCalendarDays(date, days); }
+function displayDate(date: string): string { return formatCalendarDate(date, { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }); }
 function timeLabel(local: string): string { return local.slice(11, 16); }
 function classHue(id: string): number { let hash = 0; for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0; return (hash % 12) * 30; }
 function readVisibleRooms(): Room[] {
@@ -51,7 +51,26 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   }, [loadSchedule]);
   useImperativeHandle(ref, () => ({ refresh: () => load(dateRef.current) }), [load]);
   useEffect(() => { void load(date).catch(() => undefined); }, [date, load]);
-  useEffect(() => { const onVisibility = () => { if (document.visibilityState === 'visible') void load(dateRef.current).catch(() => undefined); }; document.addEventListener('visibilitychange', onVisibility); return () => document.removeEventListener('visibilitychange', onVisibility); }, [load]);
+  const skipFocusAfterVisibilityRef = useRef(false);
+  useEffect(() => {
+    const refreshOnForeground = () => { void load(dateRef.current).catch(() => undefined); };
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      skipFocusAfterVisibilityRef.current = true;
+      refreshOnForeground();
+    };
+    const onFocus = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (skipFocusAfterVisibilityRef.current) { skipFocusAfterVisibilityRef.current = false; return; }
+      refreshOnForeground();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [load]);
   useEffect(() => {
     try { window.localStorage.setItem(ROOM_VISIBILITY_STORAGE_KEY, JSON.stringify(visibleRooms)); } catch { /* local persistence is optional */ }
   }, [visibleRooms]);
