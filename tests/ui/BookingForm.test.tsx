@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import BookingForm from '../../src/components/BookingForm';
+import BookingForm, { buildOccurrences } from '../../src/components/BookingForm';
 import type { BookingOccurrence, BookingQuote, ClassItem, CreatedBookingSeries, Profile } from '../../src/lib/types';
 
 const teacher: Profile = { id: 'teacher-a', name: 'Teacher A', role: 'teacher' };
@@ -77,6 +77,24 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof BookingForm>>
 }
 
 describe('BookingForm server-quoted creation', () => {
+  test('keeps recurring local dates intact through a DST-boundary week', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 0, 1, 12));
+    try {
+      expect(buildOccurrences('recurring', '2027-03-29', '08:30', '09:00', '2027-03-29', [1, 7], '2')).toEqual({
+        error: null,
+        occurrences: [
+          { starts_at: '2027-03-29T08:30:00', ends_at: '2027-03-29T09:00:00' },
+          { starts_at: '2027-04-04T08:30:00', ends_at: '2027-04-04T09:00:00' },
+          { starts_at: '2027-04-05T08:30:00', ends_at: '2027-04-05T09:00:00' },
+          { starts_at: '2027-04-11T08:30:00', ends_at: '2027-04-11T09:00:00' },
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('offers only half-hour choices from 08:00 through 22:00 and omits the creation description', async () => {
     renderForm();
     const start = await screen.findByRole('combobox', { name: 'Начален час' });
