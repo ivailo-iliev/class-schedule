@@ -354,31 +354,55 @@ select:focus-visible {
 .schedule-grid-scroll {
   position: relative;
   overflow: visible;
-  border-radius: 0.9rem;
   isolation: isolate;
 }
 
 .schedule-grid {
-  display: grid;
   width: 100%;
   min-width: 0;
+  overflow: visible;
+  border-radius: 0.9rem;
   border-top: 1px solid #e3e9f2;
   border-left: 1px solid #e3e9f2;
   background: #fff;
   box-shadow: 0 1rem 2.5rem rgb(26 60 108 / 8%);
 }
 
-.schedule-grid--week {
+.schedule-grid__header-clip {
+  position: sticky;
+  top: var(--schedule-grid-sticky-top);
+  z-index: 4;
+  height: 44px;
+  overflow: clip;
+  isolation: isolate;
+  background: #f7f9fd;
+}
+
+.schedule-grid__sticky-header,
+.schedule-grid__body {
+  display: grid;
+  width: 100%;
   min-width: 0;
+}
+
+.schedule-grid__sticky-header {
+  min-height: 44px;
+  background: #f7f9fd;
+  will-change: transform;
+}
+
+.schedule-grid__body {
+  background: #fff;
 }
 
 @media (max-width: 800px) {
   .schedule-grid-scroll {
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
   }
 
-  .schedule-grid--week {
+  .schedule-grid--week .schedule-grid__sticky-header,
+  .schedule-grid--week .schedule-grid__body {
     min-width: calc(3.6rem + 7 * 8.5rem);
   }
 }
@@ -410,19 +434,19 @@ select:focus-visible {
 }
 
 .schedule-grid__corner {
-  position: sticky;
-  top: var(--schedule-grid-sticky-top);
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 3.6rem;
+  height: 44px;
   left: 0;
-  z-index: 4;
+  z-index: 2;
   justify-content: flex-end;
   padding-right: 0.55rem;
   color: #8190a8;
 }
 
 .schedule-grid__header {
-  position: sticky;
-  top: var(--schedule-grid-sticky-top);
-  z-index: 2;
+  grid-row: 1;
 }
 
 .schedule-grid__hour {

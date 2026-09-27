@@ -20,6 +20,10 @@ describe('Schedule week cache and views', () => {
     render(<Schedule initialDate="2026-09-21" loadSchedule={loader} />);
     await screen.findByRole('button', { name: 'Резервирай Зала в 08:30' });
     expect(loader).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Следващ ден' }));
+    expect(loader).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Предишен ден' }));
+    expect(loader).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Предишен ден' }));
     await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
     expect(loader).toHaveBeenLastCalledWith('2026-09-20');
@@ -42,14 +46,25 @@ describe('Schedule week cache and views', () => {
     expect(localStorage.getItem('schedule-week-room')).toBe('room');
   });
 
-  test('moves a week at a time in week mode and persists the view', async () => {
-    const loader = vi.fn(async (date: string) => weekFor(date));
+  test('moves a week at a time, updates the pending target range, and persists the view', async () => {
+    let resolveNext!: (week: WeekSchedule) => void; let resolvePrevious!: (week: WeekSchedule) => void;
+    const next = new Promise<WeekSchedule>((resolve) => { resolveNext = resolve; }); const previous = new Promise<WeekSchedule>((resolve) => { resolvePrevious = resolve; });
+    const loader = vi.fn().mockResolvedValueOnce(weekFor('2026-09-23')).mockReturnValueOnce(next).mockReturnValueOnce(previous);
     render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
     await screen.findByRole('button', { name: 'Покажи седмица' });
     fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
     fireEvent.click(screen.getByRole('button', { name: 'Следваща седмица' }));
     await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
     expect(loader).toHaveBeenLastCalledWith('2026-09-30');
+    expect(screen.getByText('28 сеп – 4 окт')).toBeInTheDocument();
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-label', 'График за 28 сеп – 4 окт');
+    resolveNext(weekFor('2026-09-30')); await screen.findByRole('button', { name: 'Резервирай Зала на пн, 28 сеп в 08:30' });
+    fireEvent.click(screen.getByRole('button', { name: 'Предишна седмица' }));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(3));
+    expect(loader).toHaveBeenLastCalledWith('2026-09-23');
+    expect(screen.getByText('21 сеп – 27 сеп')).toBeInTheDocument();
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-label', 'График за 21 сеп – 27 сеп');
+    resolvePrevious(weekFor('2026-09-23'));
     expect(localStorage.getItem('schedule-view-mode')).toBe('week');
   });
 
@@ -98,17 +113,23 @@ describe('Schedule week cache and views', () => {
     expect(onSelectSlot).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-09-23', endsAt: '2026-09-23T10:00:00', room: 'hall' }));
   });
 
-  test('uses an app-bar-and-toolbar sticky offset with a grid-only week scroller', async () => {
+  test('keeps the sticky header outside the mobile-only horizontal grid scroller', async () => {
     render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} />);
     await screen.findByRole('grid');
     expect(screen.getByRole('banner')).toHaveClass('schedule-date-bar');
     fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
     const grid = await screen.findByRole('grid');
     expect(grid).toHaveClass('schedule-grid--week');
-    expect(grid.parentElement).toHaveClass('schedule-grid-scroll');
+    const scroller = grid.querySelector('.schedule-grid-scroll')!;
+    const stickyHeader = grid.querySelector('.schedule-grid__header-clip')!;
+    expect(scroller).toBeInTheDocument();
+    expect(stickyHeader).toBeInTheDocument();
+    expect(scroller.contains(stickyHeader)).toBe(false);
+    expect(stickyHeader.contains(scroller)).toBe(false);
     expect(grid.querySelector('.schedule-grid__corner')).toBeTruthy();
     const shell = grid.closest('.schedule-shell')!;
     expect(shell).toHaveStyle({ '--schedule-grid-sticky-top': 'calc(var(--app-bar-height) + var(--schedule-toolbar-height))' });
+    expect(stickyHeader).toHaveStyle({ top: 'var(--schedule-grid-sticky-top)' });
     expect(grid.querySelector('.schedule-grid__header')).toBeTruthy();
   });
 });
