@@ -6,6 +6,7 @@ import {
   getBookingDetails as getBookingDetailsApi,
   getMyClasses,
 } from '../lib/api';
+import { formatCalendarDate, localDateOf } from '../lib/calendar';
 import { getProfile } from '../lib/session';
 import { formatAmount, groupPriceSegments } from '../lib/price-breakdown';
 import type {
@@ -50,24 +51,13 @@ export interface BookingDetailsProps {
   offline?: boolean;
 }
 
-function localDate(instant: string): string {
-  return instant.slice(0, 10);
+function timeLabel(localDateTime: string | undefined, fallbackHour?: number): string {
+  if (!localDateTime) return `${String(fallbackHour ?? 0).padStart(2, '0')}:00`;
+  return localDateTime.slice(11, 16);
 }
 
-function readableDate(instant: string): string {
-  return new Intl.DateTimeFormat('bg-BG', {
-    timeZone: 'Europe/Sofia', year: 'numeric', month: 'long', day: 'numeric',
-  }).format(new Date(instant));
-}
-
-function timeLabel(instant: string | undefined, fallbackHour?: number): string {
-  if (!instant) return `${String(fallbackHour ?? 0).padStart(2, '0')}:00`;
-  if (instant.endsWith('Z')) {
-    return new Intl.DateTimeFormat('bg-BG', {
-      timeZone: 'Europe/Sofia', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    }).format(new Date(instant));
-  }
-  return instant.slice(11, 16);
+function formatInstantDate(instant: string): string {
+  return new Intl.DateTimeFormat('bg-BG', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(instant));
 }
 
 function roomLabel(room: Room): string {
@@ -193,7 +183,7 @@ export default function BookingDetails({
   // test/detail projection only, never from an unhydrated safe schedule row.
   const canManage = currentBooking.canEdit && !cancelled && !offline && (!detailLoading && (detail !== null || currentBooking.version > 0));
   const hasFutureActive = detail?.hasFutureActive === true;
-  const formattedDate = readableDate(currentBooking.startsAt);
+  const formattedDate = formatCalendarDate(localDateOf(currentBooking.startsAt));
   const formattedStart = timeLabel(currentBooking.startsAt);
   const formattedEnd = timeLabel(currentBooking.endsAt, currentBooking.hour + 1);
   const formattedRoom = roomLabel(currentBooking.room);
@@ -276,7 +266,7 @@ export default function BookingDetails({
   if (editing && canManage) {
     return (
       <BookingForm
-        date={localDate(currentBooking.startsAt)}
+        date={localDateOf(currentBooking.startsAt)}
         startsAt={currentBooking.startsAt}
         room={currentBooking.room}
         existingBooking={currentBooking}
@@ -332,7 +322,7 @@ export default function BookingDetails({
 
       {cancelled && (
         <p className="booking-details__history">
-          Отменена на {readableDate(currentBooking.cancelledAt as string)}
+          Отменена на {formatInstantDate(currentBooking.cancelledAt as string)}
           {currentBooking.cancelledBy ? ` от ${currentBooking.cancelledBy}` : ''}.
         </p>
       )}

@@ -15,7 +15,7 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     className: 'Pilates',
     teacherName: 'Teacher A',
     room: 'hall',
-    startsAt: '2026-09-15T15:00:00.000Z',
+    startsAt: '2026-09-15T18:00:00',
     hour: 18,
     cancelledAt: null,
     version: 3,
@@ -27,7 +27,7 @@ function booking(overrides: Partial<Booking> = {}): Booking {
 function detail(overrides: Partial<BookingDetail> = {}): BookingDetail {
   return {
     ...booking(),
-    endsAt: '2026-09-15T15:30:00.000Z',
+    endsAt: '2026-09-15T18:30:00',
     seriesId: 'series-1',
     seriesIndex: 1,
     studentDetails: 'Private student note',
@@ -123,6 +123,20 @@ describe('BookingDetails', () => {
     ));
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('status')).toHaveTextContent('Резервацията е променена.');
+  });
+
+  test('renders and pre-populates a stored local DST-boundary booking without timezone conversion', async () => {
+    renderDetails({ booking: booking({
+      startsAt: '2026-03-29T08:30:00',
+      endsAt: '2026-03-29T09:00:00',
+      hour: 8,
+    }) });
+
+    expect(screen.getByText('29 март 2026 г.')).toBeInTheDocument();
+    expect(screen.getByText('08:30–09:00')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Промени резервацията' }));
+    expect(await screen.findByRole('combobox', { name: 'Начален час' })).toHaveValue('08:30');
+    expect(screen.getByRole('combobox', { name: 'Краен час' })).toHaveValue('09:00');
   });
 
   test('allows an admin to edit a booking owned by another teacher', async () => {

@@ -5,7 +5,7 @@ import {
   getTeachers,
   quoteBooking as quoteBookingApi,
 } from '../lib/api';
-import { localTime, minutesOf } from '../lib/calendar';
+import { addCalendarDays, isValidCalendarDate, isoWeekday, localTime, minutesOf, todayCalendarDate } from '../lib/calendar';
 import { getProfile } from '../lib/session';
 import type {
   Booking,
@@ -83,32 +83,8 @@ const WEEKDAYS: readonly { value: number; label: string }[] = [
 const MAX_OCCURRENCES = 104;
 const QUOTE_DEBOUNCE_MS = 300;
 
-function validDate(date: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const [year, month, day] = date.split('-').map(Number);
-  const value = new Date(Date.UTC(year!, month! - 1, day!));
-  return value.getUTCFullYear() === year && value.getUTCMonth() === month! - 1 && value.getUTCDate() === day;
-}
-
-function todayDate(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
-function isoWeekday(date: string): number {
-  if (!validDate(date)) return 1;
-  const day = new Date(`${date}T12:00:00Z`).getUTCDay();
-  return day === 0 ? 7 : day;
-}
-
-function shiftDate(date: string, days: number): string {
-  const value = new Date(`${date}T12:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-}
-
 function mondayOf(date: string): string {
-  return shiftDate(date, 1 - isoWeekday(date));
+  return addCalendarDays(date, 1 - isoWeekday(date));
 }
 
 function timeFromStartsAt(startsAt: string | undefined, hour: number | undefined): string {
@@ -139,10 +115,10 @@ export function buildOccurrences(
   weekdays: number[],
   weeks: string,
 ): { occurrences: BookingOccurrence[]; error: string | null } {
-  if (!validDate(date) || (mode === 'recurring' && !validDate(weekStart))) {
+  if (!isValidCalendarDate(date) || (mode === 'recurring' && !isValidCalendarDate(weekStart))) {
     return { occurrences: [], error: 'Изберете валидна дата.' };
   }
-  const minimumDate = mode === 'recurring' ? mondayOf(todayDate()) : todayDate();
+  const minimumDate = mode === 'recurring' ? mondayOf(todayCalendarDate()) : todayCalendarDate();
   const requestedDate = mode === 'recurring' ? weekStart : date;
   if (requestedDate < minimumDate) {
     return { occurrences: [], error: 'Датата на резервацията не може да бъде в миналото.' };
@@ -166,7 +142,7 @@ export function buildOccurrences(
   const occurrences: BookingOccurrence[] = [];
   for (let week = 0; week < countWeeks; week += 1) {
     for (const day of selected) {
-      const occurrenceDate = shiftDate(weekStart, week * 7 + day - 1);
+      const occurrenceDate = addCalendarDays(weekStart, week * 7 + day - 1);
       occurrences.push({
         starts_at: localTime(occurrenceDate, minutes(startTime)),
         ends_at: localTime(occurrenceDate, minutes(endTime)),
@@ -221,13 +197,11 @@ export default function BookingForm({
 }: BookingFormProps) {
   const profile = suppliedProfile ?? getProfile();
   const editing = Boolean(existingBooking);
-  const minimumDate = todayDate();
+  const minimumDate = todayCalendarDate();
   const requestedDate = existingBooking?.startsAt.slice(0, 10) ?? selectedDate;
   const initialDate = existingBooking ? requestedDate : (requestedDate < minimumDate ? minimumDate : requestedDate);
   const initialStart = existingBooking
-    ? (existingBooking.startsAt.endsWith('Z')
-      ? `${String(existingBooking.hour).padStart(2, '0')}:00`
-      : timeFromStartsAt(existingBooking.startsAt, existingBooking.hour))
+    ? timeFromStartsAt(existingBooking.startsAt, existingBooking.hour)
     : timeFromStartsAt(selectedStartsAt, selectedHour);
   const initialEnd = existingBooking?.endsAt
     ? existingBooking.endsAt.slice(11, 16)

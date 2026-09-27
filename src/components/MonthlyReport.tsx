@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getAdminMonthReport, getMyMonthReport, getTeachers } from '../lib/api';
+import { formatCalendarDate } from '../lib/calendar';
 import { formatAmount, groupPriceSegments } from '../lib/price-breakdown';
 import { reportRowsToCsv } from '../lib/report-csv';
 import type { AdminMonthReport, MonthReportRow, MyMonthReport, Profile } from '../lib/types';
@@ -22,7 +23,7 @@ function timeRangeLabel(row: MonthReportRow): string {
 }
 
 function weekdayLabel(date: string): string {
-  return new Intl.DateTimeFormat('bg-BG', { weekday: 'long' }).format(new Date(`${date}T12:00:00Z`));
+  return formatCalendarDate(date, { weekday: 'long' });
 }
 
 function roomLabel(room: MonthReportRow['room']): string {
