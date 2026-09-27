@@ -224,6 +224,9 @@ select:focus-visible {
 .date-controls .date-picker {
   position: relative;
   display: grid;
+  flex: 0 1 20rem;
+  width: min(100%, 20rem);
+  max-width: 20rem;
   min-width: 12rem;
   min-height: 44px;
   place-items: center;
@@ -427,6 +430,12 @@ select:focus-visible {
 
 .schedule-grid__body {
   background: #fff;
+}
+
+@media (min-width: 801px) {
+  .schedule-shell--week {
+    max-width: none;
+  }
 }
 
 @media (max-width: 800px) {
