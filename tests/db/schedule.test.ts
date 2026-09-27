@@ -48,15 +48,22 @@ afterAll(async () => {
   }
 });
 
-describe('safe authoritative daily schedule RPCs', () => {
-  test('returns one cancellation-free safe schedule projection with local half-hour ranges', async () => {
+describe('safe authoritative weekly schedule RPC', () => {
+  test('maps a Sunday input to an ordered, cancellation-free, safe Monday-through-Sunday schedule', async () => {
     await insertScheduleFixtures();
     await asAuthenticated({ sub: ELEONORA, role: 'authenticated' }, async (client) => {
       const { rows } = await client.query(
-        `select public.get_day('2026-11-02'::date) as schedule`,
+        `select public.get_week('2026-11-08'::date) as schedule`,
       );
       const schedule = rows[0].schedule;
-      expect(schedule).toEqual({
+      expect(schedule.week_start).toBe('2026-11-02');
+      expect(schedule.week_end).toBe('2026-11-08');
+      expect(schedule.days).toHaveLength(7);
+      expect(schedule.days.map((day: { date: string }) => day.date)).toEqual([
+        '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05',
+        '2026-11-06', '2026-11-07', '2026-11-08',
+      ]);
+      expect(schedule.days[0]).toEqual({
         date: '2026-11-02',
         bookings: [{
           id: HALL_BOOKING,
@@ -71,34 +78,42 @@ describe('safe authoritative daily schedule RPCs', () => {
           { starts_at: '2026-11-02T08:30:00', price: '5.00', currency: 'EUR' },
         ]),
       });
-      expect(schedule.slot_prices).toHaveLength(23);
+      expect(schedule.days[1].bookings).toEqual([expect.objectContaining({
+        id: SERIES_BOOKING,
+        starts_at: '2026-11-03T08:30:00',
+      })]);
+      expect(schedule.days.slice(2).every((day: { bookings: unknown[] }) => day.bookings.length === 0)).toBe(true);
+      expect(schedule.days.every((day: { slot_prices: unknown[] }) => day.slot_prices.length)).toBe(true);
+      expect(schedule.days[0].slot_prices).toHaveLength(23);
       expect(JSON.stringify(schedule)).not.toMatch(/Private child detail|private rate|student_details|amount|segments/i);
     });
   });
 
-  test('keeps the schedule readable when a slot has no configured price', async () => {
+  test('keeps the weekly schedule readable when a slot has no configured price', async () => {
     await asAuthenticated({ sub: GALYA, role: 'authenticated' }, async (client) => {
-      const { rows } = await client.query(`select public.get_day('2026-11-01'::date) as schedule`);
+      const { rows } = await client.query(`select public.get_week('2026-11-01'::date) as schedule`);
       const schedule = rows[0].schedule;
-      expect(schedule.date).toBe('2026-11-01');
-      expect(schedule.slot_prices).not.toEqual(expect.arrayContaining([
+      const sunday = schedule.days.find((day: { date: string }) => day.date === '2026-11-01');
+      expect(sunday).toBeTruthy();
+      expect(sunday.slot_prices).not.toEqual(expect.arrayContaining([
         { starts_at: '2026-11-01T08:30:00', price: expect.any(String), currency: 'EUR' },
       ]));
     });
   });
 
-  test('denies anonymous day reads and keeps direct browser booking-table reads revoked', async () => {
+  test('denies anonymous weekly reads, removes the daily RPC, and keeps direct browser booking-table reads revoked', async () => {
     const client = await db();
     try {
       await client.query('begin');
       await client.query('set local role anon');
-      await expect(client.query(`select public.get_day('2026-11-02'::date)`)).rejects.toThrow();
+      await expect(client.query(`select public.get_week('2026-11-02'::date)`)).rejects.toThrow();
       await client.query('rollback');
     } finally {
       client.release();
     }
 
     await asAuthenticated({ sub: ELEONORA, role: 'authenticated' }, async (client) => {
+      await expect(client.query(`select public.get_day('2026-11-02'::date)`)).rejects.toThrow();
       await expect(client.query('select id, student_details, calculated_amount from public.bookings')).rejects.toThrow();
     });
   });
