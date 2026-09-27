@@ -17,6 +17,16 @@ function weekFor(date: string): WeekSchedule {
   return { weekStart: start, weekEnd: addCalendarDays(start, 6), days };
 }
 
+function setHorizontalScroll(element: HTMLElement, value: number) {
+  Object.defineProperty(element, 'scrollLeft', { configurable: true, writable: true, value });
+  fireEvent.scroll(element);
+}
+
+function expectHorizontalReset(body: HTMLElement, header: HTMLElement) {
+  expect(body.scrollLeft).toBe(0);
+  expect(header.style.transform).toMatch(/translateX\(-?0px\)/);
+}
+
 describe('Schedule week cache and views', () => {
   beforeAll(() => {
     scheduleStyleElement = document.createElement('style');
@@ -95,6 +105,111 @@ describe('Schedule week cache and views', () => {
     expect(localStorage.getItem('schedule-week-room')).toBe('room');
     expect(screen.getByRole('grid').querySelectorAll('.empty-slot[data-room="room"]').length).toBeGreaterThan(0);
     expect(screen.getByRole('grid').querySelectorAll('.empty-slot[data-room="hall"]').length).toBe(0);
+  });
+
+  test.each([JSON.stringify(['hall']), JSON.stringify(['room'])])('day mode ignores legacy room visibility %s and the stored week room', async (legacyRooms) => {
+    localStorage.setItem('schedule-visible-rooms', legacyRooms);
+    localStorage.setItem('schedule-week-room', 'room');
+    render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} />);
+
+    const dayGrid = await screen.findByRole('grid');
+    expect(screen.queryByRole('group', { name: 'Помещение за седмицата' })).not.toBeInTheDocument();
+    expect(dayGrid.querySelectorAll('.schedule-grid__header')).toHaveLength(2);
+    expect(Array.from(dayGrid.querySelectorAll('.schedule-grid__header')).map((heading) => heading.textContent)).toEqual(['Зала', 'Стая']);
+    expect(dayGrid.querySelectorAll('.empty-slot[data-room="hall"]')).not.toHaveLength(0);
+    expect(dayGrid.querySelectorAll('.empty-slot[data-room="room"]')).not.toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    const weekGrid = await screen.findByRole('grid');
+    expect(screen.getByRole('group', { name: 'Помещение за седмицата' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Стая' })).toHaveAttribute('aria-pressed', 'true');
+    expect(weekGrid.querySelectorAll('.empty-slot[data-room="hall"]')).toHaveLength(0);
+    expect(weekGrid.querySelectorAll('.empty-slot[data-room="room"]')).not.toHaveLength(0);
+  });
+
+  test('renders the returned Monday-to-Sunday week order and exactly one selected room', async () => {
+    render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} />);
+    await screen.findByRole('grid');
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+
+    const grid = await screen.findByRole('grid');
+    expect(Array.from(grid.querySelectorAll('.schedule-grid__header')).map((heading) => heading.textContent)).toEqual([
+      'пн, 21 сеп', 'вт, 22 сеп', 'ср, 23 сеп', 'чт, 24 сеп', 'пт, 25 сеп', 'сб, 26 сеп', 'нд, 27 сеп',
+    ]);
+    expect(grid.querySelectorAll('.empty-slot[data-room="hall"]')).not.toHaveLength(0);
+    expect(grid.querySelectorAll('.empty-slot[data-room="room"]')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Зала' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Стая' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('keeps the sticky weekday header synchronized and resets Day/Week horizontal position', async () => {
+    render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} />);
+    const dayGrid = await screen.findByRole('grid');
+    const dayBody = dayGrid.querySelector('.schedule-grid-scroll') as HTMLElement;
+    const dayHeader = dayGrid.querySelector('.schedule-grid__sticky-header') as HTMLElement;
+    setHorizontalScroll(dayBody, 96);
+    expect(dayHeader.style.transform).toBe('translateX(-96px)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    const weekGrid = await screen.findByRole('grid');
+    const weekBody = weekGrid.querySelector('.schedule-grid-scroll') as HTMLElement;
+    const weekHeader = weekGrid.querySelector('.schedule-grid__sticky-header') as HTMLElement;
+    expectHorizontalReset(dayBody, dayHeader);
+    expectHorizontalReset(weekBody, weekHeader);
+    expect(Array.from(weekGrid.querySelectorAll('.schedule-grid__header')).at(0)?.textContent).toBe('пн, 21 сеп');
+
+    setHorizontalScroll(weekBody, 144);
+    expect(weekHeader.style.transform).toBe('translateX(-144px)');
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи ден' }));
+    const dayAgain = await screen.findByRole('grid');
+    expectHorizontalReset(weekBody, weekHeader);
+    expectHorizontalReset(dayAgain.querySelector('.schedule-grid-scroll') as HTMLElement, dayAgain.querySelector('.schedule-grid__sticky-header') as HTMLElement);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    const weekAgain = await screen.findByRole('grid');
+    expectHorizontalReset(weekAgain.querySelector('.schedule-grid-scroll') as HTMLElement, weekAgain.querySelector('.schedule-grid__sticky-header') as HTMLElement);
+    expect(Array.from(weekAgain.querySelectorAll('.schedule-grid__header')).at(0)?.textContent).toBe('пн, 21 сеп');
+  });
+
+  test('resets a scrolled week before navigation and after the deferred adjacent-week replacement', async () => {
+    let resolveNext!: (week: WeekSchedule) => void;
+    const next = new Promise<WeekSchedule>((resolve) => { resolveNext = resolve; });
+    const loader = vi.fn().mockResolvedValueOnce(weekFor('2026-09-23')).mockReturnValueOnce(next);
+    render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
+    await screen.findByRole('grid');
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    const grid = await screen.findByRole('grid');
+    const body = grid.querySelector('.schedule-grid-scroll') as HTMLElement;
+    const header = grid.querySelector('.schedule-grid__sticky-header') as HTMLElement;
+    setHorizontalScroll(body, 192);
+    expect(header.style.transform).toBe('translateX(-192px)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща седмица' }));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    expectHorizontalReset(body, header);
+    expect(Array.from(grid.querySelectorAll('.schedule-grid__header')).at(0)?.textContent).toBe('пн, 21 сеп');
+
+    resolveNext(weekFor('2026-09-30'));
+    await screen.findByRole('button', { name: 'Резервирай Зала на пн, 28 сеп в 08:30' });
+    expectHorizontalReset(body, header);
+    expect(Array.from(grid.querySelectorAll('.schedule-grid__header')).at(0)?.textContent).toBe('пн, 28 сеп');
+  });
+
+  test('does not reset horizontal position for ordinary same-week date movement', async () => {
+    const loader = vi.fn(async (date: string) => weekFor(date));
+    render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
+    await screen.findByRole('grid');
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    const grid = await screen.findByRole('grid');
+    const body = grid.querySelector('.schedule-grid-scroll') as HTMLElement;
+    const header = grid.querySelector('.schedule-grid__sticky-header') as HTMLElement;
+    setHorizontalScroll(body, 128);
+
+    fireEvent.change(screen.getByLabelText('Дата в графика'), { target: { value: '2026-09-24' } });
+    await waitFor(() => expect(screen.getByText('21 сеп – 27 сеп')).toBeInTheDocument());
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(body.scrollLeft).toBe(128);
+    expect(header.style.transform).toBe('translateX(-128px)');
   });
 
   test('moves a week at a time, updates the pending target range, and persists the view', async () => {
@@ -255,6 +370,10 @@ describe('Schedule week cache and views', () => {
   });
 
   test('keeps the schedule toolbar and grid sticky contract, with flexible desktop columns and mobile weekly scrolling', async () => {
+    const previousViewportWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
+    window.dispatchEvent(new Event('resize'));
+    expect(window.innerWidth).toBe(1440);
     render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} />);
     await screen.findByRole('grid');
     const toolbar = screen.getByRole('banner');
@@ -272,18 +391,31 @@ describe('Schedule week cache and views', () => {
     expect(getComputedStyle(corner)).toMatchObject({ position: 'absolute', height: '44px', zIndex: '2' });
     expect(getComputedStyle(timeColumn)).toMatchObject({ position: 'sticky', left: '0px', zIndex: '1' });
 
-    const topLevelRules = Array.from(document.styleSheets)
-      .flatMap((sheet) => Array.from(sheet.cssRules));
-    const gridScrollRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText === '.schedule-grid-scroll') as CSSStyleRule | undefined;
-    const bodyRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText.includes('.schedule-grid__body')) as CSSStyleRule | undefined;
-    const cornerRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText === '.schedule-grid__corner') as CSSStyleRule | undefined;
-    expect(cornerRule?.style.width).toBe('3.6rem');
-    const mobileRule = topLevelRules.find((rule) => rule.type === CSSRule.MEDIA_RULE && (rule as CSSMediaRule).conditionText === '(max-width: 800px)') as CSSMediaRule | undefined;
-    expect(gridScrollRule?.style.overflow).toBe('visible');
-    expect(bodyRule?.style.width).toBe('100%');
-    expect(bodyRule?.style.minWidth).toBe('0px');
-    const mobileStyles = Array.from(mobileRule?.cssRules ?? []).filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
-    expect(mobileStyles.find((rule) => rule.selectorText === '.schedule-grid-scroll')?.style.overflowX).toBe('auto');
-    expect(mobileStyles.find((rule) => rule.selectorText.includes('.schedule-grid--week .schedule-grid__body'))?.style.minWidth).toBe('calc(63.1rem)');
+    const datePicker = screen.getByLabelText('Дата в графика').closest('.date-picker') as HTMLElement;
+    expect(datePicker).toBeInTheDocument();
+    const datePickerStyle = getComputedStyle(datePicker);
+    expect(datePickerStyle.maxWidth).toBe('320px');
+    expect(datePickerStyle.minWidth).toBe('192px');
+
+    const initialWeekShell = grid.closest('.schedule-shell') as HTMLElement;
+    expect(initialWeekShell).toBeInTheDocument();
+    expect(initialWeekShell).toHaveClass('schedule-shell--week');
+    expect(getComputedStyle(initialWeekShell).width).toBe('100%');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи ден' }));
+    const dayGrid = await screen.findByRole('grid');
+    const dayShell = dayGrid.closest('.schedule-shell') as HTMLElement;
+    expect(dayShell).not.toHaveClass('schedule-shell--week');
+    expect(getComputedStyle(dayShell).maxWidth).toBe('1216px');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    const weekGrid = await screen.findByRole('grid');
+    const weekShell = weekGrid.closest('.schedule-shell') as HTMLElement;
+    const weekBody = weekGrid.querySelector('.schedule-grid__body') as HTMLElement;
+    expect(weekShell).toHaveClass('schedule-shell--week');
+    expect(getComputedStyle(weekShell).width).toBe('100%');
+    expect(getComputedStyle(weekBody).width).toBe('100%');
+    expect(getComputedStyle(weekBody).minWidth).toBe('0px');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousViewportWidth });
   });
 });
