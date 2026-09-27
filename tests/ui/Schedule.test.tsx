@@ -370,6 +370,10 @@ describe('Schedule week cache and views', () => {
   });
 
   test('keeps the schedule toolbar and grid sticky contract, with flexible desktop columns and mobile weekly scrolling', async () => {
+    const previousViewportWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
+    window.dispatchEvent(new Event('resize'));
+    expect(window.innerWidth).toBe(1440);
     render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} />);
     await screen.findByRole('grid');
     const toolbar = screen.getByRole('banner');
@@ -387,23 +391,32 @@ describe('Schedule week cache and views', () => {
     expect(getComputedStyle(corner)).toMatchObject({ position: 'absolute', height: '44px', zIndex: '2' });
     expect(getComputedStyle(timeColumn)).toMatchObject({ position: 'sticky', left: '0px', zIndex: '1' });
 
-    const topLevelRules = Array.from(document.styleSheets)
-      .flatMap((sheet) => Array.from(sheet.cssRules));
-    const gridScrollRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText === '.schedule-grid-scroll') as CSSStyleRule | undefined;
-    const datePickerRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText === '.date-controls .date-picker') as CSSStyleRule | undefined;
-    const bodyRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText.includes('.schedule-grid__body')) as CSSStyleRule | undefined;
-    const cornerRule = topLevelRules.find((rule) => rule.type === CSSRule.STYLE_RULE && (rule as CSSStyleRule).selectorText === '.schedule-grid__corner') as CSSStyleRule | undefined;
-    expect(cornerRule?.style.width).toBe('3.6rem');
-    const mobileRule = topLevelRules.find((rule) => rule.type === CSSRule.MEDIA_RULE && (rule as CSSMediaRule).conditionText === '(max-width: 800px)') as CSSMediaRule | undefined;
-    expect(gridScrollRule?.style.overflow).toBe('visible');
-    expect(datePickerRule?.style.maxWidth).toBe('20rem');
-    expect(datePickerRule?.style.width).toBe('min(100%, 20rem)');
-    expect(bodyRule?.style.width).toBe('100%');
-    expect(bodyRule?.style.minWidth).toBe('0px');
-    const mobileStyles = Array.from(mobileRule?.cssRules ?? []).filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
-    expect(mobileStyles.find((rule) => rule.selectorText === '.schedule-grid-scroll')?.style.overflowX).toBe('auto');
-    expect(mobileStyles.find((rule) => rule.selectorText.includes('.schedule-grid--week .schedule-grid__body'))?.style.minWidth).toBe('calc(63.1rem)');
-    const desktopStyles = Array.from((topLevelRules.find((rule) => rule.type === CSSRule.MEDIA_RULE && (rule as CSSMediaRule).conditionText === '(min-width: 801px)') as CSSMediaRule | undefined)?.cssRules ?? []).filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
-    expect(desktopStyles.find((rule) => rule.selectorText === '.schedule-shell--week')?.style.maxWidth).toBe('none');
+    const datePicker = screen.getByLabelText('Дата в графика').closest('.date-picker') as HTMLElement;
+    expect(datePicker).toBeInTheDocument();
+    const datePickerStyle = getComputedStyle(datePicker);
+    expect(datePickerStyle.maxWidth).toBe('320px');
+    expect(datePickerStyle.minWidth).toBe('192px');
+    expect(datePickerStyle.width).toBe('min(100%, 320px)');
+
+    const initialWeekShell = grid.closest('.schedule-shell') as HTMLElement;
+    expect(initialWeekShell).toBeInTheDocument();
+    expect(initialWeekShell).toHaveClass('schedule-shell--week');
+    expect(getComputedStyle(initialWeekShell).width).toBe('100%');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи ден' }));
+    const dayGrid = await screen.findByRole('grid');
+    const dayShell = dayGrid.closest('.schedule-shell') as HTMLElement;
+    expect(dayShell).not.toHaveClass('schedule-shell--week');
+    expect(getComputedStyle(dayShell).maxWidth).toBe('1216px');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    const weekGrid = await screen.findByRole('grid');
+    const weekShell = weekGrid.closest('.schedule-shell') as HTMLElement;
+    const weekBody = weekGrid.querySelector('.schedule-grid__body') as HTMLElement;
+    expect(weekShell).toHaveClass('schedule-shell--week');
+    expect(getComputedStyle(weekShell).width).toBe('100%');
+    expect(getComputedStyle(weekBody).width).toBe('100%');
+    expect(getComputedStyle(weekBody).minWidth).toBe('0px');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousViewportWidth });
   });
 });
