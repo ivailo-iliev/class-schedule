@@ -110,7 +110,7 @@ describe('native browser session', () => {
     expect(cookieSetter).not.toHaveBeenCalled();
   });
 
-  test('test reset and a genuine module reload discard a retained personal-link token', async () => {
+  test('test reset helper clears a retained personal-link token', async () => {
     const state = clientStub();
     createClient.mockReturnValue(state.client);
     window.history.replaceState(null, '', `/#${token}`);
@@ -120,6 +120,15 @@ describe('native browser session', () => {
 
     resetSessionForTests();
     expect(preparePwaInstall()).toBe(false);
+  });
+
+  test('a genuine module reload discards a retained personal-link token', async () => {
+    const state = clientStub();
+    createClient.mockReturnValue(state.client);
+    window.history.replaceState(null, '', `/#${token}`);
+
+    await bootstrapNativeSession(window.location, vi.fn(async () => accessResponse()));
+    expect(preparePwaInstall()).toBe(true);
 
     vi.resetModules();
     const reloaded = await import('../../src/lib/session');
