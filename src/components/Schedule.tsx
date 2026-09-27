@@ -16,6 +16,7 @@ export interface ScheduleHandle { refresh: () => Promise<DaySchedule | undefined
 
 function today() { return todayCalendarDate(); }
 function weekStartOf(date: string) { const weekday = (new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7; return addCalendarDays(date, -weekday); }
+function weekContains(weekStart: string, date: string) { return date >= weekStart && date <= addCalendarDays(weekStart, 6); }
 const BG_WEEKDAYS = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const BG_MONTHS = ['ян', 'фев', 'мар', 'апр', 'май', 'юни', 'юли', 'авг', 'сеп', 'окт', 'ное', 'дек'];
 function dateLabel(date: string) { const month = Number(date.slice(5, 7)); const day = Number(date.slice(8, 10)); return `${day} ${BG_MONTHS[month - 1] ?? ''}`; }
@@ -46,9 +47,9 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
     setLoading(true); setError(null); setAvailabilityFresh(false);
     const promise = loadSchedule(requestedDate).then((result) => {
       if (result.weekStart !== targetStart) throw new Error('invalid_week_response');
-      if (request === requestId.current) { setWeek(result); weekRef.current = result; setAvailabilityFresh(true); }
+      if (request === requestId.current && weekContains(targetStart, dateRef.current)) { setWeek(result); weekRef.current = result; setAvailabilityFresh(true); }
       return result;
-    }).catch((reason: unknown) => { if (request === requestId.current) { setError(reason); setAvailabilityFresh(false); } throw reason; }).finally(() => {
+    }).catch((reason: unknown) => { if (request === requestId.current && weekContains(targetStart, dateRef.current)) { setError(reason); setAvailabilityFresh(false); } throw reason; }).finally(() => {
       if (request === requestId.current) setLoading(false);
       if (inFlight.current?.promise === promise) inFlight.current = null;
     });
@@ -56,7 +57,14 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   }, [loadSchedule]);
   const refresh = useCallback(async () => { const result = await loadWeek(dateRef.current); return result.days.find((day) => day.date === dateRef.current); }, [loadWeek]);
   useImperativeHandle(ref, () => ({ refresh }), [refresh]);
-  useEffect(() => { const current = weekRef.current; if (!current || date < current.weekStart || date > current.weekEnd) void loadWeek(date).catch(() => undefined); }, [date, loadWeek, week]);
+  useEffect(() => {
+    const current = weekRef.current;
+    if (!current || !weekContains(current.weekStart, date)) {
+      void loadWeek(date).catch(() => undefined);
+    } else if (inFlight.current?.weekStart !== weekStartOf(date)) {
+      setLoading(false); setError(null); setAvailabilityFresh(true);
+    }
+  }, [date, loadWeek, week]);
   useEffect(() => {
     const revalidate = () => { if (document.visibilityState === 'visible') void refresh().catch(() => undefined); };
     const onVisibility = () => { if (document.visibilityState === 'visible') { skipFocusRef.current = true; revalidate(); setTimeout(() => { skipFocusRef.current = false; }, 0); } };

@@ -68,6 +68,27 @@ describe('Schedule week cache and views', () => {
     expect(localStorage.getItem('schedule-view-mode')).toBe('week');
   });
 
+  test('ignores an obsolete adjacent-week response after returning to the loaded week', async () => {
+    let resolveNext!: (week: WeekSchedule) => void;
+    const next = new Promise<WeekSchedule>((resolve) => { resolveNext = resolve; });
+    const loader = vi.fn().mockResolvedValueOnce(weekFor('2026-09-23')).mockReturnValueOnce(next);
+    render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
+    await screen.findByRole('button', { name: 'Покажи седмица' });
+    fireEvent.click(screen.getByRole('button', { name: 'Покажи седмица' }));
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-label', 'График за 21 сеп – 27 сеп');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща седмица' }));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-label', 'График за 28 сеп – 4 окт');
+    fireEvent.click(screen.getByRole('button', { name: 'Предишна седмица' }));
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-label', 'График за 21 сеп – 27 сеп');
+
+    resolveNext(weekFor('2026-09-30'));
+    await waitFor(() => expect(screen.getByRole('grid')).toHaveAttribute('aria-label', 'График за 21 сеп – 27 сеп'));
+    expect(screen.getByRole('button', { name: 'Резервирай Зала на пн, 21 сеп в 08:30' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Резервирай Зала на пн, 28 сеп в 08:30' })).not.toBeInTheDocument();
+  });
+
   test('sends the actual weekday and selected room for week slots and rejects a cross-day drag', async () => {
     const onSelectSlot = vi.fn();
     render(<Schedule initialDate="2026-09-23" loadSchedule={async (date) => weekFor(date)} onSelectSlot={onSelectSlot} />);
