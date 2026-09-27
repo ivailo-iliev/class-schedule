@@ -42,6 +42,22 @@ describe('Schedule week cache and views', () => {
     expect(loader).toHaveBeenLastCalledWith('2026-09-20');
   });
 
+  test('selects a calendar date from the accessible picker without duplicate same-week loads', async () => {
+    const loader = vi.fn(async (date: string) => weekFor(date));
+    render(<Schedule initialDate="2026-09-21" loadSchedule={loader} />);
+    const picker = await screen.findByLabelText('Дата в графика');
+    expect(picker).toHaveValue('2026-09-21');
+
+    fireEvent.change(picker, { target: { value: '2026-09-24' } });
+    await waitFor(() => expect(screen.getByText('чт, 24 сеп')).toBeInTheDocument());
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(picker, { target: { value: '2026-09-28' } });
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    expect(loader).toHaveBeenLastCalledWith('2026-09-28');
+    expect(picker).toHaveValue('2026-09-28');
+  });
+
   test('shows a loading treatment rather than stale availability during a Day-mode week-boundary load', async () => {
     let resolveNext!: (week: WeekSchedule) => void;
     const next = new Promise<WeekSchedule>((resolve) => { resolveNext = resolve; });
