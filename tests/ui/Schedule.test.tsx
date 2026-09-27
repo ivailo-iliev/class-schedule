@@ -338,6 +338,36 @@ describe('Schedule week cache and views', () => {
     expect(onSelectSlot).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-09-22', room: 'hall', startsAt: '2026-09-22T10:00:00' }));
   });
 
+  test('colors bookings by class name when schedule data has no class ID', async () => {
+    const loader = async (date: string) => {
+      const result = weekFor(date); const day = result.days.find((item) => item.date === date)!;
+      day.bookings = [
+        { id: 'pilates', classId: '', teacherId: 'teacher', className: 'Pilates', teacherName: 'Teacher', room: 'hall', startsAt: `${date}T08:30:00`, endsAt: `${date}T09:00:00`, hour: 8, cancelledAt: null, version: 1, canEdit: true },
+        { id: 'yoga', classId: '', teacherId: 'teacher', className: 'Yoga', teacherName: 'Teacher', room: 'hall', startsAt: `${date}T09:00:00`, endsAt: `${date}T09:30:00`, hour: 9, cancelledAt: null, version: 1, canEdit: true },
+      ];
+      return result;
+    };
+    render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
+    const pilates = await screen.findByRole('button', { name: /Подробности за Pilates/ });
+    const yoga = screen.getByRole('button', { name: /Подробности за Yoga/ });
+    expect(pilates.style.getPropertyValue('--booking-background')).not.toBe(yoga.style.getPropertyValue('--booking-background'));
+  });
+
+  test('aligns slot price to the cell edge while keeping the booking handle centered', async () => {
+    const loader = async (date: string) => {
+      const result = weekFor(date); const day = result.days.find((item) => item.date === date)!;
+      day.slotPrices = [{ startsAt: `${date}T08:30:00`, price: '5.00', currency: 'EUR' }]; return result;
+    };
+    render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
+    const slot = await screen.findByRole('button', { name: 'Резервирай Зала в 08:30' });
+    const cell = slot.closest('.schedule-grid__cell') as HTMLElement;
+    const price = slot.querySelector('.empty-slot__price') as HTMLElement;
+    expect(getComputedStyle(cell).position).toBe('relative');
+    expect(getComputedStyle(slot).position).toBe('static');
+    expect(getComputedStyle(price).right).toBe('7.2px');
+    expect(getComputedStyle(price).left).toBe('auto');
+  });
+
   test('keeps price display and vertical multi-slot selection in day mode', async () => {
     const onSelectSlot = vi.fn();
     const loader = async (date: string) => {
