@@ -141,6 +141,20 @@ describe('Classes screen', () => {
     expect(nameInput.parentElement).toBe(addButton.parentElement);
   });
 
+  test('keeps loaded classes visible when optional admin teacher loading fails', async () => {
+    const loadClasses = vi.fn(async () => [classItem()]);
+    const loadTeachers = vi.fn(async (): Promise<Profile[]> => {
+      throw new Error('teacher options unavailable');
+    });
+
+    renderClasses(admin, [], { loadClasses, loadTeachers });
+
+    expect(await screen.findByText('Pilates')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Заниманията не могат да бъдат заредени. Опитайте отново.');
+    expect(loadClasses).toHaveBeenCalledTimes(1);
+    expect(loadTeachers).toHaveBeenCalledTimes(1);
+  });
+
   test('refreshes through a stable handle without resetting class form, owner, dialog, or notice state', async () => {
     let resolveClassRefresh: ((items: ClassItem[]) => void) | undefined;
     let resolveTeacherRefresh: ((items: Profile[]) => void) | undefined;

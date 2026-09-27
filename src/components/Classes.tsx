@@ -42,6 +42,14 @@ function actionError(action: 'load' | 'save'): string {
     : 'Заниманието не може да бъде запазено. Опитайте отново.';
 }
 
+function invokeLoader<T>(loader: () => Promise<T>): Promise<T> {
+  try {
+    return Promise.resolve(loader());
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
 const Classes = forwardRef<ClassesHandle, ClassesProps>(function Classes({
   profile: suppliedProfile,
   loadClasses = getMyClasses,
@@ -69,18 +77,32 @@ const Classes = forwardRef<ClassesHandle, ClassesProps>(function Classes({
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
-    try {
-      const classPromise = loadClasses();
-      const teacherPromise = isAdmin && suppliedTeachers === undefined ? loadTeachers() : null;
-      const [items, loadedTeachers] = await Promise.all([classPromise, teacherPromise]);
-      if (!mountedRef.current) return;
-      setClasses(sortClasses(items));
-      if (loadedTeachers) setTeachers(loadedTeachers.filter((item) => item.role === 'teacher'));
-    } catch {
-      if (mountedRef.current) setError(actionError('load'));
-    } finally {
-      if (mountedRef.current) setLoading(false);
+    const classPromise = invokeLoader(loadClasses);
+    const teacherPromise = isAdmin && suppliedTeachers === undefined
+      ? invokeLoader(loadTeachers)
+      : null;
+    const [classResult, teacherResult] = await Promise.all([
+      classPromise.then(
+        (items) => ({ status: 'fulfilled' as const, value: items }),
+        () => ({ status: 'rejected' as const }),
+      ),
+      teacherPromise
+        ? teacherPromise.then(
+            (items) => ({ status: 'fulfilled' as const, value: items }),
+            () => ({ status: 'rejected' as const }),
+          )
+        : Promise.resolve({ status: 'skipped' as const }),
+    ]);
+
+    if (!mountedRef.current) return;
+    if (classResult.status === 'fulfilled') setClasses(sortClasses(classResult.value));
+    if (teacherResult.status === 'fulfilled') {
+      setTeachers(teacherResult.value.filter((item) => item.role === 'teacher'));
     }
+    if (classResult.status === 'rejected' || teacherResult.status === 'rejected') {
+      setError(actionError('load'));
+    }
+    setLoading(false);
   }, [isAdmin, loadClasses, loadTeachers, suppliedTeachers]);
 
   useEffect(() => {
