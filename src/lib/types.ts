@@ -23,6 +23,11 @@ export interface Booking {
   canEdit: boolean;
 }
 export interface DaySchedule { date: string; slots: Slot[]; bookings: Booking[]; slotPrices?: SlotPrice[]; }
+export interface WeekSchedule {
+  weekStart: string;
+  weekEnd: string;
+  days: [DaySchedule, DaySchedule, DaySchedule, DaySchedule, DaySchedule, DaySchedule, DaySchedule];
+}
 export interface Profile { id: string; name: string; role: Role; }
 
 export interface BookingDetail extends Booking {

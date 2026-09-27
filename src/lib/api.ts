@@ -13,6 +13,7 @@ import type {
   CreatedBooking,
   CreatedBookingSeries,
   DaySchedule,
+  WeekSchedule,
   AdminMonthReport,
   AdminTeacherMonthReport,
   MonthReportRow,
@@ -23,10 +24,24 @@ import type {
 } from './types';
 
 type SupabaseResult<T> = { data: T | null; error: PostgrestError | null };
+type ScheduleBookingPayload = {
+  id: string;
+  room: Room;
+  starts_at: string;
+  ends_at: string;
+  teacher_name: string;
+  activity_title: string;
+  can_manage: boolean;
+};
 type DayPayload = {
   date: string;
-  bookings: Array<{ id: string; room: Room; starts_at: string; ends_at: string; teacher_name: string; activity_title: string; can_manage: boolean }>;
+  bookings: ScheduleBookingPayload[];
   slot_prices?: unknown[];
+};
+type WeekPayload = {
+  week_start: string;
+  week_end: string;
+  days: Array<DayPayload>;
 };
 type ClassRow = Pick<Tables<'classes'>, 'id' | 'teacher_id' | 'name' | 'active'>;
 type TeacherProfileRow = Pick<Tables<'profiles'>, 'id' | 'name' | 'role'>;
@@ -116,6 +131,70 @@ function mapSlotPrice(row: unknown): SlotPrice | null {
   return { startsAt: value.starts_at, price: value.price, currency: value.currency };
 }
 
+function isIsoDate(value: unknown): value is string {
+  const match = typeof value === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const timestamp = Date.UTC(year, month - 1, day);
+  return new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+
+function addDays(date: string, days: number): string {
+  const timestamp = Date.parse(`${date}T00:00:00Z`) + days * 24 * 60 * 60 * 1000;
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function isScheduleBooking(value: unknown): value is ScheduleBookingPayload {
+  if (!value || typeof value !== 'object') return false;
+  const booking = value as Partial<ScheduleBookingPayload>;
+  return typeof booking.id === 'string'
+    && (booking.room === 'hall' || booking.room === 'room')
+    && typeof booking.starts_at === 'string'
+    && typeof booking.ends_at === 'string'
+    && typeof booking.teacher_name === 'string'
+    && typeof booking.activity_title === 'string'
+    && typeof booking.can_manage === 'boolean';
+}
+
+function isWeekPayload(value: unknown, requestedDate: string): value is WeekPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Partial<WeekPayload>;
+  if (!isIsoDate(payload.week_start) || !isIsoDate(payload.week_end)) return false;
+  const weekStart = payload.week_start;
+  const weekEnd = payload.week_end;
+  const weekStartDay = new Date(`${weekStart}T00:00:00Z`).getUTCDay();
+  const weekEndDay = new Date(`${weekEnd}T00:00:00Z`).getUTCDay();
+  if (weekStartDay !== 1 || weekEndDay !== 0 || weekEnd !== addDays(weekStart, 6)) return false;
+  if (!isIsoDate(requestedDate) || requestedDate < weekStart || requestedDate > weekEnd) return false;
+  if (!Array.isArray(payload.days) || payload.days.length !== 7) return false;
+  return payload.days.every((day, index) => (
+    !!day
+    && isIsoDate(day.date)
+    && day.date === addDays(weekStart, index)
+    && Array.isArray(day.bookings)
+    && day.bookings.every(isScheduleBooking)
+    && (day.slot_prices === undefined || Array.isArray(day.slot_prices))
+  ));
+}
+
+function mapWeekSchedule(payload: WeekPayload): WeekSchedule {
+  const days = payload.days.map((day) => ({
+    date: day.date,
+    slots: daySlots(day.date),
+    bookings: day.bookings.map(mapScheduleBooking),
+    slotPrices: (day.slot_prices ?? [])
+      .map(mapSlotPrice)
+      .filter((price): price is SlotPrice => price !== null),
+  }));
+  return {
+    weekStart: payload.week_start,
+    weekEnd: payload.week_end,
+    days: days as WeekSchedule['days'],
+  };
+}
+
 function mapBookingDetail(row: BookingDetailPayload): BookingDetail {
   const seriesTotal = typeof row.series_total === 'number' && Number.isInteger(row.series_total) && row.series_total > 0
     ? row.series_total
@@ -184,17 +263,18 @@ function mapMonthReportRow(row: MonthReportRowPayload): MonthReportRow {
   };
 }
 
+export async function getWeek(date: string): Promise<WeekSchedule> {
+  const result = await fetchOr(() => client().rpc('get_week', { p_date: date }) as unknown as PromiseLike<SupabaseResult<unknown>>);
+  if (!isWeekPayload(result, date)) throw new Error('invalid_week_response');
+  return mapWeekSchedule(result);
+}
+
+// Temporary compatibility for the existing Schedule caller; remove once it uses getWeek.
 export async function getDay(date: string): Promise<DaySchedule> {
-  const result = await fetchOr(() => client().rpc('get_day', { p_date: date }) as unknown as PromiseLike<SupabaseResult<DayPayload>>);
-  if (result.date !== date || !Array.isArray(result.bookings)) throw new Error('invalid_day_response');
-  return {
-    date,
-    slots: daySlots(date),
-    bookings: result.bookings.map(mapScheduleBooking),
-    slotPrices: (Array.isArray(result.slot_prices) ? result.slot_prices : [])
-      .map(mapSlotPrice)
-      .filter((price): price is SlotPrice => price !== null),
-  };
+  const week = await getWeek(date);
+  const day = week.days.find((candidate) => candidate.date === date);
+  if (!day) throw new Error('invalid_day_response');
+  return day;
 }
 
 export async function getMyClasses(): Promise<ClassItem[]> {

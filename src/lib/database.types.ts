@@ -234,7 +234,7 @@ export type Database = {
         Returns: Json
       }
       get_booking_details: { Args: { p_id: string }; Returns: Json }
-      get_day: { Args: { p_date: string }; Returns: Json }
+      get_week: { Args: { p_date: string }; Returns: Json }
       get_my_month_report: {
         Args: { p_month: string }
         Returns: Json
