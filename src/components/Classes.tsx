@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { createClass as createClassApi, getMyClasses, getTeachers, updateClass as updateClassApi } from '../lib/api';
 import { getProfile } from '../lib/session';
 import type { ClassItem, Profile } from '../lib/types';
@@ -21,6 +21,10 @@ export interface ClassesProps {
   loadTeachers?: TeacherLoader;
 }
 
+export interface ClassesHandle {
+  refresh: () => Promise<void | undefined>;
+}
+
 function validateName(value: string): string | null {
   const name = value.trim();
   if (!name) return 'Въведете име на занимание.';
@@ -38,14 +42,14 @@ function actionError(action: 'load' | 'save'): string {
     : 'Заниманието не може да бъде запазено. Опитайте отново.';
 }
 
-export default function Classes({
+const Classes = forwardRef<ClassesHandle, ClassesProps>(function Classes({
   profile: suppliedProfile,
   loadClasses = getMyClasses,
   createClass = createClassApi,
   updateClass = updateClassApi,
   teachers: suppliedTeachers,
   loadTeachers = getTeachers,
-}: ClassesProps) {
+}: ClassesProps, ref) {
   const profile = suppliedProfile ?? getProfile();
   const isAdmin = profile?.role === 'admin';
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -59,28 +63,42 @@ export default function Classes({
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const refreshInFlight = useRef<Promise<void | undefined> | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
-    void loadClasses().then((items) => {
-      if (mounted) setClasses(sortClasses(items));
-    }).catch(() => {
-      if (mounted) setError(actionError('load'));
-    }).finally(() => {
-      if (mounted) setLoading(false);
-    });
-
-    if (isAdmin && suppliedTeachers === undefined) {
-      void loadTeachers().then((items) => {
-        if (mounted) setTeachers(items.filter((item) => item.role === 'teacher'));
-      }).catch(() => {
-        if (mounted) setError(actionError('load'));
-      });
+    try {
+      const classPromise = loadClasses();
+      const teacherPromise = isAdmin && suppliedTeachers === undefined ? loadTeachers() : null;
+      const [items, loadedTeachers] = await Promise.all([classPromise, teacherPromise]);
+      if (!mountedRef.current) return;
+      setClasses(sortClasses(items));
+      if (loadedTeachers) setTeachers(loadedTeachers.filter((item) => item.role === 'teacher'));
+    } catch {
+      if (mountedRef.current) setError(actionError('load'));
+    } finally {
+      if (mountedRef.current) setLoading(false);
     }
-    return () => { mounted = false; };
   }, [isAdmin, loadClasses, loadTeachers, suppliedTeachers]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void load();
+    return () => { mountedRef.current = false; };
+  }, [load]);
+
+  const refresh = useCallback((): Promise<void | undefined> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const request = load().finally(() => {
+      refreshInFlight.current = null;
+    });
+    refreshInFlight.current = request;
+    return request;
+  }, [load]);
+
+  useImperativeHandle(ref, () => ({ refresh }), [refresh]);
 
   const teacherOptions = useMemo(
     () => (suppliedTeachers ?? teachers).filter((item) => item.role === 'teacher'),
@@ -88,9 +106,7 @@ export default function Classes({
   );
   useEffect(() => {
     if (!isAdmin) return;
-    setSelectedTeacherId((current) => teacherOptions.some((item) => item.id === current)
-      ? current
-      : (teacherOptions[0]?.id ?? ''));
+    setSelectedTeacherId((current) => current || (teacherOptions[0]?.id ?? ''));
   }, [isAdmin, teacherOptions]);
 
   const visibleClasses = isAdmin
@@ -227,7 +243,7 @@ export default function Classes({
         {!loading && visibleClasses.length === 0 && (
           <p role="status">Все още нямате занимания. Създайте занимание, преди да направите резервация.</p>
         )}
-        {!loading && visibleClasses.length > 0 && (
+        {visibleClasses.length > 0 && (
           <ul className="class-list" aria-label="Списък със занимания">
             {visibleClasses.map((item) => (
               <li className={`class-row${item.active ? '' : ' class-row--archived'}`} key={item.id}>
@@ -309,4 +325,6 @@ export default function Classes({
       )}
     </main>
   );
-}
+});
+
+export default Classes;

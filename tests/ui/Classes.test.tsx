@@ -1,7 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
 import '@testing-library/jest-dom';
+import { createRef } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import Classes from '../../src/components/Classes';
+import Classes, { type ClassesHandle } from '../../src/components/Classes';
 import type { ClassItem, Profile } from '../../src/lib/types';
 
 const teacher: Profile = { id: 'teacher-a', name: 'Teacher A', role: 'teacher' };
@@ -138,5 +139,52 @@ describe('Classes screen', () => {
     expect(form).toHaveClass('class-add--admin');
     expect(teacherSelect.compareDocumentPosition(nameInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(nameInput.parentElement).toBe(addButton.parentElement);
+  });
+
+  test('refreshes through a stable handle without resetting class form, owner, dialog, or notice state', async () => {
+    let resolveClassRefresh: ((items: ClassItem[]) => void) | undefined;
+    let resolveTeacherRefresh: ((items: Profile[]) => void) | undefined;
+    const loadClasses = vi.fn()
+      .mockResolvedValueOnce([classItem()])
+      .mockImplementationOnce(() => new Promise<ClassItem[]>((resolve) => { resolveClassRefresh = resolve; }));
+    const loadTeachers = vi.fn()
+      .mockResolvedValueOnce([teacher, teacherB])
+      .mockImplementationOnce(() => new Promise<Profile[]>((resolve) => { resolveTeacherRefresh = resolve; }));
+    const create = vi.fn(async (name: string, teacherId?: string) => classItem({ id: 'class-new', name, teacherId: teacherId ?? teacher.id }));
+    const ref = createRef<ClassesHandle>();
+
+    render(
+      <Classes
+        ref={ref}
+        profile={admin}
+        loadClasses={loadClasses}
+        loadTeachers={loadTeachers}
+        createClass={create}
+      />,
+    );
+    expect(await screen.findByText('Pilates')).toBeInTheDocument();
+
+    const owner = screen.getByRole('combobox', { name: 'Отговорен учител' });
+    fireEvent.change(owner, { target: { value: teacherB.id } });
+    fireEvent.change(screen.getByLabelText('Име на заниманието'), { target: { value: 'Draft text' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добави занимание' }));
+    expect(await screen.findByText('Draft text')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Име на заниманието'), { target: { value: 'Keep this text' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Архивирай Pilates' }));
+
+    const firstRefresh = ref.current?.refresh();
+    const secondRefresh = ref.current?.refresh();
+    expect(firstRefresh).toBeDefined();
+    expect(secondRefresh).toBe(firstRefresh);
+    expect(loadClasses).toHaveBeenCalledTimes(2);
+    expect(loadTeachers).toHaveBeenCalledTimes(2);
+    resolveClassRefresh?.([classItem(), classItem({ id: 'class-new', name: 'Draft text', teacherId: teacherB.id })]);
+    resolveTeacherRefresh?.([teacher, teacherB]);
+    await firstRefresh;
+
+    expect(screen.getByLabelText('Име на заниманието')).toHaveValue('Keep this text');
+    expect(owner).toHaveValue(teacherB.id);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Заниманието „Draft text“ е създадено.');
   });
 });

@@ -2,8 +2,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import '@testing-library/jest-dom';
+import { createRef } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import MonthlyReport from '../../src/components/MonthlyReport';
+import MonthlyReport, { type MonthlyReportHandle } from '../../src/components/MonthlyReport';
 import { reportRowsToCsv } from '../../src/lib/report-csv';
 import type { AdminMonthReport, MyMonthReport, MonthReportRow, Profile } from '../../src/lib/types';
 const reportStyles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8');
@@ -112,6 +113,54 @@ describe('MonthlyReport', () => {
     await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}$/), 'teacher-b'));
     expect(screen.getByText('Activity b-active')).toBeInTheDocument();
     expect(screen.queryByText('Activity a-active')).not.toBeInTheDocument();
+  });
+
+  test('refreshes a teacher report for the current month without resetting the month control', async () => {
+    const ref = createRef<MonthlyReportHandle>();
+    render(<MonthlyReport ref={ref} profile={profile('teacher')} />);
+    expect(await screen.findByText('Activity a-active')).toBeInTheDocument();
+
+    const monthInput = screen.getByLabelText('Избор на месец');
+    fireEvent.change(monthInput, { target: { value: '2026-10' } });
+    await waitFor(() => expect(api.getMyMonthReport).toHaveBeenLastCalledWith('2026-10'));
+
+    let resolveRefresh: ((value: MyMonthReport) => void) | undefined;
+    api.getMyMonthReport.mockImplementationOnce(() => new Promise<MyMonthReport>((resolve) => { resolveRefresh = resolve; }));
+    const firstRefresh = ref.current?.refresh();
+    const secondRefresh = ref.current?.refresh();
+    expect(firstRefresh).toBeDefined();
+    expect(secondRefresh).toBe(firstRefresh);
+    expect(api.getMyMonthReport).toHaveBeenLastCalledWith('2026-10');
+    expect(monthInput).toHaveValue('2026-10');
+    expect(api.getMyMonthReport).toHaveBeenCalledTimes(3);
+    resolveRefresh?.({ ...teacherReport, month: '2026-10' });
+    await firstRefresh;
+  });
+
+  test('refreshes the admin report with the selected filter and preserves both controls', async () => {
+    const ref = createRef<MonthlyReportHandle>();
+    render(<MonthlyReport ref={ref} profile={profile('admin')} />);
+    expect(await screen.findByRole('heading', { name: 'Teacher A' })).toBeInTheDocument();
+
+    const monthInput = screen.getByLabelText('Избор на месец');
+    const teacherFilter = screen.getByRole('combobox', { name: 'Учител' });
+    fireEvent.change(monthInput, { target: { value: '2026-10' } });
+    await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith('2026-10', null));
+    fireEvent.change(teacherFilter, { target: { value: 'teacher-b' } });
+    await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith('2026-10', 'teacher-b'));
+
+    let resolveRefresh: ((value: AdminMonthReport) => void) | undefined;
+    api.getAdminMonthReport.mockImplementationOnce(() => new Promise<AdminMonthReport>((resolve) => { resolveRefresh = resolve; }));
+    const firstRefresh = ref.current?.refresh();
+    const secondRefresh = ref.current?.refresh();
+    expect(firstRefresh).toBeDefined();
+    expect(secondRefresh).toBe(firstRefresh);
+    expect(api.getAdminMonthReport).toHaveBeenLastCalledWith('2026-10', 'teacher-b');
+    expect(monthInput).toHaveValue('2026-10');
+    expect(teacherFilter).toHaveValue('teacher-b');
+    expect(api.getAdminMonthReport).toHaveBeenCalledTimes(4);
+    resolveRefresh?.({ ...adminReport, month: '2026-10', teacherId: 'teacher-b', teachers: [adminReport.teachers[1]] });
+    await firstRefresh;
   });
 
   test('groups repeated tariff segments and shows the grouped euro total', async () => {
