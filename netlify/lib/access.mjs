@@ -44,6 +44,19 @@ function header(headers, name) {
   return key ? String(headers[key] ?? '') : '';
 }
 
+function pwaInstallCookie(headers) {
+  const cookie = header(headers, 'cookie');
+  for (const part of cookie.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0 || part.slice(0, separator).trim() !== 'pwa_install') continue;
+    const value = part.slice(separator + 1).trim();
+    return isAccessToken(value) ? value : null;
+  }
+  return null;
+}
+
+const PWA_INSTALL_EXPIRY = 'pwa_install=; Path=/; Max-Age=0; Secure; SameSite=Strict';
+
 function invalid(status = 400) {
   return result(status, { error: 'invalid_access' });
 }
@@ -132,20 +145,32 @@ export async function handleAccessRequest(request, options = {}) {
 
   let body;
   try { body = JSON.parse(request.body); } catch { return invalid(); }
-  if (!body || typeof body !== 'object' || Array.isArray(body) ||
-      Object.keys(body).length !== 1 || !isAccessToken(body.token)) return invalid();
+  const bodyToken = body && typeof body === 'object' && !Array.isArray(body) &&
+    Object.keys(body).length === 1 && isAccessToken(body.token) ? body.token : null;
+  const cookieToken = pwaInstallCookie(request.headers);
+  const accessToken = bodyToken ?? cookieToken;
+  const fromCookie = !bodyToken && Boolean(cookieToken);
+  if (!accessToken) return invalid();
 
-  const tokenHash = createHash('sha256').update(body.token, 'utf8').digest('hex');
+  const tokenHash = createHash('sha256').update(accessToken, 'utf8').digest('hex');
   const config = { supabaseUrl, serviceKey, publishableKey, fetchImpl };
+  let rows;
   try {
-    const rows = await supabaseRequest(supabaseUrl, '/rest/v1/rpc/resolve_access', {
+    rows = await supabaseRequest(supabaseUrl, '/rest/v1/rpc/resolve_access', {
       method: 'POST',
       headers: authHeaders(serviceKey, true),
       body: JSON.stringify({ p_token_hash: tokenHash }),
     }, fetchImpl);
-    const profile = Array.isArray(rows) ? rows[0] : null;
-    if (!profile?.id || !profile.name || !profile.role) return invalid(401);
+  } catch {
+    return invalid(401);
+  }
 
+  const profile = Array.isArray(rows) ? rows[0] : null;
+  if (!profile?.id || !profile.name || !profile.role) {
+    return result(401, { error: 'invalid_access' }, fromCookie ? { 'set-cookie': PWA_INSTALL_EXPIRY } : {});
+  }
+
+  try {
     const session = await nativeSession(profile, config);
     return result(200, {
       access_token: session.access_token,
@@ -153,7 +178,7 @@ export async function handleAccessRequest(request, options = {}) {
       expires_in: session.expires_in,
       expires_at: session.expires_at,
       user: session.user,
-    });
+    }, fromCookie ? { 'set-cookie': PWA_INSTALL_EXPIRY } : {});
   } catch {
     return invalid(401);
   }
