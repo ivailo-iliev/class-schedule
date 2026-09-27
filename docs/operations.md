@@ -1,240 +1,226 @@
-# Operations — Supabase-only administration and reporting
+# Operations — Supabase administration and reporting
 
-This document records the direct Supabase (SQL Editor, Table Editor, or CLI)
-operations for this project. There is no billing UI, reporting app surface,
-profile-administration screen, or export endpoint in the application. Every
-task below runs in the Supabase Dashboard SQL Editor, Table Editor, or via the
-Supabase CLI against the target project (local or hosted).
+This document records owner operations for the Class Scheduler deployment. Profiles
+and pricing rules are administered in Supabase; the application exposes only the
+narrow authenticated RPCs needed by the browser. Never commit `.env` files,
+Supabase secrets, database dumps, raw access tokens, or production identifiers.
 
-> **Rule:** the application has no custom reporting API. `get_day` is the only
-> read RPC used by the app's daily schedule; all billing/export/administration
-> work is done here, by an owner, in Supabase directly. Never commit `.env`,
-> credentials, or personal access-link tokens into the repository.
+## Deployment and environment isolation
 
-## Netlify deployment and environment isolation
+`netlify.toml` is the deployment source of truth:
 
-`netlify.toml` is the deployment source of truth. Netlify builds with Node 24
-using `npm run build`, publishes `dist`, and loads functions from
-`netlify/functions`. The access function owns `/api/access`; the manifest is a
-public static `dist/manifest.webmanifest` asset. Both the access route and API
-404 fallback appear before the final `/*` SPA fallback so function errors
-cannot become an HTML 200 response. The access function uses a Netlify rate
-limit of 60 requests per IP/domain per 60 seconds.
+- Netlify uses Node 24, runs `npm run build`, publishes `dist`, and loads
+  functions from `netlify/functions`.
+- The only application function route is `/api/access`. The public
+  `dist/manifest.webmanifest` is a static asset.
+- The `/api/access` redirect and the API 404 fallback precede the final SPA
+  fallback. Function failures must not become an HTML 200 response.
+- The access function rate limit is 60 requests per IP/domain per 60 seconds.
+- The static manifest has `start_url: "/"`, `scope: "/"`, and standalone display;
+  there is no service worker, offline cache, background sync, or install cookie.
 
-Configure environment variables in Netlify's site settings, not in this
+Configure environment variables in Netlify site settings, never in this
 repository:
 
-- Production build variables: `VITE_SUPABASE_URL` and
-  `VITE_SUPABASE_PUBLISHABLE_KEY`. These are intentionally public and are the
-  only Supabase variables available to the Vite client bundle.
-- Production function variables: `SUPABASE_URL`,
-  `SUPABASE_SECRET_API_KEY`, and `APP_ORIGIN`. Keep these scoped to Functions
-  or the production context; never prefix a secret with `VITE_`.
+- Build variables: `VITE_SUPABASE_URL` and
+  `VITE_SUPABASE_PUBLISHABLE_KEY`. They are public and are the only Supabase
+  variables allowed in the Vite client bundle.
+- Function variables: `SUPABASE_URL`, `SUPABASE_SECRET_API_KEY`, and
+  `APP_ORIGIN`. Keep these in the Functions/production context and never prefix
+  a secret with `VITE_`.
 - Deploy previews: use a separate disposable Supabase project or local/test
-  values for both public variables and function variables. Do not inherit
-  production `SUPABASE_SECRET_API_KEY`, production database credentials, or
-  any production write access into a preview context.
+  values for both sets of variables. Do not inherit production secret keys,
+  database credentials, or production write access into a preview.
 
-There are no signing-key, JWKS, or custom-JWT variables in this native-session
-design. Frontend builds never run Supabase migrations. Before accepting a deployment, inspect the generated `dist` with `npm run
-check:public-build` and verify the production response headers include CSP,
-`Referrer-Policy: no-referrer`, and `X-Content-Type-Options: nosniff`.
+There are no signing-key, JWKS, or custom-JWT variables in the native-session
+design. Frontend builds do not apply Supabase migrations. Before accepting a
+build, run `npm run check:public-build` against the generated `dist` and read
+back the production security headers: CSP, `Referrer-Policy: no-referrer`, and
+`X-Content-Type-Options: nosniff`. The `/api/access` response is private and
+`no-store`.
 
-## Default timezone
+## Data and pricing invariants
 
-The application assumes `Europe/Sofia`. Confirm or change this in the timing
-RPCs (`private.resolve_slot`, `private.valid_slot`, `get_day`) and in the
-billability queries below before storing production bookings. Existing stored
-`timestamptz` values retain their UTC instant, so a timezone change would
-display a different local time for historical data.
+- Booking `starts_at` and `ends_at` are local wall-clock values stored as
+  PostgreSQL `timestamp without time zone`. They must be on one local calendar
+  date, use whole seconds, and begin/end on a 00 or 30 minute boundary.
+- Audit fields are instants. Do not reinterpret booking values as UTC or apply
+  an offset when displaying or filtering a local date.
+- `private.pricing_rules` is the authoritative configuration. It is maintained
+  only by a Supabase owner through the Dashboard SQL Editor/Table Editor or an
+  approved administrative migration; it is not exposed to authenticated
+  browsers and there is no pricing-management screen.
+- Each booking stores `currency = 'EUR'`, a nonnegative `calculated_amount`, and
+  a `price_breakdown` JSON snapshot containing the applied segment rules, labels,
+  hourly rates, and subtotals. Rule changes affect new quotes and new/edited
+  bookings only; existing snapshots do not change.
+- Pricing is resolved by trusted database code in 30-minute segments. A missing
+  or ambiguous rule is a configuration error, never an implicit zero price.
+- Cancellation frees the schedule and retains the original snapshot. The
+  cancelled row remains in authorized reports, but its effective amount due is
+  EUR 0.
+- This is usage reporting, not payment collection, a wallet, a settlement
+  ledger, or an account-balance system.
 
-## Profile administration
+## Profile administration and reusable access links
 
-### Create a profile and issue a personal access link
+Administrators manage profiles in Supabase, not in the application. Run these
+statements as the `postgres` or `supabase_admin` role in the SQL Editor; do not
+run them as a browser role:
 
 ```sql
-insert into public.profiles (name, role) values ('Maria', 'teacher');
-select private.issue_access_link('<inserted-uuid>');
+insert into public.profiles (name, role)
+values ('Teacher name', 'teacher');
+
+select private.issue_access_link('<active-profile-uuid>');
 ```
 
-Call `private.issue_access_link` from the `postgres` or `supabase_admin` role
-via SQL Editor; no other role has EXECUTE privilege. It sets the SHA-256 hash
-and returns the raw 64-char token. The administrator copies and distributes the
-raw token as `APP_ORIGIN/access#<returned-token>`. Never paste real links into
-the repository, task descriptions, fixtures, CI output, or chat logs.
+`private.issue_access_link` returns a raw 64-character token once and stores
+only its SHA-256 hash. Distribute it only as a reusable fragment link:
 
-### Replace a compromised link
-
-```sql
-select private.issue_access_link('<profile-uuid>');
+```text
+https://<site-origin>/#<returned-token>
 ```
 
-### Deactivate a teacher (revokes access on the next DB statement)
+The browser posts the fragment token to `/api/access`, then clears the fragment
+from the visible URL after the native Supabase session is established. The same
+valid link can be opened on multiple devices. Never put a real token in source,
+fixtures, CI output, tickets, chat, or this document.
+
+To revoke access, deactivate the profile. Deactivation clears the stored hash
+and blocks the profile on subsequent database calls, including established
+sessions:
 
 ```sql
-update public.profiles set active = false where id = '<profile-uuid>';
+update public.profiles
+set active = false
+where id = '<active-profile-uuid>';
 ```
 
-### Revoke then reactivate
+To reactivate a profile, set `active = true` and issue a new link separately.
+Rotating a link invalidates the old link for future exchanges without signing
+out sessions that are already established.
 
-Reactivation alone does not restore the old link — issue a new one:
+## Pricing-rule administration
+
+Pricing rules are Supabase-administered rows. Use explicit profile IDs resolved
+during environment setup; do not match mutable display names in application
+code. A whole-day rule has both time columns null. A time-bounded rule covers a
+half-open local interval, and weekdays use ISO values 1 (Monday) through 7
+(Sunday):
 
 ```sql
-update public.profiles set active = true where id = '<profile-uuid>';
--- Then issue a new link separately
-select private.issue_access_link('<profile-uuid>');
+insert into private.pricing_rules
+  (teacher_id, weekdays, start_time, end_time, hourly_rate, priority, label, active)
+values
+  (null, array[1,2,3,4,5]::smallint[], '08:30', '17:00', 10.00, 0,
+   'Standard weekday daytime', true);
 ```
 
-## Current room-hour rate
-
-`private.room_rate` contains one current rate, not a year-indexed rate history.
-The singleton key permits zero or one row so a missing configuration can be
-reported explicitly; it prevents a second current rate. Change it only as an
-owner in the SQL Editor or Table Editor:
+Before changing a rule, inspect the complete active configuration as the owner:
 
 ```sql
-insert into private.room_rate (room_hour_rate, currency)
-values (20.00, 'BGN')
-on conflict (singleton) do update set room_hour_rate = excluded.room_hour_rate,
-  currency = excluded.currency;
+select id, teacher_id, weekdays, start_time, end_time,
+       hourly_rate, priority, label, active
+from private.pricing_rules
+where active
+order by teacher_id nulls first, weekdays, start_time nulls first, priority desc, id;
 ```
 
-Run this preflight before every billing report. A missing row is an operational
-error, never a zero-rate result:
+Keep coverage unambiguous at the winning precedence and priority for every
+bookable segment. Do not grant browser access to `private.pricing_rules` or
+accept a browser-calculated amount. The quote and mutation RPCs perform the
+same server-side matching and snapshot the result transactionally.
+
+## Authorized monthly reports and CSV/print output
+
+The browser report screens call these exact authenticated RPCs:
+
+- `get_my_month_report(month)` returns only the current teacher's authorized
+  rows, reservation/cancellation counts, snapshot breakdowns, and the active
+  rows' total due.
+- `get_admin_month_report(month, teacher_id nullable)` requires an administrator
+  and returns authorized rows, per-teacher totals, and the combined cashbox
+  total. A null teacher selects all teachers.
+
+The month is a calendar date such as `date '2026-09-01'`; filtering compares the
+local booking date directly. The report's effective amount is the stored
+`calculated_amount` for an active booking and zero for a cancelled booking.
+The application provides browser print CSS and client-side CSV export of exactly
+the authorized rows returned by these RPCs. It does not generate server-side
+PDF/CSV files or expose hidden booking fields.
+
+For an owner-side snapshot reconciliation, use a read-only query with a
+start-inclusive/end-exclusive local-month window. This mirrors the report
+calculation and uses stored snapshots; it does not recalculate historical prices:
 
 ```sql
-select case when count(*) = 1 then 'current_rate_ready'
-            else 'missing_current_room_rate' end as status
-from private.room_rate;
-```
-
-Do not run or interpret a billing report until the result is
-`current_rate_ready`. The report multiplies uncancelled hours by this current
-rate for every booking date and returns the currency with each money total.
-
-
-## Monthly usage report
-
-Total billed uncancelled hours per teacher/class/room, grouped by year-month.
-Parameterized by the year-month window:
-
-```sql
-with current_rate as (
-  select room_hour_rate, currency
-  from private.room_rate
-  where singleton
-)
-select p.id as teacher_id, p.name as teacher, c.id as class_id, c.name as class, b.room,
-  to_char(date_trunc('month', b.starts_at at time zone 'Europe/Sofia'), 'YYYY-MM-DD') as month,
-  count(b.id) as uncancelled_hours,
-  r.room_hour_rate,
-  r.currency,
-  (count(b.id)::numeric * r.room_hour_rate)::numeric(12,2) as billed_total
+select b.teacher_id,
+       b.starts_at::date as booking_date,
+       count(*) as reservation_count,
+       count(*) filter (where b.cancelled_at is not null) as cancelled_count,
+       coalesce(sum(case when b.cancelled_at is null
+                         then b.calculated_amount else 0 end), 0)::numeric(12,2)
+         as effective_amount_due
 from public.bookings b
-join public.classes c on c.id = b.class_id
-join public.profiles p on p.id = c.teacher_id
-cross join current_rate r
-where b.cancelled_at is null
-  and b.starts_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
-  and b.starts_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
-group by p.id, p.name, c.id, c.name, b.room, month, r.room_hour_rate, r.currency
-order by p.name, p.id, month, b.room, c.name, c.id;
+where b.starts_at >= :month_start::date::timestamp
+  and b.starts_at <  (:month_start::date + interval '1 month')::timestamp
+group by b.teacher_id, b.starts_at::date
+order by b.teacher_id, booking_date;
 ```
 
-Each row includes a money total for its teacher/class/room/month grouping.
-For a single total per teacher over the same window, run:
+Use the authorized application report for teacher/admin viewing and export.
+Direct owner queries and Table Editor exports are administrative diagnostics,
+not a substitute for the RLS-scoped browser report.
 
-```sql
-with current_rate as (
-  select room_hour_rate, currency
-  from private.room_rate
-  where singleton
-)
-select p.id as teacher_id, p.name as teacher,
-  count(b.id) as uncancelled_hours,
-  r.room_hour_rate,
-  r.currency,
-  (count(b.id)::numeric * r.room_hour_rate)::numeric(12,2) as billed_total
-from public.bookings b
-join public.classes c on c.id = b.class_id
-join public.profiles p on p.id = c.teacher_id
-cross join current_rate r
-where b.cancelled_at is null
-  and b.starts_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
-  and b.starts_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
-group by p.id, p.name, r.room_hour_rate, r.currency
-order by p.name, p.id;
-```
+## Cancellation and booking operations
 
-For September 2026: `:start_date = '2026-09-01'`, `:end_date = '2026-10-01'`.
+Use the application controls, which call `cancel_booking(id, expected_version,
+scope)` with `scope` `one` or `future`. The database rechecks ownership,
+version, series order, and active status. Never delete a booking to represent a
+cancellation: the retained row and snapshot are needed for reporting and audit.
 
-## Cancelled hours (reported separately)
+Booking creation and editing call `quote_booking`, `create_booking_series`, or
+`edit_booking`; each authoritative mutation recalculates pricing and stores a
+fresh snapshot. A quote is display-only and cannot authorize or fix an amount.
 
-```sql
-select p.id as teacher_id, p.name as teacher, c.id as class_id, c.name as class, b.room,
-  count(b.id) as cancelled_hours
-from public.bookings b
-join public.classes c on c.id = b.class_id
-join public.profiles p on p.id = c.teacher_id
-where b.cancelled_at is not null
-  and b.cancelled_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
-  and b.cancelled_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
-group by p.id, p.name, c.id, c.name, b.room
-order by p.name, p.id, c.name, c.id, b.room;
-```
+## Backups and paused projects
 
-Cancellation is nonbillable in the default usage query; cancelled rows are
-never counted as billable hours.
-
-## Export all bookings for a period (CSV)
-
-Supabase Table Editor provides a direct CSV download for the `public.bookings`
-join below. This SQL produces the same data:
-
-```sql
-select b.id, p.id as teacher_id, p.name as teacher, c.id as class_id, c.name as class, b.room,
-  b.starts_at at time zone 'Europe/Sofia' as local_start,
-  b.cancelled_at at time zone 'Europe/Sofia' as local_cancelled,
-  b.version, b.created_at at time zone 'Europe/Sofia' as created_local
-from public.bookings b
-join public.classes c on c.id = b.class_id
-join public.profiles p on p.id = c.teacher_id
-where b.starts_at >= (:start_date::date::timestamp at time zone 'Europe/Sofia')
-  and b.starts_at <  (:end_date::date::timestamp at time zone 'Europe/Sofia')
-order by b.starts_at, b.id;
-```
-
-## Holiday closures
-
-There is no holiday-exclusion table or automation in V1. An administrator
-simply inserts no bookings on a closed day, or manually removes a single
-conflicting slot after coordination. This is an operational communication task,
-not a technical guard.
-
-## Restore a paused Supabase Free project
-
-Log into Supabase Dashboard → project → a paused banner appears → click Resume.
-This can take several minutes. The application landing page shows a public
-connectivity error during pause. No scheduled keep-alive is part of V1.
-
-## Backups (administrator responsibility)
-
-Backups are not automatic on the Free plan. Export via `pg_dump` or the
-Supabase CLI before any risky operational change:
+Before a risky administrative change, an owner may export the `public` and
+`private` schemas with `pg_dump` or the Supabase CLI. Keep the result outside the
+repository and protect it as sensitive data:
 
 ```bash
 pg_dump --dbname "$SUPABASE_DB_URL" --schema=public --schema=private \
   --no-owner --no-acl > backup-$(date -I).sql
 ```
 
-The application has no export/billing UI; periodic exports are the
-administrator's responsibility. The root-level `backup-YYYY-MM-DD.sql`
-output is ignored by git.
+To restore a paused Supabase Free project, open the project in the Supabase
+Dashboard, select Resume, wait for project health checks, and then verify the
+application can load a schedule. Plan limits and backup availability must be
+checked against the current Supabase plan; no scheduled keep-alive is part of
+this application.
 
-## Changing the studio timezone after initial booking data
+## Operational verification commands
 
-Update `private.resolve_slot`, `private.valid_slot`, `get_day`, and the
-billability queries above to the new zone. Existing stored `timestamptz` values
-keep their UTC instant and would display a different local time. If the real
-timezone differs from `Europe/Sofia`, change all references before storing
-production data and notify the implementer. No migration script is provided.
+Run from the repository root. These are the package scripts currently defined
+by `package.json`:
+
+```bash
+npm run typecheck
+npm run test:unit
+SUPABASE_DB_URL=... npm run test:db
+npm run test:e2e
+npm run build
+npm run test:pwa
+npm run check:public-build
+npm run auth:smoke
+```
+
+The final release gate must include an integrated browser/database verification
+using a disposable synthetic admin and teacher setup. Verify native-session
+access, profile deactivation, RLS privacy, local 30-minute booking validation,
+pricing snapshots, cancellation effective amount, teacher/admin report scope,
+browser print/CSV authorization, security headers, static manifest, and absence
+of a service worker. Record the exact commands and outputs in the release
+checklist; do not mark a gate passed from an unrun check.
