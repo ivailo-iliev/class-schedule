@@ -7,7 +7,6 @@ import Icon from './Icon';
 const ROOMS: readonly { id: Room; label: string }[] = [{ id: 'hall', label: 'Зала' }, { id: 'room', label: 'Стая' }];
 const VIEW_MODE_STORAGE_KEY = 'schedule-view-mode';
 const WEEK_ROOM_STORAGE_KEY = 'schedule-week-room';
-const ROOM_VISIBILITY_STORAGE_KEY = 'schedule-visible-rooms';
 type ViewMode = 'day' | 'week';
 type SlotSelection = { date: string; startsAt: string; endsAt?: string; hour?: number; room: Room };
 type DragSelection = { date: string; room: Room; startIndex: number; endIndex: number; pointerId: number };
@@ -26,13 +25,6 @@ function displayRange(start: string, end: string) { return `${dateLabel(start)} 
 function timeLabel(local: string) { return local.slice(11, 16); }
 function classHue(id: string) { let hash = 0; for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0; return (hash % 12) * 30; }
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T { try { const value = window.localStorage.getItem(key); return allowed.includes(value as T) ? value as T : fallback; } catch { return fallback; } }
-function readVisibleRooms(): Room[] {
-  const defaults = ROOMS.map((room) => room.id);
-  try {
-    const stored = JSON.parse(window.localStorage.getItem(ROOM_VISIBILITY_STORAGE_KEY) ?? 'null') as unknown;
-    return Array.isArray(stored) ? defaults.filter((room) => stored.includes(room)) : defaults;
-  } catch { return defaults; }
-}
 function formatSlotPrice(price: SlotPrice) { return price.currency === 'EUR' ? `€${price.price}` : `${price.price} ${price.currency}`; }
 
 const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ initialDate = today(), loadSchedule = getWeek, onSelectSlot, onSelectBooking, offline = false }, ref) {
@@ -43,12 +35,15 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   const [availabilityFresh, setAvailabilityFresh] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => readStored(VIEW_MODE_STORAGE_KEY, ['day', 'week'], 'day'));
   const [weekRoom, setWeekRoom] = useState<Room>(() => readStored(WEEK_ROOM_STORAGE_KEY, ['hall', 'room'], 'hall'));
-  const [visibleRooms, setVisibleRooms] = useState<Room[]>(readVisibleRooms);
   const [dragSelection, setDragSelection] = useState<DragSelection | null>(null);
   const [gridScrollLeft, setGridScrollLeft] = useState(0);
   const weekRef = useRef<WeekSchedule | null>(null); const dateRef = useRef(date); const requestId = useRef(0);
-  const inFlight = useRef<{ weekStart: string; promise: Promise<WeekSchedule> } | null>(null); const skipClickRef = useRef(false); const skipFocusRef = useRef(false);
+  const gridScrollRef = useRef<HTMLDivElement | null>(null); const inFlight = useRef<{ weekStart: string; promise: Promise<WeekSchedule> } | null>(null); const skipClickRef = useRef(false); const skipFocusRef = useRef(false);
   weekRef.current = week; dateRef.current = date;
+  const resetHorizontalGrid = useCallback(() => {
+    if (gridScrollRef.current) gridScrollRef.current.scrollLeft = 0;
+    setGridScrollLeft(0);
+  }, []);
   const loadWeek = useCallback((requestedDate: string): Promise<WeekSchedule> => {
     const targetStart = weekStartOf(requestedDate);
     if (inFlight.current?.weekStart === targetStart) {
@@ -61,14 +56,17 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
     setLoading(true); setError(null); setAvailabilityFresh(false);
     const promise = loadSchedule(requestedDate).then((result) => {
       if (result.weekStart !== targetStart) throw new Error('invalid_week_response');
-      if (request === requestId.current && weekContains(targetStart, dateRef.current)) { setWeek(result); weekRef.current = result; setAvailabilityFresh(true); }
+      if (request === requestId.current && weekContains(targetStart, dateRef.current)) {
+        if (weekRef.current?.weekStart !== result.weekStart) resetHorizontalGrid();
+        setWeek(result); weekRef.current = result; setAvailabilityFresh(true);
+      }
       return result;
     }).catch((reason: unknown) => { if (request === requestId.current && weekContains(targetStart, dateRef.current)) { setError(reason); setAvailabilityFresh(false); } throw reason; }).finally(() => {
       if (request === requestId.current) setLoading(false);
       if (inFlight.current?.promise === promise) inFlight.current = null;
     });
     inFlight.current = { weekStart: targetStart, promise }; return promise;
-  }, [loadSchedule]);
+  }, [loadSchedule, resetHorizontalGrid]);
   const refresh = useCallback(async () => { const result = await loadWeek(dateRef.current); return result.days.find((day) => day.date === dateRef.current); }, [loadWeek]);
   useImperativeHandle(ref, () => ({ refresh }), [refresh]);
   useEffect(() => {
@@ -88,11 +86,10 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   }, [refresh]);
   useEffect(() => { try { window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode); } catch { /* optional */ } }, [viewMode]);
   useEffect(() => { try { window.localStorage.setItem(WEEK_ROOM_STORAGE_KEY, weekRoom); } catch { /* optional */ } }, [weekRoom]);
-  useEffect(() => { try { window.localStorage.setItem(ROOM_VISIBILITY_STORAGE_KEY, JSON.stringify(visibleRooms)); } catch { /* optional */ } }, [visibleRooms]);
 
   const selectedDay = week?.days.find((day) => day.date === date);
   const days = week ? (viewMode === 'day' ? (selectedDay ? [selectedDay] : []) : [...week.days]) : [];
-  const rooms = viewMode === 'day' ? ROOMS.filter((room) => visibleRooms.includes(room.id)) : ROOMS.filter((room) => room.id === weekRoom);
+  const rooms = viewMode === 'day' ? ROOMS : ROOMS.filter((room) => room.id === weekRoom);
   const slots = days[0]?.slots ?? []; const canBook = availabilityFresh && !loading && !error && !offline;
   const rangeIsFree = (day: DaySchedule, room: Room, first: number, last: number) => day.slots.slice(Math.min(first, last), Math.max(first, last) + 1).every((slot) => !day.bookings.some((booking) => booking.room === room && booking.startsAt <= slot.startsAt && booking.endsAt > slot.startsAt));
   const selectRange = (day: DaySchedule, room: Room, first: number, last: number, includeEndAt = true) => {
@@ -107,20 +104,22 @@ const Schedule = forwardRef<ScheduleHandle, ScheduleProps>(function Schedule({ i
   const finishDrag = (event: ReactPointerEvent<HTMLElement>) => { const current = dragSelection; if (!current || current.pointerId !== event.pointerId) return; event.preventDefault(); skipClickRef.current = true; const day = weekRef.current?.days.find((item) => item.date === current.date); if (day) selectRange(day, current.room, current.startIndex, current.endIndex); setDragSelection(null); };
   const moveDrag = (event: ReactPointerEvent<HTMLElement>) => { if (!dragSelection || dragSelection.pointerId !== event.pointerId) return; const target = (typeof document.elementFromPoint === 'function' ? document.elementFromPoint(event.clientX, event.clientY) : event.target) as Element | null; const slot = target?.closest<HTMLButtonElement>('.empty-slot'); if (!slot || slot.dataset.date !== dragSelection.date || slot.dataset.room !== dragSelection.room) return; const index = Number(slot.dataset.slotIndex); const day = weekRef.current?.days.find((item) => item.date === dragSelection.date); if (day && Number.isInteger(index)) updateDrag(event as ReactPointerEvent<HTMLButtonElement>, day, dragSelection.room, index); };
   const navStep = viewMode === 'day' ? 1 : 7; const selectedWeekStart = weekStartOf(date); const navLabel = viewMode === 'day' ? displayDay(date) : displayRange(selectedWeekStart, addCalendarDays(selectedWeekStart, 6)); const toggleLabel = viewMode === 'day' ? 'Покажи седмица' : 'Покажи ден';
-  const roomIsSelected = (room: Room) => viewMode === 'day' ? visibleRooms.includes(room) : weekRoom === room;
-  const selectRoom = (room: Room) => viewMode === 'day'
-    ? setVisibleRooms((current) => current.includes(room) ? current.filter((item) => item !== room) : [...current, room])
-    : setWeekRoom(room);
+  const selectDate = (nextDate: string) => {
+    if (viewMode === 'week' && weekStartOf(nextDate) !== selectedWeekStart) resetHorizontalGrid();
+    setDate(nextDate);
+  };
+  const navigate = (amount: number) => selectDate(addCalendarDays(date, amount));
+  const toggleViewMode = () => { resetHorizontalGrid(); setViewMode((value) => value === 'day' ? 'week' : 'day'); };
   const columnTemplate = `3.6rem repeat(${days.length * rooms.length}, minmax(0, 1fr))`;
 
   return <main className="schedule-shell" aria-label="График" style={{ '--schedule-grid-sticky-top': 'calc(var(--app-bar-height) + var(--schedule-toolbar-height))' } as React.CSSProperties}><p className="visually-hidden">Свързано</p>
     <header className="schedule-date-bar"><div className="date-controls" aria-label="Управление на графика">
-      <button type="button" onClick={() => setDate(addCalendarDays(date, -navStep))} aria-label={viewMode === 'day' ? 'Предишен ден' : 'Предишна седмица'} title={viewMode === 'day' ? 'Предишен ден' : 'Предишна седмица'}><Icon name="chevronLeft" /></button><label className="date-picker"><span className="visually-hidden">Дата в графика</span><span className="date-picker__display" aria-live="polite">{navLabel}</span><input type="date" aria-label="Дата в графика" value={date} onChange={(event) => { if (event.target.value) setDate(event.target.value); }} /></label><button type="button" onClick={() => setDate(addCalendarDays(date, navStep))} aria-label={viewMode === 'day' ? 'Следващ ден' : 'Следваща седмица'} title={viewMode === 'day' ? 'Следващ ден' : 'Следваща седмица'}><Icon name="chevronRight" /></button><button type="button" onClick={() => setViewMode((value) => value === 'day' ? 'week' : 'day')} aria-label={toggleLabel} title={toggleLabel}><Icon name={viewMode === 'day' ? 'week' : 'day'} /></button>
-    </div><fieldset className="room-controls" aria-label={viewMode === 'week' ? 'Помещение за седмицата' : 'Показване на помещенията'}><legend className="visually-hidden">{viewMode === 'week' ? 'Помещение за седмицата' : 'Показване на помещенията'}</legend>{ROOMS.map((room) => <button type="button" className={`room-toggle${roomIsSelected(room.id) ? ' room-toggle--pressed' : ''}`} key={room.id} aria-pressed={roomIsSelected(room.id)} onClick={() => selectRoom(room.id)}>{room.label}</button>)}</fieldset></header>
+      <button type="button" onClick={() => navigate(-navStep)} aria-label={viewMode === 'day' ? 'Предишен ден' : 'Предишна седмица'} title={viewMode === 'day' ? 'Предишен ден' : 'Предишна седмица'}><Icon name="chevronLeft" /></button><label className="date-picker"><span className="visually-hidden">Дата в графика</span><span className="date-picker__display" aria-live="polite">{navLabel}</span><input type="date" aria-label="Дата в графика" value={date} onChange={(event) => { if (event.target.value) selectDate(event.target.value); }} /></label><button type="button" onClick={() => navigate(navStep)} aria-label={viewMode === 'day' ? 'Следващ ден' : 'Следваща седмица'} title={viewMode === 'day' ? 'Следващ ден' : 'Следваща седмица'}><Icon name="chevronRight" /></button><button type="button" onClick={toggleViewMode} aria-label={toggleLabel} title={toggleLabel}><Icon name={viewMode === 'day' ? 'week' : 'day'} /></button>
+    </div>{viewMode === 'week' && <fieldset className="room-controls" aria-label="Помещение за седмицата"><legend className="visually-hidden">Помещение за седмицата</legend>{ROOMS.map((room) => <button type="button" className={`room-toggle${weekRoom === room.id ? ' room-toggle--pressed' : ''}`} key={room.id} aria-pressed={weekRoom === room.id} onClick={() => setWeekRoom(room.id)}>{room.label}</button>)}</fieldset>}</header>
     {Boolean(error) && <p className="schedule-message schedule-message--inline" role="alert"><strong>Графикът може да не е актуален.</strong> Свободните часове ще се показват само за преглед, докато графикът не бъде обновен.</p>}{loading && (!week || !selectedDay) && <p className="schedule-loading" role="status">Графикът се зарежда…</p>}
     {days.length > 0 && <section className={`schedule-grid schedule-grid--${viewMode}`} role="grid" aria-label={`График за ${navLabel}`} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={() => setDragSelection(null)}>
       <div className="schedule-grid__header-clip" style={{ top: 'var(--schedule-grid-sticky-top)' }}><div className="schedule-grid__sticky-header" style={{ gridTemplateColumns: columnTemplate, transform: `translateX(-${gridScrollLeft}px)` }}><div className="schedule-grid__header-spacer" aria-hidden="true" />{days.flatMap((day) => rooms.map((room) => <h2 className="schedule-grid__header" key={`${day.date}:${room.id}`}>{viewMode === 'week' ? displayDay(day.date) : room.label}</h2>))}</div><div className="schedule-grid__corner" aria-hidden="true">Час</div></div>
-      <div className="schedule-grid-scroll" onScroll={(event) => setGridScrollLeft(event.currentTarget.scrollLeft)}><div className="schedule-grid__body" style={{ gridTemplateColumns: columnTemplate, gridTemplateRows: `repeat(${slots.length}, 3rem)` }}>
+      <div className="schedule-grid-scroll" ref={gridScrollRef} onScroll={(event) => setGridScrollLeft(event.currentTarget.scrollLeft)}><div className="schedule-grid__body" style={{ gridTemplateColumns: columnTemplate, gridTemplateRows: `repeat(${slots.length}, 3rem)` }}>
       {slots.flatMap((slot, index) => [<div className="schedule-grid__hour" role="rowheader" key={`${slot.startsAt}:time`} style={{ gridRow: index + 1 }}>{timeLabel(slot.startsAt)}</div>, ...days.flatMap((day, dayIndex) => rooms.map((room, roomIndex) => {
         const daySlot = day.slots[index]; if (!daySlot) return null;
         const booking = day.bookings.find((item) => item.room === room.id && item.startsAt <= daySlot.startsAt && item.endsAt > daySlot.startsAt); const label = viewMode === 'week' ? `${room.label} на ${displayDay(day.date)} в ${timeLabel(daySlot.startsAt)}` : `${room.label} в ${timeLabel(daySlot.startsAt)}`; const column = 2 + dayIndex * rooms.length + roomIndex;
