@@ -12,7 +12,6 @@ type SupabaseResult<T> = { data: T | null; error: unknown | null };
 let client: AuthClient | undefined;
 let bootstrapPromise: Promise<Session | null> | null = null;
 let currentProfile: Profile | null = null;
-let retainedPersonalAccessToken: string | null = null;
 
 export function getSupabaseClient(): AuthClient {
   if (!client) {
@@ -100,6 +99,12 @@ function hasPwaInstallCookie(): boolean {
   return typeof document !== 'undefined' && /(?:^|;\s*)pwa_install=/.test(document.cookie);
 }
 
+function setPwaInstallCookie(token: string): void {
+  if (typeof document !== 'undefined') {
+    document.cookie = `pwa_install=${token}; Secure; SameSite=Strict; Path=/; Max-Age=600`;
+  }
+}
+
 async function exchangePwaInstall(fetchImpl: typeof fetch, supabase: AuthClient): Promise<Session | null> {
   const response = await fetchImpl('/api/access', {
     method: 'POST',
@@ -130,7 +135,6 @@ async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fet
   // A personal-link fragment is authoritative, even when a different native
   // session exists in storage. It is removed only after the replacement is live.
   if (/^[0-9a-f]{64}$/.test(token)) {
-    retainedPersonalAccessToken = null;
     const response = await fetchImpl('/api/access', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -149,7 +153,7 @@ async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fet
     if (result.error || !result.data.session) throw result.error ?? new Error('invalid_access');
     const activeSession = await activateSession(result.data.session, supabase);
     if (!activeSession) throw new Error('profile_access_denied');
-    retainedPersonalAccessToken = token;
+    setPwaInstallCookie(token);
     clearAccessFragment();
     return activeSession;
   }
@@ -181,12 +185,6 @@ export function getProfileId(): string | null {
   return currentProfile?.id ?? null;
 }
 
-export function preparePwaInstall(): boolean {
-  if (!retainedPersonalAccessToken || typeof document === 'undefined') return false;
-  document.cookie = `pwa_install=${retainedPersonalAccessToken}; Secure; SameSite=Strict; Path=/; Max-Age=600`;
-  return true;
-}
-
 export async function clearSession(): Promise<void> {
   currentProfile = null;
   try {
@@ -215,7 +213,6 @@ export function resetSessionForTests(): void {
   client = undefined;
   bootstrapPromise = null;
   currentProfile = null;
-  retainedPersonalAccessToken = null;
 }
 
 export function isSessionRevokedError(error: unknown): boolean {

@@ -4,7 +4,6 @@ import {
   bootstrapNativeSession,
   clearSession,
   getProfile,
-  preparePwaInstall,
   resetSessionForTests,
 } from '../../src/lib/session';
 
@@ -69,6 +68,10 @@ describe('native browser session', () => {
     createClient.mockReturnValue(state.client);
     const fetchImpl = vi.fn(async () => accessResponse());
     window.history.replaceState(null, '', `/#${token}`);
+    const cookieSetter = vi.spyOn(document, 'cookie', 'set');
+    const replaceState = vi.spyOn(window.history, 'replaceState');
+    cookieSetter.mockClear();
+    replaceState.mockClear();
 
     const result = await bootstrapNativeSession(window.location, fetchImpl);
 
@@ -80,60 +83,16 @@ describe('native browser session', () => {
     });
     expect(state.auth.setSession).toHaveBeenCalledWith({ access_token: 'access-token', refresh_token: 'refresh-token' });
     expect(state.from).toHaveBeenCalledWith('profiles');
+    expect(cookieSetter).toHaveBeenCalledWith(
+      `pwa_install=${token}; Secure; SameSite=Strict; Path=/; Max-Age=600`,
+    );
+    expect(cookieSetter.mock.invocationCallOrder[0]).toBeLessThan(replaceState.mock.invocationCallOrder[0]);
     expect(window.location.hash).toBe('');
     expect(getProfile()).toEqual(profile);
     expect(window.localStorage.length).toBe(0);
     expect(window.sessionStorage.length).toBe(0);
   });
 
-  test('writes an install-only cookie after a complete fragment activation without browser token storage', async () => {
-    const state = clientStub();
-    createClient.mockReturnValue(state.client);
-    const cookieSetter = vi.spyOn(document, 'cookie', 'set');
-    window.history.replaceState(null, '', `/#${token}`);
-
-    await bootstrapNativeSession(window.location, vi.fn(async () => accessResponse()));
-
-    expect(preparePwaInstall()).toBe(true);
-    expect(cookieSetter).toHaveBeenLastCalledWith(
-      `pwa_install=${token}; Secure; SameSite=Strict; Path=/; Max-Age=600`,
-    );
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
-  });
-
-  test('does not prepare an install cookie without a retained personal-link token', () => {
-    const cookieSetter = vi.spyOn(document, 'cookie', 'set');
-    cookieSetter.mockClear();
-
-    expect(preparePwaInstall()).toBe(false);
-    expect(cookieSetter).not.toHaveBeenCalled();
-  });
-
-  test('test reset helper clears a retained personal-link token', async () => {
-    const state = clientStub();
-    createClient.mockReturnValue(state.client);
-    window.history.replaceState(null, '', `/#${token}`);
-
-    await bootstrapNativeSession(window.location, vi.fn(async () => accessResponse()));
-    expect(preparePwaInstall()).toBe(true);
-
-    resetSessionForTests();
-    expect(preparePwaInstall()).toBe(false);
-  });
-
-  test('a genuine module reload discards a retained personal-link token', async () => {
-    const state = clientStub();
-    createClient.mockReturnValue(state.client);
-    window.history.replaceState(null, '', `/#${token}`);
-
-    await bootstrapNativeSession(window.location, vi.fn(async () => accessResponse()));
-    expect(preparePwaInstall()).toBe(true);
-
-    vi.resetModules();
-    const reloaded = await import('../../src/lib/session');
-    expect(reloaded.preparePwaInstall()).toBe(false);
-  });
 
   test('restores the persisted session and safe profile directly through RLS without a profile endpoint', async () => {
     const state = clientStub(session);
@@ -197,24 +156,29 @@ describe('native browser session', () => {
   test('does not retain a fragment token when profile activation fails', async () => {
     const state = clientStub(null, null);
     createClient.mockReturnValue(state.client);
+    const cookieSetter = vi.spyOn(document, 'cookie', 'set');
+    cookieSetter.mockClear();
     window.history.replaceState(null, '', `/#${token}`);
 
     await expect(bootstrapNativeSession(window.location, vi.fn(async () => accessResponse())))
       .rejects.toThrow('profile_access_denied');
 
-    expect(preparePwaInstall()).toBe(false);
+    expect(cookieSetter).not.toHaveBeenCalled();
     expect(window.location.hash).toBe(`#${token}`);
   });
 
   test('keeps a failed fragment visible and leaves the existing native session untouched', async () => {
     const state = clientStub(session);
     createClient.mockReturnValue(state.client);
+    const cookieSetter = vi.spyOn(document, 'cookie', 'set');
+    cookieSetter.mockClear();
     const fetchImpl = vi.fn(async () => new Response('{}', { status: 401 }));
     window.history.replaceState(null, '', `/#${token}`);
 
     await expect(bootstrapNativeSession(window.location, fetchImpl)).rejects.toThrow('invalid_access');
 
     expect(state.auth.setSession).not.toHaveBeenCalled();
+    expect(cookieSetter).not.toHaveBeenCalled();
     expect(window.location.hash).toBe(`#${token}`);
   });
 
