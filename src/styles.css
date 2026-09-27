@@ -513,6 +513,7 @@ select:focus-visible {
 }
 
 .schedule-grid__cell {
+  position: relative;
   min-height: 3rem;
   background: #fff;
 }
@@ -546,6 +547,7 @@ select:focus-visible {
 
 /* Keep touch scrolling active everywhere except the small booking handle. */
 .schedule-grid__cell > .empty-slot--handle {
+  position: static;
   width: 2.75rem;
   height: 2.75rem;
   min-height: 2.75rem;
@@ -557,7 +559,7 @@ select:focus-visible {
   position: absolute;
   top: 0.35rem;
   right: 0.45rem;
-  left: 0.45rem;
+  left: auto;
   color: #6b7a92;
   font-size: 0.66rem;
   font-weight: 650;
@@ -586,7 +588,7 @@ select:focus-visible {
   line-height: 1.1;
 }
 
-/* Schedule supplies a deterministic, classId-keyed set of accessible colour tokens. */
+/* Schedule supplies a deterministic, class-name-keyed set of accessible colour tokens. */
 .booking {
   --booking-background: #e8f0ff;
   --booking-border: #87abe6;
