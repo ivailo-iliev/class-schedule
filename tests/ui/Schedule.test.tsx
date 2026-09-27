@@ -29,6 +29,23 @@ describe('Schedule week cache and views', () => {
     expect(loader).toHaveBeenLastCalledWith('2026-09-20');
   });
 
+  test('shows a loading treatment rather than stale availability during a Day-mode week-boundary load', async () => {
+    let resolveNext!: (week: WeekSchedule) => void;
+    const next = new Promise<WeekSchedule>((resolve) => { resolveNext = resolve; });
+    const loader = vi.fn().mockResolvedValueOnce(weekFor('2026-09-27')).mockReturnValueOnce(next);
+    render(<Schedule initialDate="2026-09-27" loadSchedule={loader} />);
+    await screen.findByRole('button', { name: 'Резервирай Зала в 08:30' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Следващ ден' }));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('status')).toHaveTextContent('Графикът се зарежда…');
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: /^Резервирай/ })).toHaveLength(0);
+
+    resolveNext(weekFor('2026-09-28'));
+    expect(await screen.findByRole('button', { name: 'Резервирай Зала в 08:30' })).toBeEnabled();
+  });
+
   test('renders both rooms in day view and has a compact destination week action', async () => {
     const loader = vi.fn(async (date: string) => weekFor(date));
     render(<Schedule initialDate="2026-09-23" loadSchedule={loader} />);
