@@ -22,6 +22,13 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../src/lib/api', () => api);
 
+// Always choose a different month from the initial report, including in October 2026.
+const selectedMonth = (() => {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+})();
+
 const row = (id: string, teacherId: string, teacherName: string, amount: string, cancelled = false): MonthReportRow => ({
   id, teacherId, teacherName, classId: `class-${id}`, activityTitle: `Activity ${id}`, bookingDate: '2026-11-05',
   startsAt: '2026-11-05T09:00:00', endsAt: '2026-11-05T10:30:00', durationMinutes: 90, room: 'hall', currency: 'EUR',
@@ -121,8 +128,8 @@ describe('MonthlyReport', () => {
     expect(await screen.findByText('Activity a-active')).toBeInTheDocument();
 
     const monthInput = screen.getByLabelText('Избор на месец');
-    fireEvent.change(monthInput, { target: { value: '2026-10' } });
-    await waitFor(() => expect(api.getMyMonthReport).toHaveBeenLastCalledWith('2026-10'));
+    fireEvent.change(monthInput, { target: { value: selectedMonth } });
+    await waitFor(() => expect(api.getMyMonthReport).toHaveBeenLastCalledWith(selectedMonth));
 
     let resolveRefresh: ((value: MyMonthReport) => void) | undefined;
     api.getMyMonthReport.mockImplementationOnce(() => new Promise<MyMonthReport>((resolve) => { resolveRefresh = resolve; }));
@@ -130,10 +137,10 @@ describe('MonthlyReport', () => {
     const secondRefresh = ref.current?.refresh();
     expect(firstRefresh).toBeDefined();
     expect(secondRefresh).toBe(firstRefresh);
-    expect(api.getMyMonthReport).toHaveBeenLastCalledWith('2026-10');
-    expect(monthInput).toHaveValue('2026-10');
+    expect(api.getMyMonthReport).toHaveBeenLastCalledWith(selectedMonth);
+    expect(monthInput).toHaveValue(selectedMonth);
     expect(api.getMyMonthReport).toHaveBeenCalledTimes(3);
-    resolveRefresh?.({ ...teacherReport, month: '2026-10' });
+    resolveRefresh?.({ ...teacherReport, month: selectedMonth });
     await firstRefresh;
   });
 
@@ -144,10 +151,10 @@ describe('MonthlyReport', () => {
 
     const monthInput = screen.getByLabelText('Избор на месец');
     const teacherFilter = screen.getByRole('combobox', { name: 'Учител' });
-    fireEvent.change(monthInput, { target: { value: '2026-10' } });
-    await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith('2026-10', null));
+    fireEvent.change(monthInput, { target: { value: selectedMonth } });
+    await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(selectedMonth, null));
     fireEvent.change(teacherFilter, { target: { value: 'teacher-b' } });
-    await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith('2026-10', 'teacher-b'));
+    await waitFor(() => expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(selectedMonth, 'teacher-b'));
 
     let resolveRefresh: ((value: AdminMonthReport) => void) | undefined;
     api.getAdminMonthReport.mockImplementationOnce(() => new Promise<AdminMonthReport>((resolve) => { resolveRefresh = resolve; }));
@@ -155,11 +162,11 @@ describe('MonthlyReport', () => {
     const secondRefresh = ref.current?.refresh();
     expect(firstRefresh).toBeDefined();
     expect(secondRefresh).toBe(firstRefresh);
-    expect(api.getAdminMonthReport).toHaveBeenLastCalledWith('2026-10', 'teacher-b');
-    expect(monthInput).toHaveValue('2026-10');
+    expect(api.getAdminMonthReport).toHaveBeenLastCalledWith(selectedMonth, 'teacher-b');
+    expect(monthInput).toHaveValue(selectedMonth);
     expect(teacherFilter).toHaveValue('teacher-b');
     expect(api.getAdminMonthReport).toHaveBeenCalledTimes(4);
-    resolveRefresh?.({ ...adminReport, month: '2026-10', teacherId: 'teacher-b', teachers: [adminReport.teachers[1]] });
+    resolveRefresh?.({ ...adminReport, month: selectedMonth, teacherId: 'teacher-b', teachers: [adminReport.teachers[1]] });
     await firstRefresh;
   });
 
