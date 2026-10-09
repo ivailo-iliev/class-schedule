@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from '../../src/App';
-import { addCalendarDays, daySlots } from '../../src/lib/calendar';
+import { addCalendarDays, daySlots, todayCalendarDate } from '../../src/lib/calendar';
 import type { Booking } from '../../src/lib/types';
 
 const appStyles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8');
@@ -139,7 +139,7 @@ describe('App schedule integration', () => {
   test('keeps schedule controls and unrelated Classes form state during a global refresh', async () => {
     render(<App />);
     await screen.findByRole('heading', { name: 'Зала' });
-    fireEvent.click(screen.getByRole('button', { name: 'Следващ ден' }));
+    fireEvent.change(screen.getByLabelText('Дата в графика'), { target: { value: addCalendarDays(todayCalendarDate(), 7) } });
     await waitFor(() => expect(mocks.getWeek).toHaveBeenCalledTimes(2));
     const selectedDate = screen.getByText(/^[а-я]{2}, \d+ [а-я]{3}$/).textContent;
     fireEvent.click(screen.getByRole('button', { name: 'Презареди текущия изглед' }));
