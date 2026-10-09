@@ -144,6 +144,7 @@ describe('App schedule integration', () => {
     const selectedDate = screen.getByText(/^[а-я]{2}, \d+ [а-я]{3}$/).textContent;
     fireEvent.click(screen.getByRole('button', { name: 'Презареди текущия изглед' }));
     await waitFor(() => expect(mocks.getWeek).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Презареди текущия изглед' })).toBeEnabled());
     expect(screen.getByText(selectedDate!)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Занимания' }));
