@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import BookingForm, { buildOccurrences } from '../../src/components/BookingForm';
+import { addCalendarDays, isoWeekday, todayCalendarDate } from '../../src/lib/calendar';
 import type { BookingOccurrence, BookingQuote, ClassItem, CreatedBookingSeries, Profile } from '../../src/lib/types';
 
 const teacher: Profile = { id: 'teacher-a', name: 'Teacher A', role: 'teacher' };
@@ -11,6 +12,10 @@ const classes: ClassItem[] = [
   { id: 'class-b', teacherId: teacherB.id, name: 'Yoga', active: true },
   { id: 'class-old', teacherId: teacher.id, name: 'Archived', active: false },
 ];
+
+// Keep booking fixtures in the future without depending on the date CI runs.
+const today = todayCalendarDate();
+const bookingDate = addCalendarDays(today, 8 - isoWeekday(today));
 
 function quoteFor(occurrences: BookingOccurrence[], conflicts: boolean[] = []): BookingQuote {
   return {
@@ -62,8 +67,8 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof BookingForm>>
   const createBookingSeries = vi.fn(async (_classId: string, _room: 'hall' | 'room', _details: string | null, occurrences: BookingOccurrence[]) => createdFor(occurrences));
   const onRefresh = vi.fn(async () => undefined);
   render(<BookingForm
-    date="2026-09-28"
-    startsAt="2026-09-28T08:30:00"
+    date={bookingDate}
+    startsAt={`${bookingDate}T08:30:00`}
     room="hall"
     profile={teacher}
     loadClasses={vi.fn(async () => classes)}
@@ -117,7 +122,7 @@ describe('BookingForm server-quoted creation', () => {
   test('quotes exact local half-hour occurrences and shows segment pricing', async () => {
     const { quoteBooking } = renderForm();
     await waitFor(() => expect(quoteBooking).toHaveBeenCalledWith('class-a', 'hall', [
-      { starts_at: '2026-09-28T08:30:00', ends_at: '2026-09-28T09:00:00' },
+      { starts_at: `${bookingDate}T08:30:00`, ends_at: `${bookingDate}T09:00:00` },
     ]));
     expect(await screen.findByText('Общо: €10.00')).toBeInTheDocument();
     expect(screen.getByText(/Standard/)).toBeInTheDocument();
@@ -126,7 +131,7 @@ describe('BookingForm server-quoted creation', () => {
   });
 
   test('uses the dragged grid end time for the initial booking duration', async () => {
-    renderForm({ endsAt: '2026-09-28T10:00:00' });
+    renderForm({ endsAt: `${bookingDate}T10:00:00` });
 
     expect(await screen.findByRole('combobox', { name: 'Начален час' })).toHaveValue('08:30');
     expect(screen.getByRole('combobox', { name: 'Краен час' })).toHaveValue('10:00');
@@ -144,10 +149,10 @@ describe('BookingForm server-quoted creation', () => {
     await waitFor(() => expect(createBookingSeries).toHaveBeenCalledTimes(1));
     const occurrences = createBookingSeries.mock.calls[0]![3];
     expect(occurrences).toEqual([
-      { starts_at: '2026-09-28T08:30:00', ends_at: '2026-09-28T09:00:00' },
-      { starts_at: '2026-09-29T08:30:00', ends_at: '2026-09-29T09:00:00' },
-      { starts_at: '2026-10-05T08:30:00', ends_at: '2026-10-05T09:00:00' },
-      { starts_at: '2026-10-06T08:30:00', ends_at: '2026-10-06T09:00:00' },
+      { starts_at: `${bookingDate}T08:30:00`, ends_at: `${bookingDate}T09:00:00` },
+      { starts_at: `${addCalendarDays(bookingDate, 1)}T08:30:00`, ends_at: `${addCalendarDays(bookingDate, 1)}T09:00:00` },
+      { starts_at: `${addCalendarDays(bookingDate, 7)}T08:30:00`, ends_at: `${addCalendarDays(bookingDate, 7)}T09:00:00` },
+      { starts_at: `${addCalendarDays(bookingDate, 8)}T08:30:00`, ends_at: `${addCalendarDays(bookingDate, 8)}T09:00:00` },
     ]);
     expect(createBookingSeries.mock.calls[0]!.slice(0, 3)).toEqual(['class-a', 'hall', null]);
     expect(onRefresh).toHaveBeenCalledTimes(1);
