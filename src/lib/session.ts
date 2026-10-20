@@ -95,14 +95,11 @@ async function activateSession(session: Session, supabase: AuthClient): Promise<
   return null;
 }
 
-function hasPwaInstallCookie(): boolean {
-  return typeof document !== 'undefined' && /(?:^|;\s*)pwa_install=/.test(document.cookie);
-}
-
-function setPwaInstallCookie(token: string): void {
-  if (typeof document !== 'undefined') {
-    document.cookie = `pwa_install=${token}; Secure; SameSite=Strict; Path=/; Max-Age=600`;
-  }
+function isStandaloneApp(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+  return window.matchMedia?.('(display-mode: standalone)').matches === true ||
+    standaloneNavigator.standalone === true;
 }
 
 async function exchangePwaInstall(fetchImpl: typeof fetch, supabase: AuthClient): Promise<Session | null> {
@@ -153,14 +150,13 @@ async function exchangeFragment(location: BrowserLocation, fetchImpl: typeof fet
     if (result.error || !result.data.session) throw result.error ?? new Error('invalid_access');
     const activeSession = await activateSession(result.data.session, supabase);
     if (!activeSession) throw new Error('profile_access_denied');
-    setPwaInstallCookie(token);
     clearAccessFragment();
     return activeSession;
   }
 
   const session = await persistedSession(supabase);
   if (session) return activateSession(session, supabase);
-  return hasPwaInstallCookie() ? exchangePwaInstall(fetchImpl, supabase) : null;
+  return isStandaloneApp() ? exchangePwaInstall(fetchImpl, supabase) : null;
 }
 
 export function bootstrapNativeSession(

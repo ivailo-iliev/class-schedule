@@ -55,7 +55,9 @@ function pwaInstallCookie(headers) {
   return null;
 }
 
-const PWA_INSTALL_EXPIRY = 'pwa_install=; Path=/; Max-Age=0; Secure; SameSite=Strict';
+const PWA_INSTALL_EXPIRY = 'pwa_install=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict';
+const pwaInstallHandoffCookie = (token) =>
+  `pwa_install=${token}; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Strict`;
 
 function invalid(status = 400) {
   return result(status, { error: 'invalid_access' });
@@ -178,7 +180,7 @@ export async function handleAccessRequest(request, options = {}) {
       expires_in: session.expires_in,
       expires_at: session.expires_at,
       user: session.user,
-    }, fromCookie ? { 'set-cookie': PWA_INSTALL_EXPIRY } : {});
+    }, { 'set-cookie': fromCookie ? PWA_INSTALL_EXPIRY : pwaInstallHandoffCookie(bodyToken) });
   } catch {
     return invalid(401);
   }
