@@ -1,46 +1,15 @@
 {
-  "name": "class-scheduler",
+  "name": "class-scheduler-pwa-wrapper",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && node scripts/write-headers.mjs && node scripts/assert-public-build.mjs",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run --config vitest.config.ts",
-    "test:db": "vitest run --config vitest.db.config.ts",
-    "test:e2e": "npx playwright test",
-    "test:pwa": "node scripts/verify-pwa.mjs",
-    "check:public-build": "node scripts/assert-public-build.mjs",
-    "auth:smoke": "node scripts/auth-smoke.mjs"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.116.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "build": "node scripts/build.mjs",
+    "typecheck": "node scripts/typecheck.mjs",
+    "test:unit": "node --test tests/*.test.mjs",
+    "test:pwa": "playwright test"
   },
   "devDependencies": {
-    "@netlify/functions": "^6.0.0",
-    "@playwright/test": "^1.63.0",
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/jest-dom": "^7.0.1",
-    "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.7",
-    "@types/node": "^22.20.2",
-    "@types/pg": "^8.23.1",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.1",
-    "jsdom": "^30.0.1",
-    "pg": "^8.23.0",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.0"
-  },
-  "allowScripts": {
-    "esbuild@0.28.1": true,
-    "sharp@0.34.5": true,
-    "unix-dgram@2.0.7": true
+    "@playwright/test": "1.63.0"
   }
 }

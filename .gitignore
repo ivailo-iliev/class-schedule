@@ -1,35 +1,8 @@
-# Dependencies and builds
 node_modules/
 dist/
-build/
-coverage/
-.playwright/
-__pycache__/
-
-# Secrets and local configuration
+.netlify/
+playwright-report/
+test-results/
 .env
 .env.*
-!.env.example
-*.pem
-*.key
-/backup-*.sql
-
-# Local/editor files
 .DS_Store
-.vscode/
-.idea/
-# Netlify
-.netlify/
-
-# Supabase
-supabase/.temp/
-supabase/.branches/
-
-# Keys
-.keys/
-
-# Test results
-test-results/
-
-# Playwright
-playwright-report/

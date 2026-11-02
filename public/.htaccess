@@ -1,0 +1,15 @@
+Options -MultiViews
+RewriteEngine On
+RewriteRule ^api/(.*)$ https://pretty-pencil.netlify.app/api/$1 [R=307,L,NE]
+RewriteRule ^\.netlify/functions/(.*)$ https://pretty-pencil.netlify.app/.netlify/functions/$1 [R=307,L,NE]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]
+<IfModule mod_headers.c>
+Header always set Content-Security-Policy "default-src 'self'; connect-src 'self' https://pretty-pencil.netlify.app https://*.supabase.co; script-src 'self' https://6ae90332b33ffbbfb5966476--pretty-pencil.netlify.app; style-src 'self' 'unsafe-inline' https://6ae90332b33ffbbfb5966476--pretty-pencil.netlify.app; img-src 'self' data: https://6ae90332b33ffbbfb5966476--pretty-pencil.netlify.app https://*.supabase.co; font-src 'self' https://6ae90332b33ffbbfb5966476--pretty-pencil.netlify.app; object-src 'none'; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none';"
+Header always set Referrer-Policy "no-referrer"
+Header always set X-Content-Type-Options "nosniff"
+<FilesMatch "^(sw|registerSW)\.js$">
+Header always set Cache-Control "no-cache, no-store, must-revalidate"
+</FilesMatch>
+</IfModule>
