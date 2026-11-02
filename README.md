@@ -27,7 +27,8 @@ npm run test:pwa
 ```
 
 Netlify builds `dist/` using netlify.toml. There are no local functions. The generated
-_redirects preserve historical API URLs through the central service. No Supabase
+_redirects preserve historical /api/* URLs through the central service. Netlify
+reserves /.netlify/functions/*, so integrations must use the public /api/* contract. No Supabase
 keys or privileged environment variables are required on this frontend host.
 Remove obsolete site environment variables after the authorized production cutover.
 

@@ -15,6 +15,8 @@ test('launcher pins a compatible shared release with SRI and exact remote CSP or
  assert.ok(read('.htaccess').includes('RewriteEngine On'));
  assert.ok(read('_headers').includes(release.assetOrigin));
  assert.equal(release.tenantBuilds,false);
+ assert.doesNotMatch(read('_redirects'),/^\/\.netlify\//m); // Netlify reserves these source paths.
+ assert.match(read('_redirects'),/^\/api\/\* https:\/\/pretty-pencil\.netlify\.app\/api\/:splat 200!/m);
 });
 test('static distribution contains no backend, staff implementation, dependencies or privileged keys',()=>{
  for(const path of ['netlify','supabase','coach','src','calendar-importer'])assert.equal(existsSync(path),false,path);

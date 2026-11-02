@@ -1,3 +1,2 @@
 /api/* https://pretty-pencil.netlify.app/api/:splat 200!
-/.netlify/functions/* https://pretty-pencil.netlify.app/.netlify/functions/:splat 200!
 /* /index.html 200
