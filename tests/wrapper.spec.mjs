@@ -31,8 +31,11 @@ test('original PWA branding, manifest paths, and worker scope survive generic ho
   const manifest=await (await page.request.get(`/skater/${profile}/manifest.webmanifest`)).json();
   expect(new URL(manifest.start_url,page.url()).pathname).toBe(`/skater/${profile}/`);
  }
- await page.evaluate(async()=>{const registration=await navigator.serviceWorker.ready;await new Promise(resolve=>{if(navigator.serviceWorker.controller)resolve();else navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true});});return registration.scope;});
- const scope=await page.evaluate(async()=>(await navigator.serviceWorker.ready).scope);expect(scope).toBe(new URL(page.url()).origin+'/');
+ // The existing skater PWA reloads on controllerchange. Poll across that reload.
+ await expect.poll(async()=>{
+  try{return await page.evaluate(async()=>navigator.serviceWorker.controller?(await navigator.serviceWorker.ready).scope:null);}
+  catch{return null;}
+ },{timeout:30000}).toBe(new URL(page.url()).origin+'/');
  const sw=await page.request.get('/sw.js');expect(sw.headers()['cache-control']).toContain('no-cache');
  if(!skating){await context.setOffline(true);await page.reload();await expect(page.getByRole('heading',{name:'Няма връзка с интернет'})).toBeVisible();}
 });
